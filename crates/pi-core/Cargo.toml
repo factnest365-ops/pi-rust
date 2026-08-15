@@ -1,0 +1,21 @@
+[package]
+name = "pi-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+pi-tools.workspace = true
+pi-session.workspace = true
+pi-providers.workspace = true
+dirs.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
+tokio-util.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile.workspace = true

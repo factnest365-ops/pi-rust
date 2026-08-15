@@ -1,0 +1,178 @@
+*pi.txt*    For Neovim v0.8.0+    Last change: 2026 August 15
+
+==============================================================================
+🥧 PI.NVIM - Pure Rust AI Coding Agent Companion                 *pi.nvim* *pi*
+
+pi.nvim is the official first-class Neovim companion plugin for pi-rs,
+the high-performance, 100% pure Rust port of Mario Zechner's Pi Coding Agent.
+
+Features:
+- Asynchronous non-blocking JSON-RPC 2.0 communication over standard I/O.
+- Floating chat transcript with real-time SSE token streaming.
+- Visual selection, cursor position, and LSP diagnostics context collection.
+- Interactive side-by-side / unified diff preview before applying changes.
+- Multi-provider model selector (`:PiModels`).
+- Full `:checkhealth pi` diagnostic integration.
+
+==============================================================================
+TABLE OF CONTENTS                                             *pi-contents*
+
+1. Installation ............................................. |pi-installation|
+2. Configuration ............................................ |pi-configuration|
+3. User Commands ............................................ |pi-commands|
+4. Default Keymaps .......................................... |pi-keymaps|
+5. Health Check ............................................. |pi-health|
+6. Lua API .................................................. |pi-api|
+
+==============================================================================
+1. INSTALLATION                                               *pi-installation*
+
+Using lazy.nvim: >lua
+    {
+      "bhavy/pi-rust",
+      config = function()
+        require("pi").setup({
+          bin = "pi-rs", -- or path to target/release/pi-rs
+          model = "opencode/deepseek-v4-flash-free",
+          keymaps = true,
+        })
+      end,
+    }
+<
+
+Ensure the `pi-rs` binary is built and available on your `$PATH` or specified
+directly via the `bin` configuration option.
+
+==============================================================================
+2. CONFIGURATION                                             *pi-configuration*
+
+Call `require("pi").setup(opts)` with any of the following defaults: >lua
+
+    require("pi").setup({
+      -- Path or name of the pi-rs binary
+      bin = "pi-rs",
+
+      -- Default model ID to initialize with
+      model = "opencode/deepseek-v4-flash-free",
+
+      -- Automatically register default keybindings
+      keymaps = true,
+
+      -- Floating window appearance
+      floating_window = {
+        width = 0.82,
+        height = 0.82,
+        border = "rounded", -- "single", "double", "rounded", "solid", "shadow"
+      },
+
+      -- Auto-scroll chat buffer on token streaming
+      auto_scroll = true,
+
+      -- Diff preview options
+      diff_preview = {
+        auto_focus = true,
+      },
+    })
+<
+
+==============================================================================
+3. USER COMMANDS                                                 *pi-commands*
+
+*:Pi* [prompt]
+        Open chat UI or submit a one-shot prompt with active buffer context.
+        Accepts visual line range (e.g. `:'<,'>Pi Explain this function`).
+
+*:PiChat*
+        Toggle the floating interactive chat window.
+
+*:PiExplain*
+        Explain the current visual selection or active buffer context.
+
+*:PiFix*
+        Collect active compiler / LSP diagnostics at cursor or selection and
+        prompt Pi for a surgical fix.
+
+*:PiRefactor* [instructions]
+        Refactor the selected code according to user instructions.
+
+*:PiModels*
+        Query registered models across providers and switch the active model.
+        Use `:PiModels!` or `:PiModels refresh` to force refresh online catalogs.
+
+*:PiStop*
+        Cancel / stop the currently running agent generation.
+
+*:PiReplay* [session_id]
+        Replay the session trajectory steps in the chat window.
+
+==============================================================================
+4. DEFAULT KEYMAPS                                               *pi-keymaps*
+
+When `keymaps = true` in setup:
+
+Normal Mode:
+    `<leader>pa`        Toggle Pi Chat window
+    `<leader>pc`        Toggle Pi Chat window
+    `<leader>pe`        Explain active buffer
+    `<leader>pf`        Fix diagnostics at cursor
+    `<leader>pm`        Open Model Selector
+    `<leader>ps`        Stop active generation
+
+Visual Mode:
+    `<leader>pe`        Explain visual selection
+    `<leader>pf`        Fix diagnostics in visual selection
+    `<leader>pr`        Refactor visual selection
+
+Inside Floating UI:
+    `<CR>`              Submit prompt in input window
+    `<C-c>`             Cancel running generation
+    `<Tab>`             Switch focus between transcript and input
+    `<C-l>`             Clear chat transcript history
+    `q` or `<Esc>`      Close floating UI window
+    `y`                 Accept and apply diff in diff preview window
+    `n` or `q`          Reject diff in diff preview window
+
+==============================================================================
+5. HEALTH CHECK                                                   *pi-health*
+
+Run `:checkhealth pi` to verify:
+- Neovim version >= 0.8.0.
+- `pi-rs` executable presence and responsiveness.
+- JSON-RPC 2.0 communication (`pi/ping`, `pi/models`).
+- Active LSP diagnostic availability.
+
+==============================================================================
+6. LUA API                                                           *pi-api*
+
+`require("pi").setup(opts)`
+        Initialize plugin with options.
+
+`require("pi").chat(opts)`
+        Toggle chat UI.
+
+`require("pi").prompt(text, opts)`
+        Send prompt string.
+
+`require("pi").explain(opts)`
+        Explain code.
+
+`require("pi").fix(opts)`
+        Fix diagnostics.
+
+`require("pi").refactor(opts)`
+        Refactor selection.
+
+`require("pi").diff_and_apply(new_text, start_line, end_line, bufnr)`
+        Preview and apply diff.
+
+`require("pi").models(opts)`
+        Open model picker.
+
+`require("pi").stop()`
+        Stop generation.
+
+`require("pi").replay(opts)`
+        Replay trajectory.
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

@@ -1,0 +1,30 @@
+[package]
+name = "pi-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "tau"
+path = "src/main.rs"
+
+[[bin]]
+name = "pi-rs"
+path = "src/bin/pi_rs.rs"
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+reqwest.workspace = true
+dirs.workspace = true
+pi-core.workspace = true
+pi-session.workspace = true
+pi-tools.workspace = true
+pi-providers.workspace = true
+pi-tui.workspace = true
+pi-rpc.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

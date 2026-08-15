@@ -1,0 +1,14 @@
+[package]
+name = "pi-rpc"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+pi-core.workspace = true
+pi-providers.workspace = true
+pi-tools.workspace = true
+pi-session.workspace = true

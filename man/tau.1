@@ -1,0 +1,163 @@
+.TH TAU 1 "August 2026" "tau 0.1.0" "User Commands"
+.SH NAME
+tau \- High-performance, pure Rust autonomous coding agent and swarm orchestrator (2π Evolution of Pi)
+.SH SYNOPSIS
+.B tau
+[\fIOPTIONS\fR]
+.br
+.B tau
+\fB\-\-print\fR \fI"QUERY"\fR [\fB\-\-model\fR \fIMODEL_ID\fR]
+.br
+.B tau
+\fB\-\-rpc\fR
+.br
+.B tau
+\fB\-\-replay\fR \fIPATH_TO_SESSION.jsonl\fR [\fB\-\-replay-delay-ms\fR \fIMS\fR]
+.br
+.B tau
+\fB\-\-login\fR [\fIPROVIDER\fR]
+.br
+.B tau
+\fB\-\-models\fR | \fB\-\-refresh-models\fR
+.br
+.B tau
+\fB\-\-completions\fR \fISHELL\fR
+.br
+.B tau
+\fB\-\-init\fR
+.SH DESCRIPTION
+.B tau
+is a 100% pure Rust autonomous agentic coding engine representing the 2π evolution of Mario Zechner's Pi Coding Agent (\fBpi.dev\fR / \fBearendil-works/pi\fR).
+Engineered for speed, safety, and zero external runtime dependencies (zero Node.js/V8/npm), \fBtau\fR provides an interactive terminal user interface (TUI) powered by Ratatui with 7 visual themes, an asynchronous dual-protocol tool execution engine, a bi-directional JSON-RPC 2.0 server daemon for IDE integrations (Neovim/VSCode), and multi-agent swarm orchestration with First Mate and Herdr protocols.
+
+\fBtau\fR operates against a directed acyclic graph (DAG) session tree, allowing arbitrary branch rewinds, simulated rollback previews, branch visual diffs, and context window compaction when token usage approaches model context limits.
+
+.SH OPTIONS
+.TP
+.BR \-p ", " \-\-print " \fIQUERY\fR"
+Run in one-shot CLI print mode. Executes the user's query against the configured model, emits agent events, prints the final response to standard output, and exits cleanly.
+.TP
+.BR \-m ", " \-\-model " \fIMODEL_ID\fR"
+Specify the AI model identifier to use (e.g. \fIopencode/deepseek-v4-flash-free\fR, \fIanthropic/claude-3-7-sonnet-latest\fR, \fIopenai/gpt-4o\fR, \fIkilo/deepseek-r1\fR, \fIollama/llama3\fR). Defaults to \fIopencode/deepseek-v4-flash-free\fR or value in \fI~/.pi/config.json\fR.
+.TP
+.B \-\-rpc
+Launch \fBtau\fR in bidirectional JSON-RPC 2.0 daemon mode over standard input and standard output. Stdout is reserved exclusively for JSON-RPC messages and notifications; all operational logging is routed to stderr.
+.TP
+.BR \-M ", " \-\-models
+Query local cache and display a formatted table of all discovered and configured AI models across 35+ LLM providers, including context window sizes and reasoning/vision capabilities.
+.TP
+.B \-\-refresh-models
+Force refresh online provider endpoints and local daemons (Ollama, LM Studio, vLLM, Kilo), update the catalog cache in \fI~/.pi/agent/models.json\fR, and display available models.
+.TP
+.BR \-\-login " [\fIPROVIDER\fR]"
+Interactive credential wizard to configure API tokens for cloud frontier providers (\fIanthropic\fR, \fIopenai\fR, \fIgemini\fR, \fIkilo\fR, \fIopenrouter\fR, \fIdeepseek\fR, \fIgroq\fR, etc.). Credentials are persisted securely to \fI~/.pi/config.json\fR.
+.TP
+.BR \-\-replay " \fIPATH\fR"
+Replay a stored JSONL session trajectory to stdout with step-by-step metadata, tool call traces, and token metrics.
+.TP
+.BR \-\-replay-delay-ms " \fIMS\fR"
+Pacing delay in milliseconds between steps during session replay (default: 50ms).
+.TP
+.BR \-\-completions " \fISHELL\fR"
+Generate shell auto-completion scripts to standard output. Supported shells: \fIbash\fR, \fIzsh\fR, \fIfish\fR, \fIpowershell\fR, \fIelvish\fR.
+.TP
+.B \-\-init
+Run the interactive first-run onboarding setup wizard: probes local daemons, tests provider connectivity, and saves preferences to \fI~/.pi/config.json\fR.
+.TP
+.B \-V\fR, \fB\-\-version
+Print version information and exit.
+.TP
+.B \-h\fR, \fB\-\-help
+Print concise command-line help message and exit.
+
+.SH INTERACTIVE TUI SHORTCUTS
+Inside the interactive Cockpit TUI (\fBtau\fR without arguments):
+.TP
+.B Ctrl+L
+Open live fuzzy Model Picker overlay with reasoning and vision badges.
+.TP
+.B Ctrl+P
+Open Provider Picker overlay to filter by cloud or local provider.
+.TP
+.B Ctrl+T
+Open Theme Picker overlay (Default Pi, Tokyo Night, Catppuccin, Gruvbox, Nord, Solarized, One Dark).
+.TP
+.B Ctrl+R
+Trigger non-blocking background model catalog discovery and daemon refresh.
+.TP
+.B Ctrl+N
+Start a clean, fresh agent session DAG.
+.TP
+.B Ctrl+O
+Toggle tool execution drawer expansion.
+.TP
+.B ? \fRor\fB F1
+Open interactive, searchable Help & Keymap Cheatsheet overlay.
+.TP
+.B Esc \fRor\fB Ctrl+C
+Interrupt active model turn generation or dismiss open overlays.
+
+.SH SLASH COMMANDS
+.TP
+.B /help
+Display the interactive keyboard and command reference overlay.
+.TP
+.B /diff [file]
+Compute and display unified terminal diff visualizer comparing proposed edits against git repository or working tree.
+.TP
+.B /theme [name]
+Switch visual color theme palette in real-time.
+.TP
+.B /tree
+Open the interactive DAG session tree navigator to branch and rewind history.
+.TP
+.B /models
+List and filter configured AI models.
+.TP
+.B /skills
+Inspect discovered autonomous agent skills in \fI.pi/skills/\fR and \fI~/.pi/agent/skills/\fR.
+.TP
+.B /mcp
+List connected Model Context Protocol (MCP) servers and dynamic tools.
+.TP
+.B /login [provider]
+Launch the in-TUI authentication credential wizard.
+.TP
+.B /session
+Display session ID, active turn node count, token budget gauge, and capacity percentage.
+.TP
+.B /compact
+Manually trigger context window history compaction.
+.TP
+.B /clear
+Clear the visible transcript display buffer.
+.TP
+.B /quit\fR, \fB/exit
+Exit the application cleanly.
+
+.SH FILES
+.TP
+.I ~/.tau/bin/tau
+Primary executable binary location.
+.TP
+.I ~/.pi/config.json
+Primary configuration storing default models, custom providers, and API keys.
+.TP
+.I ~/.pi/agent/models.json
+User-defined custom model catalogs and parameter overrides.
+.TP
+.I ~/.pi/agent/sessions/
+Session DAG history trees persisted in line-delimited JSONL format.
+.TP
+.I .pi/worktrees/
+Ephemeral Git worktree workspaces allocated for isolated swarm tasks.
+.TP
+.I AGENTS.md
+Authoritative repository instructions and invariants loaded automatically by the agent engine.
+
+.SH AUTHOR
+Engineered with pure Rust by Bhavy and the Pi/Tau Community.
+.SH SEE ALSO
+.BR git (1),
+.BR nvim (1),
+.BR cargo (1)

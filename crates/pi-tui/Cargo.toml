@@ -1,0 +1,15 @@
+[package]
+name = "pi-tui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+pi-core.workspace = true
+pi-providers.workspace = true
+pi-session.workspace = true

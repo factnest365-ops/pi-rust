@@ -1,0 +1,358 @@
+.TH PI-RS 1 "August 2026" "pi-rs 0.1.0" "User Commands"
+.SH NAME
+pi-rs \- High-performance, pure Rust autonomous coding agent and swarm orchestrator
+.SH SYNOPSIS
+.B pi-rs
+[\fIOPTIONS\fR]
+.br
+.B pi-rs
+\fB\-\-print\fR \fI"QUERY"\fR [\fB\-\-model\fR \fIMODEL_ID\fR]
+.br
+.B pi-rs
+\fB\-\-rpc\fR
+.br
+.B pi-rs
+\fB\-\-replay\fR \fIPATH_TO_SESSION.jsonl\fR [\fB\-\-replay-delay-ms\fR \fIMS\fR]
+.br
+.B pi-rs
+\fB\-\-login\fR [\fIPROVIDER\fR]
+.br
+.B pi-rs
+\fB\-\-models\fR | \fB\-\-refresh-models\fR
+.br
+.B pi-rs
+\fB\-\-completions\fR \fISHELL\fR
+.br
+.B pi-rs
+\fB\-\-init\fR
+.SH DESCRIPTION
+.B pi-rs
+is a 100% pure Rust reimplementation of Mario Zechner's Pi Coding Agent (\fBpi.dev\fR / \fBearendil-works/pi\fR).
+Engineered for speed, safety, and zero external runtime dependencies (zero Node.js/V8/npm), \fBpi-rs\fR provides an interactive terminal user interface (TUI) powered by Ratatui, an asynchronous dual-protocol tool execution engine, a bi-directional JSON-RPC 2.0 server daemon for IDE integrations (Neovim/VSCode), and multi-agent swarm orchestration with First Mate and Herdr protocols.
+
+\fBpi-rs\fR operates against a directed acyclic graph (DAG) session tree, allowing arbitrary branch rewinds, simulated rollback previews, branch visual diffs, and context window compaction when token usage approaches model context limits.
+
+.SH OPTIONS
+.TP
+.BR \-p ", " \-\-print " \fIQUERY\fR"
+Run in one-shot CLI print mode. Executes the user's query against the configured model, emits agent events, prints the final response to standard output, and exits cleanly.
+.TP
+.BR \-m ", " \-\-model " \fIMODEL_ID\fR"
+Specify the AI model identifier to use (e.g. \fIopencode/deepseek-v4-flash-free\fR, \fIanthropic/claude-3-7-sonnet-latest\fR, \fIopenai/gpt-4o\fR, \fIkilo/deepseek-r1\fR, \fIollama/llama3\fR). Defaults to \fIopencode/deepseek-v4-flash-free\fR.
+.TP
+.B \-\-rpc
+Launch \fBpi-rs\fR in bidirectional JSON-RPC 2.0 daemon mode over standard input and standard output. Stdout is reserved exclusively for JSON-RPC messages and notifications; all operational logging is routed to stderr.
+.TP
+.BR \-M ", " \-\-models
+Query local cache and display a formatted table of all discovered and configured AI models across 33+ LLM providers, including context window sizes and reasoning/vision capabilities.
+.TP
+.B \-\-refresh-models
+Force refresh online provider endpoints and local daemons (Ollama, LM Studio, vLLM, Kilo), update the catalog cache in \fI~/.pi/agent/models.json\fR, and display available models.
+.TP
+.BR \-\-login " [\fIPROVIDER\fR]"
+Launch the interactive authentication setup wizard. If \fIPROVIDER\fR is omitted, defaults to Anthropic. Prompts for the API key, validates format, and saves credentials to \fI~/.pi/config.json\fR and \fI~/.pi/agent/auth.json\fR.
+.TP
+.BR \-\-replay " \fIPATH_TO_SESSION.jsonl\fR"
+Replay a recorded JSONL session trajectory to standard output with colorized role badges, executed tool calls, and step-by-step output streaming.
+.TP
+.BR \-\-replay-delay-ms " \fIMS\fR"
+Specify the delay in milliseconds between steps during session replay. Defaults to 50ms.
+.TP
+.BR \-\-completions " \fISHELL\fR"
+Generate shell autocompletion script to standard output for the specified shell. Supported values: \fIbash\fR, \fIzsh\fR, \fIfish\fR, \fIpowershell\fR, \fIelvish\fR.
+.TP
+.B \-\-init
+Initialize workspace configuration. Creates \fI~/.pi\fR and \fI~/.pi/agent\fR config files if absent, and scaffolds a starter \fIAGENTS.md\fR file in the current working directory.
+.TP
+.BR \-h ", " \-\-help
+Print command-line help and usage synopsis.
+.TP
+.BR \-V ", " \-\-version
+Print version information and exit.
+
+.SH TUI INTERACTIVE CONTROLS & KEYBINDINGS
+When executed without \fB\-\-print\fR or \fB\-\-rpc\fR, \fBpi-rs\fR starts an interactive terminal user interface.
+
+.SS Keyboard Shortcuts
+.TP
+.B Ctrl+L
+Open the fuzzy Model Selector popup to search and hot-swap the active LLM provider and model.
+.TP
+.B Ctrl+P
+Open the Provider Picker overlay to switch active backends (Anthropic, OpenAI, OpenCode, Kilo, Ollama, OpenRouter, etc.).
+.TP
+.B Ctrl+T
+Open the Session DAG Tree visualizer to inspect conversation history nodes, parent-child branches, and navigate rewind points.
+.TP
+.B Ctrl+R
+Rewind the active conversation branch to the previous user turn or selected DAG node.
+.TP
+.B Ctrl+N
+Fork the conversation and initialize a clean, fresh session branch.
+.TP
+.B Ctrl+C
+Interrupt active model streaming or cancel a long-running subprocess/tool execution. Pressing again when idle exits \fBpi-rs\fR.
+.TP
+.B Escape
+Close any active popup modal, dialog, or autocompletion menu.
+.TP
+.B ?
+Open the interactive Help & Keybindings cheat sheet.
+.TP
+.B PageUp / PageDown
+Scroll conversation history view up or down.
+.TP
+.B Tab
+Trigger slash-command and argument autocompletion in the input bar.
+
+.SS Interactive Slash Commands
+Type a leading slash \fB/\fR in the input bar to activate autocomplete:
+.TP
+.B /model [\fIquery\fR]
+Search and switch active AI model directly from the command line.
+.TP
+.B /provider [\fIname\fR]
+Switch active LLM provider.
+.TP
+.B /diff [\fInode_a\fR] [\fInode_b\fR]
+Open the split-pane side-by-side Diff Viewer to compare file changes or branch states.
+.TP
+.B /tree
+Display the full ASCII/Unicode session DAG history tree.
+.TP
+.B /session [\fInew|save|load|id\fR]
+Manage session DAG persistence, export trajectories, or switch session files.
+.TP
+.B /theme [\fIname\fR]
+Cycle or select UI theme (\fIdefault\fR, \fIdark\fR, \fIdracula\fR, \fInord\fR, \fIgruvbox\fR, \fImonokai\fR, \fIcatppuccin\fR).
+.TP
+.B /login [\fIprovider\fR]
+Configure API key for a provider inside the TUI.
+.TP
+.B /clear
+Clear visible viewport messages while preserving underlying session DAG history.
+.TP
+.B /compact
+Force immediate context window compaction and summarize conversation history.
+.TP
+.B /help
+Display the built-in reference documentation and command list.
+.TP
+.B /exit ", " /quit
+Save session state and cleanly terminate \fBpi-rs\fR.
+
+.SH JSON-RPC 2.0 API DAEMON
+When started with \fB\-\-rpc\fR, \fBpi-rs\fR operates as a high-performance JSON-RPC 2.0 daemon over standard I/O for editor plugins (Neovim, VSCode, Emacs) and swarm agents.
+
+.SS Request / Response Methods
+.TP
+.B pi/ping
+Health check method. Returns server status and version string.
+.TP
+.B pi/prompt \fR{\fB"prompt"\fR: "..."}\fR
+Run an agent turn with the given prompt. Streams intermediate tokens and tool notifications before returning final response.
+.TP
+.B pi/models \fR[{\fB"force"\fR: boolean}]\fR
+List all available AI models. Set \fB"force": true\fR to refresh online provider endpoints.
+.TP
+.B pi/model/get
+Get active model ID, provider, and endpoint configuration.
+.TP
+.B pi/model/set \fR{\fB"model"\fR: "..."}\fR
+Hot-swap active LLM model ID during runtime.
+.TP
+.B pi/tools/list
+Return JSON schema definitions for all registered native tools.
+.TP
+.B pi/tools/execute \fR{\fB"name"\fR: "...", \fB"arguments"\fR: {...}}\fR
+Directly execute a native tool with specified JSON arguments and return output.
+.TP
+.B pi/skills/list
+List all auto-discovered skill definitions loaded from \fIskills/\fR, \fI.pi/skills/\fR, and \fI~/.gemini/antigravity-cli/builtin/skills/\fR.
+.TP
+.B pi/mcp/list
+List all active Model Context Protocol (MCP) servers and cached dynamic tools.
+.TP
+.B pi/session/history
+Return chronological message history along the active DAG branch.
+.TP
+.B pi/session/rewind \fR{\fB"node_id"\fR: "..."}\fR
+Rewind the active DAG pointer to a historical node.
+.TP
+.B pi/session/simulate_rewind \fR{\fB"target_node_id"\fR: "..."}\fR
+Preview message history from rewinding without mutating active session state.
+.TP
+.B pi/session/fork
+Fork active DAG node into a new branch point.
+.TP
+.B pi/session/new
+Initialize a completely fresh session DAG tree.
+.TP
+.B pi/session/trajectory \fR[{\fB"branch_node_id"\fR: "..."}]\fR
+Export full trajectory metadata and step timeline for evaluation or replay.
+.TP
+.B pi/session/diff \fR{\fB"node_a"\fR: "...", \fB"node_b"\fR: "..."}\fR
+Compute structural diff and divergence between two branch points.
+
+.SS Streaming Notifications (Server to Client)
+.TP
+.B pi/streamingChunk \fR{\fB"chunk"\fR: "..."}\fR
+Emitted when model streams incremental text tokens.
+.TP
+.B pi/toolExecuting \fR{\fB"tool_name"\fR: "...", \fB"tool_call_id"\fR: "..."}\fR
+Emitted when agent starts executing a native tool.
+.TP
+.B pi/toolCompleted \fR{\fB"tool_name"\fR: "...", \fB"is_error"\fR: boolean}\fR
+Emitted when native tool execution finishes.
+
+.SH NATIVE TOOLS & SAFETY GUARANTEES
+\fBpi-rs\fR provides built-in tools with strict safety guarantees:
+.TP
+.B read
+View files or line slices. 1-indexed, boundary-guarded against out-of-range slicing.
+.TP
+.B write
+Create or overwrite files. Automatically performs atomic parent directory creation (\fBmkdir -p\fR).
+.TP
+.B edit
+Surgical find-and-replace text edits. Requires exact single-match uniqueness (\fIoccurrences == 1\fR) to prevent unintended duplicate replacements.
+.TP
+.B bash
+Execute shell commands asynchronously with process tree isolation and an enforced 120-second timeout. Kills zombie child handles on cancellation.
+.TP
+.B grep
+Fast recursive regex/string search. Injects \fB\-e\fR flag to prevent command-line option injection.
+.TP
+.B find
+Search files and directory trees by pattern.
+.TP
+.B ls
+List directory contents with file metadata and indicators.
+.TP
+.B web_fetch
+Fetch URLs and convert HTML content to clean Markdown using connection-pooled HTTP client with script/style stripping.
+.TP
+.B web_search
+Live search engine queries returning organic result links and text snippets.
+.TP
+.B git
+Execute safe parameterized Git actions (\fIstatus\fR, \fIdiff\fR, \fIlog\fR, \fIcommit\fR).
+.TP
+.B git_worktree
+Manage isolated Git worktrees for safe parallel swarm task execution.
+.TP
+.B github
+Inspect pull requests and issues via \fBgh\fR CLI.
+.TP
+.B lsp
+Language server diagnostics, document symbols, definitions, and type hover.
+.TP
+.B ast
+AST-aware structural code slicing for precise symbol extraction.
+.TP
+.B mcp
+Universal Model Context Protocol client for stdio/HTTP external tool servers.
+.TP
+.B subagents
+Spawn, monitor, and coordinate background subagents.
+
+.SH NEOVIM INTEGRATION (pi.nvim)
+The repository includes a native Neovim plugin in \fIlua/pi/\fR that communicates with \fBpi-rs --rpc\fR.
+
+.SS User Commands
+.TP
+.B :Pi
+Open or toggle the Pi interactive chat window.
+.TP
+.B :PiPrompt \fI[PROMPT]\fR
+Send a prompt to the background \fBpi-rs\fR agent.
+.TP
+.B :PiModels
+Open floating picker to select active LLM model.
+.TP
+.B :PiDiff
+Display diff between buffer and agent workspace modifications.
+.TP
+.B :PiTree
+Inspect session DAG branch history.
+.TP
+.B :PiStatus
+Check RPC daemon health and connection state.
+.TP
+.B :PiStop
+Cancel active agent execution turn.
+
+.SH CONFIGURATION & FILES
+.TP
+.I ~/.pi/config.json
+Global user configuration file storing default model, theme, telemetry preferences, and provider overrides.
+.TP
+.I ~/.pi/agent/models.json
+Cached model catalog containing discovered online provider and local daemon models.
+.TP
+.I ~/.pi/agent/auth.json
+Encrypted/plaintext provider API keys and authentication tokens.
+.TP
+.I ~/.pi/sessions/*.jsonl
+Recorded session DAG trees and conversation histories stored in append-only JSONL format.
+.TP
+.I AGENTS.md
+Workspace-specific agent guidelines and architectural invariants loaded into system prompt context automatically.
+.TP
+.I skills/*/SKILL.md
+Modular skill definition directories containing specialized instructions and prompt workflows.
+
+.SH ENVIRONMENT VARIABLES
+.TP
+.B ANTHROPIC_API_KEY
+API key for Anthropic models (Claude 3.7 Sonnet, Claude 3.5 Sonnet, Haiku).
+.TP
+.B OPENAI_API_KEY
+API key for OpenAI models (GPT-4o, o1, o3-mini).
+.TP
+.B GEMINI_API_KEY
+API key for Google Gemini models (Gemini 2.5 Pro, Flash).
+.TP
+.B OPENROUTER_API_KEY
+API key for OpenRouter meta-provider.
+.TP
+.B KILO_API_KEY
+API key for Kilo Gateway (DeepSeek R1, V3, Qwen 2.5 Coder).
+.TP
+.B OLLAMA_HOST
+Base URL for local Ollama server (defaults to \fIhttp://localhost:11434\fR).
+.TP
+.B LMSTUDIO_HOST
+Base URL for LM Studio local server (defaults to \fIhttp://localhost:1234/v1\fR).
+.TP
+.B PI_THEME
+Override default TUI color theme.
+
+.SH MULTI-AGENT SWARM COORDINATION
+\fBpi-rs\fR natively integrates with:
+.TP
+.B First Mate Protocol
+Automated Scout/Ship branch workflows with isolated Git worktree sandboxing, automated verification suites, and atomic PR submission.
+.TP
+.B Herdr Swarm Protocol
+Multi-agent terminal multiplexing with OSC ANSI terminal status codes, live state broadcasts (\fIidle\fR, \fIstreaming\fR, \fItool_executing\fR, \fIcompacting\fR, \fIwaiting_input\fR), and lock-free agent message channels.
+
+.SH CONFORMING TO
+JSON-RPC 2.0 Specification (\fBhttps://www.jsonrpc.org/specification\fR)
+.br
+Anthropic Messages API Tool Protocol
+.br
+OpenAI Chat Completions Function Calling API
+
+.SH AUTHORS
+Bhavy & the Antigravity Team.
+.br
+Based on the original TypeScript Pi Agent by Mario Zechner (\fBhttps://pi.dev\fR).
+
+.SH COPYRIGHT
+Copyright (c) 2026. Released under the MIT License.
+.SH SEE ALSO
+.BR git (1),
+.BR gh (1),
+.BR tmux (1),
+.BR nvim (1)

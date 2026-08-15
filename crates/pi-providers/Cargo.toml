@@ -1,0 +1,16 @@
+[package]
+name = "pi-providers"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+futures-util.workspace = true
+dirs.workspace = true
+chrono.workspace = true
+
+
+
