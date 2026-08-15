@@ -1,200 +1,123 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# τ Tau (tau) 1-Line Installer
-# High-Performance Autonomous Coding Agent (2π Evolution of Pi)
+# τ Tau Installer — Zero-Dependency Rust Native Agent
 # ==============================================================================
 
 set -euo pipefail
 
-# ANSI Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
 BOLD='\033[1m'
 DIM='\033[2m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+RED='\033[0;31m'
 RESET='\033[0m'
 
-# Disable colors if stdout is not a TTY
 if [ ! -t 1 ]; then
-    RED=''
-    GREEN=''
-    YELLOW=''
-    BLUE=''
-    MAGENTA=''
-    CYAN=''
     BOLD=''
     DIM=''
+    GREEN=''
+    CYAN=''
+    RED=''
     RESET=''
 fi
 
-TAU_HOME="${HOME}/.tau"
-PI_HOME="${HOME}/.pi"
+echo -e "${BOLD}τ Tau${RESET} ${DIM}— Installing High-Performance Autonomous Coding Agent...${RESET}\n"
 
-echo -e "${CYAN}"
-echo -e "  ╔══════════════════════════════════════════════════════════════════════════════╗"
-echo -e "  ║                                                                              ║"
-echo -e "  ║     ${MAGENTA}τ  T A U${CYAN}   (2π Evolution of Pi)                                           ║"
-echo -e "  ║     ${BOLD}1-Line Autonomous Coding Agent Installer${RESET}${CYAN}                                 ║"
-echo -e "  ║                                                                              ║"
-echo -e "  ╚══════════════════════════════════════════════════════════════════════════════╝"
-echo -e "${RESET}"
-
-# 1. Detect Operating System and Architecture
+# 1. Platform Detection
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-echo -e "${BOLD}▶ [1/4] Detecting Platform...${RESET}"
 case "${OS}" in
-    Darwin)
-        OS_NAME="macOS"
-        ;;
-    Linux)
-        OS_NAME="Linux"
-        ;;
+    Darwin) OS_NAME="macOS" ;;
+    Linux)  OS_NAME="Linux" ;;
     *)
-        echo -e "${RED}✗ Error: Unsupported operating system: ${OS}${RESET}"
-        echo -e "pi-rust currently supports macOS (Darwin) and Linux."
+        echo -e "${RED}Error: Unsupported operating system: ${OS}${RESET}"
         exit 1
         ;;
 esac
 
 case "${ARCH}" in
-    x86_64|amd64)
-        ARCH_NAME="x86_64"
-        ;;
-    arm64|aarch64)
-        ARCH_NAME="aarch64"
-        ;;
+    x86_64|amd64) ARCH_NAME="x86_64" ;;
+    arm64|aarch64) ARCH_NAME="aarch64" ;;
     *)
-        echo -e "${RED}✗ Error: Unsupported architecture: ${ARCH}${RESET}"
+        echo -e "${RED}Error: Unsupported architecture: ${ARCH}${RESET}"
         exit 1
         ;;
 esac
 
-echo -e "  ${GREEN}✓${RESET} Platform: ${BOLD}${OS_NAME} (${ARCH_NAME})${RESET}"
+echo -e "  ${GREEN}✓${RESET} Platform: ${OS_NAME} (${ARCH_NAME})"
 
-# 2. Setup Destination Paths
-echo -e "\n${BOLD}▶ [2/4] Setting Up Installation Directories...${RESET}"
+# 2. Binary Destination
+TAU_HOME="${HOME}/.tau"
 PI_HOME="${HOME}/.pi"
-BIN_DIR="${PI_HOME}/bin"
+BIN_DIR="${TAU_HOME}/bin"
 mkdir -p "${BIN_DIR}"
-mkdir -p "${PI_HOME}/agent"
+mkdir -p "${PI_HOME}/bin"
 
-TARGET_BIN="${BIN_DIR}/pi-rs"
-echo -e "  ${GREEN}✓${RESET} Target Binary Directory: ${BOLD}${BIN_DIR}${RESET}"
+TARGET_TAU="${BIN_DIR}/tau"
+TARGET_PIRS="${BIN_DIR}/pi-rs"
 
-# 3. Build or Install Binary
-echo -e "\n${BOLD}▶ [3/4] Installing pi-rs Binary...${RESET}"
-
-# Check if we are inside the pi-rust repository
+# 3. Build & Install
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "${SCRIPT_DIR}/Cargo.toml" ] && grep -q "pi-cli" "${SCRIPT_DIR}/Cargo.toml" 2>/dev/null; then
-    echo -e "  ${BLUE}●${RESET} Found local pi-rust repository at ${SCRIPT_DIR}"
-    echo -e "  ${BLUE}●${RESET} Building release binary with cargo..."
-    cargo build --release --package pi-cli --bin pi-rs --manifest-path "${SCRIPT_DIR}/Cargo.toml"
-    cp -f "${SCRIPT_DIR}/target/release/pi-rs" "${TARGET_BIN}"
-    chmod +x "${TARGET_BIN}"
-    echo -e "  ${GREEN}✓${RESET} Built and installed local binary to ${BOLD}${TARGET_BIN}${RESET}"
-elif command -v cargo >/dev/null 2>&1; then
-    echo -e "  ${BLUE}●${RESET} Compiling and installing pi-rs using cargo..."
-# 3. Build / Install Binary
-echo -e "\n${BOLD}▶ [3/4] Installing Tau (${TAU_HOME}/bin)...${RESET}"
-mkdir -p "${TAU_HOME}/bin"
-mkdir -p "${HOME}/.pi/bin"
-TARGET_BIN="${TAU_HOME}/bin/tau"
-TARGET_PIRS="${TAU_HOME}/bin/pi-rs"
-
-if command -v cargo >/dev/null 2>&1; then
-    echo -e "  ${DIM}Building release binary from source via cargo...${RESET}"
-    if [ -f "./Cargo.toml" ]; then
-        cargo build --release --bin tau --bin pi-rs
-        cp -f "./target/release/tau" "${TARGET_BIN}"
-        cp -f "./target/release/pi-rs" "${TARGET_PIRS}"
-        cp -f "./target/release/tau" "${HOME}/.pi/bin/tau" 2>/dev/null || true
-        cp -f "./target/release/pi-rs" "${HOME}/.pi/bin/pi-rs" 2>/dev/null || true
-    else
-        cargo install --git https://github.com/earendil-works/pi-rust.git pi-cli --bin tau --bin pi-rs --root "${TAU_HOME}" --force
+if [ -f "${SCRIPT_DIR}/Cargo.toml" ]; then
+    echo -e "  ${DIM}Building release binaries from local source...${RESET}"
+    cargo build --release --manifest-path "${SCRIPT_DIR}/Cargo.toml" --bin tau --bin pi-rs
+    cp -f "${SCRIPT_DIR}/target/release/tau" "${TARGET_TAU}"
+    cp -f "${SCRIPT_DIR}/target/release/pi-rs" "${TARGET_PIRS}"
+    cp -f "${SCRIPT_DIR}/target/release/tau" "${PI_HOME}/bin/tau" 2>/dev/null || true
+    cp -f "${SCRIPT_DIR}/target/release/pi-rs" "${PI_HOME}/bin/pi-rs" 2>/dev/null || true
+    if [ -d "${HOME}/.cargo/bin" ]; then
+        cp -f "${SCRIPT_DIR}/target/release/tau" "${HOME}/.cargo/bin/tau" 2>/dev/null || true
+        cp -f "${SCRIPT_DIR}/target/release/pi-rs" "${HOME}/.cargo/bin/pi-rs" 2>/dev/null || true
     fi
-    chmod +x "${TARGET_BIN}" "${TARGET_PIRS}"
-    echo -e "  ${GREEN}✓${RESET} Installed binary to ${BOLD}${TARGET_BIN}${RESET}"
-    echo -e "  ${GREEN}✓${RESET} Created compatibility alias ${BOLD}${TARGET_PIRS}${RESET}"
+elif command -v cargo >/dev/null 2>&1; then
+    echo -e "  ${DIM}Compiling tau via cargo...${RESET}"
+    cargo install --git https://github.com/earendil-works/pi-rust.git pi-cli --bin tau --bin pi-rs --root "${TAU_HOME}" --force
+    if [ -d "${HOME}/.cargo/bin" ]; then
+        cp -f "${TARGET_TAU}" "${HOME}/.cargo/bin/tau" 2>/dev/null || true
+        cp -f "${TARGET_PIRS}" "${HOME}/.cargo/bin/pi-rs" 2>/dev/null || true
+    fi
 else
-    echo -e "${RED}✗ Cargo is required to build Tau from source.${RESET}"
-    echo -e "Please install Rust & Cargo via: ${BOLD}curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh${RESET}"
+    echo -e "${RED}Error: Cargo is required to build Tau from source.${RESET}"
+    echo -e "Install Rust via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
     exit 1
 fi
 
-# 4. Configure PATH in User Shell Profiles
-echo -e "\n${BOLD}▶ [4/4] Configuring Environment PATH...${RESET}"
-CONFIGURED_SHELLS=0
+chmod +x "${TARGET_TAU}" "${TARGET_PIRS}"
+echo -e "  ${GREEN}✓${RESET} Installed: ${BOLD}${TARGET_TAU}${RESET}"
+echo -e "  ${GREEN}✓${RESET} Alias:     ${BOLD}${TARGET_PIRS}${RESET}"
 
-add_to_path() {
-    local rc_file="$1"
-    local export_line="export PATH=\"\$HOME/.tau/bin:\$HOME/.pi/bin:\$PATH\""
-
-    if [ -f "${rc_file}" ]; then
-        if grep -q "\.tau/bin" "${rc_file}"; then
-            echo -e "  ${DIM}• ${rc_file} already contains .tau/bin in PATH${RESET}"
-        else
-            echo "" >> "${rc_file}"
-            echo "# Tau (τ) autonomous agent binary path" >> "${rc_file}"
-            echo "${export_line}" >> "${rc_file}"
-            echo -e "  ${GREEN}✓${RESET} Added ~/.tau/bin to ${BOLD}${rc_file}${RESET}"
-            CONFIGURED_SHELLS=$((CONFIGURED_SHELLS + 1))
+# 4. PATH Configuration
+add_path_if_missing() {
+    local rc="$1"
+    local line='export PATH="$HOME/.tau/bin:$HOME/.pi/bin:$PATH"'
+    if [ -f "${rc}" ]; then
+        if ! grep -q "\.tau/bin" "${rc}" 2>/dev/null; then
+            echo "" >> "${rc}"
+            echo "# Tau autonomous agent" >> "${rc}"
+            echo "${line}" >> "${rc}"
+            echo -e "  ${GREEN}✓${RESET} Updated PATH in ${DIM}${rc}${RESET}"
         fi
     fi
 }
 
-# Update standard shell profile files
-add_to_path "${HOME}/.zshrc"
-add_to_path "${HOME}/.bashrc"
-add_to_path "${HOME}/.bash_profile"
-add_to_path "${HOME}/.profile"
+add_path_if_missing "${HOME}/.zshrc"
+add_path_if_missing "${HOME}/.bashrc"
+add_path_if_missing "${HOME}/.bash_profile"
+add_path_if_missing "${HOME}/.profile"
 
-# Fish shell support
-if [ -d "${HOME}/.config/fish" ]; then
-    FISH_CONFIG="${HOME}/.config/fish/config.fish"
-    if [ -f "${FISH_CONFIG}" ]; then
-        if ! grep -q "\.tau/bin" "${FISH_CONFIG}"; then
-            echo "" >> "${FISH_CONFIG}"
-            echo "# Tau (τ) autonomous agent binary path" >> "${FISH_CONFIG}"
-            echo 'set -gx PATH $HOME/.tau/bin $HOME/.pi/bin $PATH' >> "${FISH_CONFIG}"
-            echo -e "  ${GREEN}✓${RESET} Added ~/.tau/bin to ${BOLD}${FISH_CONFIG}${RESET}"
-            CONFIGURED_SHELLS=$((CONFIGURED_SHELLS + 1))
-        fi
+if [ -d "${HOME}/.config/fish" ] && [ -f "${HOME}/.config/fish/config.fish" ]; then
+    FISH_RC="${HOME}/.config/fish/config.fish"
+    if ! grep -q "\.tau/bin" "${FISH_RC}" 2>/dev/null; then
+        echo "" >> "${FISH_RC}"
+        echo 'set -gx PATH $HOME/.tau/bin $HOME/.pi/bin $PATH' >> "${FISH_RC}"
+        echo -e "  ${GREEN}✓${RESET} Updated PATH in ${DIM}${FISH_RC}${RESET}"
     fi
 fi
 
-# 5. Verification
-echo -e "\n${BOLD}▶ Verifying Installation...${RESET}"
-if [ -x "${TARGET_BIN}" ]; then
-    echo -e "  ${GREEN}✓${RESET} Binary executable verified: ${BOLD}${TARGET_BIN}${RESET}"
-    VERSION_OUTPUT="$("${TARGET_BIN}" --version || true)"
-    echo -e "  ${DIM}${VERSION_OUTPUT}${RESET}"
-else
-    echo -e "${RED}✗ Error: Installed binary at ${TARGET_BIN} is not executable.${RESET}"
-    exit 1
-fi
-
-echo -e "\n${GREEN}"
-echo -e "  ╔══════════════════════════════════════════════════════════════════════════════╗"
-echo -e "  ║  ✓ Tau (τ) Installation Complete!                                            ║"
-echo -e "  ╚══════════════════════════════════════════════════════════════════════════════╝"
-echo -e "${RESET}"
-
-echo -e "  ${BOLD}Next Steps:${RESET}"
-echo -e "    1. Reload your current shell environment:"
+# 5. Summary
+echo -e "\n${GREEN}✓ Installation complete.${RESET}"
 if [ -f "${HOME}/.zshrc" ]; then
-    echo -e "       ${CYAN}source ~/.zshrc${RESET}"
-elif [ -f "${HOME}/.bashrc" ]; then
-    echo -e "       ${CYAN}source ~/.bashrc${RESET}"
+    echo -e "  ${DIM}To use in this shell session, run:${RESET} ${BOLD}source ~/.zshrc${RESET}"
 fi
-echo -e "    2. Run the first-time setup onboarding wizard:"
-echo -e "       ${CYAN}tau --init${RESET}"
-echo -e "    3. Or launch directly into the autonomous coding TUI:"
-echo -e "       ${CYAN}tau${RESET}"
-echo -e ""
-
+echo -e "  Run ${CYAN}tau${RESET} to start, or ${CYAN}tau --help${RESET} for commands.\n"
