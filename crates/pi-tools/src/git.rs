@@ -15,6 +15,13 @@ pub struct WorktreeInfo {
     pub prunable: bool,
 }
 
+pub fn git_cmd() -> Command {
+    let mut cmd = Command::new("git");
+    cmd.env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_PAGER", "cat");
+    cmd
+}
+
 pub struct GitTool;
 
 impl GitTool {
@@ -122,7 +129,16 @@ impl GitTool {
     }
 
     pub fn git_status() -> Result<String> {
-        let output = Command::new("git").arg("status").arg("--short").arg("--branch").output()?;
+        Self::git_status_in_dir(None)
+    }
+
+    pub fn git_status_in_dir(base_dir: Option<&Path>) -> Result<String> {
+        let mut cmd = git_cmd();
+        cmd.arg("status").arg("--short").arg("--branch");
+        if let Some(d) = base_dir {
+            cmd.current_dir(d);
+        }
+        let output = cmd.output()?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -138,7 +154,11 @@ impl GitTool {
     }
 
     pub fn git_diff(staged: bool, file: Option<&str>) -> Result<String> {
-        let mut cmd = Command::new("git");
+        Self::git_diff_in_dir(staged, file, None)
+    }
+
+    pub fn git_diff_in_dir(staged: bool, file: Option<&str>, base_dir: Option<&Path>) -> Result<String> {
+        let mut cmd = git_cmd();
         cmd.arg("diff");
 
         if staged {
@@ -147,6 +167,10 @@ impl GitTool {
 
         if let Some(f) = file {
             cmd.arg(f);
+        }
+
+        if let Some(d) = base_dir {
+            cmd.current_dir(d);
         }
 
         let output = cmd.output()?;
@@ -170,13 +194,21 @@ impl GitTool {
     }
 
     pub fn git_log(count: usize) -> Result<String> {
-        let output = Command::new("git")
-            .arg("log")
+        Self::git_log_in_dir(count, None)
+    }
+
+    pub fn git_log_in_dir(count: usize, base_dir: Option<&Path>) -> Result<String> {
+        let mut cmd = git_cmd();
+        cmd.arg("log")
             .arg(format!("-n{}", count))
             .arg("--oneline")
-            .arg("--decorate")
-            .output()?;
+            .arg("--decorate");
 
+        if let Some(d) = base_dir {
+            cmd.current_dir(d);
+        }
+
+        let output = cmd.output()?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.trim().is_empty() {
             Ok("No commit history yet.".to_string())
@@ -186,7 +218,18 @@ impl GitTool {
     }
 
     pub fn git_branch() -> Result<String> {
-        let output = Command::new("git").arg("branch").arg("-a").output()?;
+        Self::git_branch_in_dir(None)
+    }
+
+    pub fn git_branch_in_dir(base_dir: Option<&Path>) -> Result<String> {
+        let mut cmd = git_cmd();
+        cmd.arg("branch").arg("-a");
+
+        if let Some(d) = base_dir {
+            cmd.current_dir(d);
+        }
+
+        let output = cmd.output()?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         if stdout.trim().is_empty() {
             Ok("No branches found.".to_string())
@@ -196,8 +239,12 @@ impl GitTool {
     }
 
     pub fn synthesize_commit_message() -> Result<String> {
-        let diff = Self::git_diff(true, None)?;
-        let status = Self::git_status()?;
+        Self::synthesize_commit_message_in_dir(None)
+    }
+
+    pub fn synthesize_commit_message_in_dir(base_dir: Option<&Path>) -> Result<String> {
+        let diff = Self::git_diff_in_dir(true, None, base_dir)?;
+        let status = Self::git_status_in_dir(base_dir)?;
 
         if diff == "No staged changes." {
             return Ok("Cannot synthesize commit: No staged changes. Use `git add` first or inspect `git status`.".to_string());
@@ -250,17 +297,25 @@ impl GitTool {
     }
 
     pub fn git_commit(message: &str) -> Result<String> {
+        Self::git_commit_in_dir(message, None)
+    }
+
+    pub fn git_commit_in_dir(message: &str, base_dir: Option<&Path>) -> Result<String> {
         let trimmed = message.trim();
         if trimmed.is_empty() {
             return Err(anyhow::anyhow!("Commit message cannot be empty"));
         }
 
-        let output = Command::new("git")
-            .arg("commit")
+        let mut cmd = git_cmd();
+        cmd.arg("commit")
             .arg("-m")
-            .arg(trimmed)
-            .output()?;
+            .arg(trimmed);
 
+        if let Some(d) = base_dir {
+            cmd.current_dir(d);
+        }
+
+        let output = cmd.output()?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -292,6 +347,53 @@ pub fn git_worktree_create(base_branch: &str, task_id: &str) -> Result<PathBuf> 
     git_worktree_create_in_dir(base_branch, task_id, None)
 }
 
+pub fn git_worktree_create_at(
+    base_branch: &str,
+    branch_name: &str,
+    target_path: &Path,
+    base_dir: Option<&Path>,
+) -> Result<PathBuf> {
+    let repo_dir = match base_dir {
+        Some(d) => d.to_path_buf(),
+        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+
+    if let Some(parent) = target_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let target_path_str = target_path.to_string_lossy().to_string();
+    let base = if base_branch.trim().is_empty() {
+        "HEAD"
+    } else {
+        base_branch.trim()
+    };
+
+    let output = git_cmd()
+        .current_dir(&repo_dir)
+        .arg("worktree")
+        .arg("add")
+        .arg("-b")
+        .arg(branch_name)
+        .arg(&target_path_str)
+        .arg(base)
+        .output()?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success() {
+        if target_path.exists() {
+            let _ = fs::remove_dir_all(target_path);
+        }
+        return Err(anyhow::anyhow!(
+            "Failed to create git worktree at '{}': {}",
+            target_path_str,
+            stderr.trim()
+        ));
+    }
+
+    Ok(target_path.to_path_buf())
+}
+
 pub fn git_worktree_create_in_dir(
     base_branch: &str,
     task_id: &str,
@@ -318,40 +420,67 @@ pub fn git_worktree_create_in_dir(
     }
 
     let worktree_path = worktrees_parent.join(&sanitized_id);
-    let worktree_path_str = worktree_path.to_string_lossy().to_string();
     let branch_name = format!("pi-task-{}", sanitized_id);
-    let base = if base_branch.trim().is_empty() {
-        "HEAD"
-    } else {
-        base_branch.trim()
-    };
-
-    let output = Command::new("git")
-        .current_dir(&repo_dir)
-        .arg("worktree")
-        .arg("add")
-        .arg("-b")
-        .arg(&branch_name)
-        .arg(&worktree_path_str)
-        .arg(base)
-        .output()?;
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if !output.status.success() {
-        if worktree_path.exists() {
-            let _ = fs::remove_dir_all(&worktree_path);
-        }
-        return Err(anyhow::anyhow!(
-            "Failed to create git worktree: {}",
-            stderr.trim()
-        ));
-    }
-
-    Ok(worktree_path)
+    git_worktree_create_at(base_branch, &branch_name, &worktree_path, Some(&repo_dir))
 }
 
 pub fn git_worktree_remove(task_id: &str, force: bool) -> Result<()> {
     git_worktree_remove_in_dir(task_id, force, None)
+}
+
+pub fn git_worktree_remove_path(
+    target_path: &Path,
+    branch_name: Option<&str>,
+    force: bool,
+    base_dir: Option<&Path>,
+) -> Result<()> {
+    let repo_dir = match base_dir {
+        Some(d) => d.to_path_buf(),
+        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    };
+
+    let target_path_str = target_path.to_string_lossy().to_string();
+
+    let mut cmd = git_cmd();
+    cmd.current_dir(&repo_dir).arg("worktree").arg("remove");
+    if force {
+        cmd.arg("--force");
+    }
+    cmd.arg(&target_path_str);
+
+    let output = cmd.output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if !output.status.success() {
+        if force && target_path.exists() {
+            let _ = fs::remove_dir_all(target_path);
+            let _ = git_cmd()
+                .current_dir(&repo_dir)
+                .args(["worktree", "prune"])
+                .output();
+        } else {
+            return Err(anyhow::anyhow!(
+                "Failed to remove git worktree at '{}': {}",
+                target_path_str,
+                stderr.trim()
+            ));
+        }
+    }
+
+    // Prune worktree metadata and delete branch if it exists
+    let _ = git_cmd()
+        .current_dir(&repo_dir)
+        .args(["worktree", "prune"])
+        .output();
+
+    if let Some(branch) = branch_name {
+        let _ = git_cmd()
+            .current_dir(&repo_dir)
+            .args(["branch", "-D", branch])
+            .output();
+    }
+
+    Ok(())
 }
 
 pub fn git_worktree_remove_in_dir(
@@ -370,40 +499,8 @@ pub fn git_worktree_remove_in_dir(
     };
 
     let worktree_path = repo_dir.join(".pi").join("worktrees").join(&sanitized_id);
-    let worktree_path_str = worktree_path.to_string_lossy().to_string();
-
-    let mut cmd = Command::new("git");
-    cmd.current_dir(&repo_dir).arg("worktree").arg("remove");
-    if force {
-        cmd.arg("--force");
-    }
-    cmd.arg(&worktree_path_str);
-
-    let output = cmd.output()?;
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if !output.status.success() {
-        if force && worktree_path.exists() {
-            let _ = fs::remove_dir_all(&worktree_path);
-            let _ = Command::new("git")
-                .current_dir(&repo_dir)
-                .args(["worktree", "prune"])
-                .output();
-        } else {
-            return Err(anyhow::anyhow!(
-                "Failed to remove git worktree: {}",
-                stderr.trim()
-            ));
-        }
-    }
-
-    // Prune worktree metadata and delete branch if it exists
-    let _ = Command::new("git")
-        .current_dir(&repo_dir)
-        .args(["worktree", "prune"])
-        .output();
-
-    Ok(())
+    let branch_name = format!("pi-task-{}", sanitized_id);
+    git_worktree_remove_path(&worktree_path, Some(&branch_name), force, Some(&repo_dir))
 }
 
 pub fn git_worktree_list() -> Result<Vec<WorktreeInfo>> {
@@ -416,7 +513,7 @@ pub fn git_worktree_list_in_dir(base_dir: Option<&Path>) -> Result<Vec<WorktreeI
         None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
     };
 
-    let output = Command::new("git")
+    let output = git_cmd()
         .current_dir(&repo_dir)
         .arg("worktree")
         .arg("list")
@@ -527,48 +624,48 @@ pub fn git_worktree_merge(task_id: &str, target_branch: &str) -> Result<String> 
     git_worktree_merge_in_dir(task_id, target_branch, None)
 }
 
-pub fn git_worktree_merge_in_dir(
-    task_id: &str,
+pub fn git_merge_branch_in_dir(
+    branch_to_merge: &str,
     target_branch: &str,
     base_dir: Option<&Path>,
 ) -> Result<String> {
-    let sanitized_id = task_id.trim().replace(['/', '\\', ' '], "-");
     let repo_dir = match base_dir {
         Some(d) => d.to_path_buf(),
         None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
     };
 
-    let branch_to_merge = format!("pi-task-{}", sanitized_id);
     let target = if target_branch.trim().is_empty() {
-        "main"
+        "HEAD"
     } else {
         target_branch.trim()
     };
 
-    // 1. Checkout target branch in the base repo
-    let checkout_out = Command::new("git")
-        .current_dir(&repo_dir)
-        .args(["checkout", target])
-        .output()?;
+    // 1. Checkout target branch in the base repo if specific branch name
+    if target != "HEAD" {
+        let checkout_out = git_cmd()
+            .current_dir(&repo_dir)
+            .args(["checkout", target])
+            .output()?;
 
-    if !checkout_out.status.success() {
-        let stderr = String::from_utf8_lossy(&checkout_out.stderr);
-        return Err(anyhow::anyhow!(
-            "Failed to switch to target branch '{}': {}",
-            target,
-            stderr.trim()
-        ));
+        if !checkout_out.status.success() {
+            let stderr = String::from_utf8_lossy(&checkout_out.stderr);
+            return Err(anyhow::anyhow!(
+                "Failed to switch to target branch '{}': {}",
+                target,
+                stderr.trim()
+            ));
+        }
     }
 
     // 2. Perform merge
-    let merge_out = Command::new("git")
+    let merge_out = git_cmd()
         .current_dir(&repo_dir)
         .args([
             "merge",
             "--no-ff",
-            &branch_to_merge,
+            branch_to_merge,
             "-m",
-            &format!("Merge task branch '{}' into '{}'", branch_to_merge, target),
+            &format!("Merge branch '{}' into '{}'", branch_to_merge, target),
         ])
         .output()?;
 
@@ -576,7 +673,7 @@ pub fn git_worktree_merge_in_dir(
     let stderr = String::from_utf8_lossy(&merge_out.stderr);
 
     if !merge_out.status.success() {
-        let conflict_files_out = Command::new("git")
+        let conflict_files_out = git_cmd()
             .current_dir(&repo_dir)
             .args(["diff", "--name-only", "--diff-filter=U"])
             .output();
@@ -598,6 +695,12 @@ pub fn git_worktree_merge_in_dir(
             diag.push_str(&format!("\nConflicted Files:\n{}", conflicted_files));
         }
 
+        // Abort merge to restore clean state in the base repository
+        let _ = git_cmd()
+            .current_dir(&repo_dir)
+            .args(["merge", "--abort"])
+            .output();
+
         return Err(anyhow::anyhow!(diag));
     }
 
@@ -607,6 +710,21 @@ pub fn git_worktree_merge_in_dir(
         target,
         stdout.trim()
     ))
+}
+
+pub fn git_worktree_merge_in_dir(
+    task_id: &str,
+    target_branch: &str,
+    base_dir: Option<&Path>,
+) -> Result<String> {
+    let sanitized_id = task_id.trim().replace(['/', '\\', ' '], "-");
+    let branch_to_merge = format!("pi-task-{}", sanitized_id);
+    let target = if target_branch.trim().is_empty() {
+        "main"
+    } else {
+        target_branch
+    };
+    git_merge_branch_in_dir(&branch_to_merge, target, base_dir)
 }
 
 #[cfg(test)]
@@ -747,5 +865,42 @@ locked
 
         // Clean up
         let _ = git_worktree_remove_in_dir("conflict-task", true, Some(repo_path));
+    }
+
+    #[test]
+    fn test_git_commit_proposal_and_diff_operations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_path = tmp.path();
+
+        let _ = Command::new("git").current_dir(repo_path).args(["init", "-b", "main"]).output();
+        let _ = Command::new("git").current_dir(repo_path).args(["config", "user.name", "Pi Test"]).output();
+        let _ = Command::new("git").current_dir(repo_path).args(["config", "user.email", "test@pi.rs"]).output();
+
+        let f1 = repo_path.join("file1.txt");
+        fs::write(&f1, "Initial text\n").unwrap();
+        let _ = Command::new("git").current_dir(repo_path).args(["add", "file1.txt"]).output();
+        let _ = Command::new("git").current_dir(repo_path).args(["commit", "-m", "chore: initial"]).output();
+
+        // Add a new file and stage it
+        let f2 = repo_path.join("file2.txt");
+        fs::write(&f2, "New file content\n").unwrap();
+        let _ = Command::new("git").current_dir(repo_path).args(["add", "file2.txt"]).output();
+
+        // Staged diff
+        let diff_out = GitTool::git_diff_in_dir(true, None, Some(repo_path)).unwrap();
+        assert!(!diff_out.is_empty());
+
+        // Commit proposal
+        let proposal = GitTool::synthesize_commit_message_in_dir(Some(repo_path)).unwrap();
+        assert!(proposal.contains("feat: add") || proposal.contains("Conventional Commit Proposal"));
+
+        // Commit in dir
+        let commit_res = GitTool::git_commit_in_dir("feat: add file2.txt", Some(repo_path)).unwrap();
+        assert!(commit_res.contains("Commit successful"));
+
+        // Log in dir
+        let log_out = GitTool::git_log_in_dir(5, Some(repo_path)).unwrap();
+        assert!(log_out.contains("feat: add file2.txt"));
+        assert!(log_out.contains("chore: initial"));
     }
 }

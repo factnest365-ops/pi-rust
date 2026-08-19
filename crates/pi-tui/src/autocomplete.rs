@@ -1,5 +1,5 @@
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use ratatui::Frame;
@@ -106,6 +106,21 @@ pub const COMMANDS: &[SlashCommand] = &[
         name: "/diff",
         signature: "/diff [file]",
         description: "Inspect visual unified diff of pending file edits or git changes",
+    },
+    SlashCommand {
+        name: "/memory",
+        signature: "/memory [query]",
+        description: "Search & explore TauVault cognitive memories & rules",
+    },
+    SlashCommand {
+        name: "/plan",
+        signature: "/plan [toggle|status]",
+        description: "Interactive task checklist & verification status",
+    },
+    SlashCommand {
+        name: "/ask",
+        signature: "/ask [question]",
+        description: "Interactive clarification questionnaire modal",
     },
     SlashCommand {
         name: "/clear",
@@ -216,16 +231,32 @@ impl AutocompleteEngine {
         selected_index: usize,
         input_rect: Rect,
     ) {
+        let default_theme = crate::style::ThemePalette::default();
+        Self::render_popup_styled(f, suggestions, selected_index, input_rect, &default_theme);
+    }
+
+    pub fn render_popup_styled(
+        f: &mut Frame,
+        suggestions: &[(&'static str, &'static str, &'static str)],
+        selected_index: usize,
+        input_rect: Rect,
+        theme: &crate::style::ThemePalette,
+    ) {
         if suggestions.is_empty() {
             return;
         }
 
-        let count = suggestions.len().min(6);
+        let total = suggestions.len();
+        let count = total.min(6);
         let height = (count as u16) + 2;
-        let width = input_rect.width.min(75);
+        let width = input_rect.width.max(60).min(f.area().width.saturating_sub(input_rect.x));
 
-        // Position directly above the prompt box
-        let y = input_rect.y.saturating_sub(height);
+        // Position directly UNDER the prompt box (omp / oh-my-pi design)
+        let y = if input_rect.y + input_rect.height + height <= f.area().height {
+            input_rect.y + input_rect.height
+        } else {
+            input_rect.y.saturating_sub(height)
+        };
         let x = input_rect.x;
         let area = Rect {
             x,
@@ -236,46 +267,47 @@ impl AutocompleteEngine {
 
         f.render_widget(Clear, area);
 
-        let lines: Vec<Line> = suggestions
+        // Window the suggestions based on selected_index
+        let start = if selected_index >= 6 {
+            selected_index - 6 + 1
+        } else {
+            0
+        };
+        let end = (start + 6).min(total);
+        let visible_items = &suggestions[start..end];
+
+        let lines: Vec<Line> = visible_items
             .iter()
-            .take(6)
             .enumerate()
-            .map(|(idx, (name, sig, desc))| {
-                let is_selected = idx == selected_index;
-                let bg_style = if is_selected {
-                    Style::default().bg(Color::Cyan).fg(Color::Black).add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::White)
-                };
+            .map(|(rel_idx, (name, sig, desc))| {
+                let actual_idx = start + rel_idx;
+                let is_selected = actual_idx == selected_index;
 
-                let name_style = if is_selected {
-                    Style::default().fg(Color::Black).add_modifier(Modifier::BOLD)
+                if is_selected {
+                    Line::from(vec![
+                        Span::styled(" › ", Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD)),
+                        Span::styled(format!("{:<12}", name), Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD)),
+                        Span::styled(format!(" {:<20}", sig), Style::default().fg(theme.text).bg(theme.surface)),
+                        Span::styled(format!(" {}", desc), Style::default().fg(theme.muted).bg(theme.surface)),
+                    ])
                 } else {
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-                };
-
-                let desc_style = if is_selected {
-                    Style::default().bg(Color::Cyan).fg(Color::Rgb(40, 40, 40))
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                };
-
-                Line::from(vec![
-                    Span::styled(if is_selected { "▶ " } else { "  " }, bg_style),
-                    Span::styled(format!("{:<14}", name), name_style),
-                    Span::styled(format!(" {:<24}", sig), bg_style),
-                    Span::styled(format!(" {}", desc), desc_style),
-                ])
+                    Line::from(vec![
+                        Span::styled("   ", Style::default().fg(theme.muted).bg(theme.bg)),
+                        Span::styled(format!("{:<12}", name), Style::default().fg(theme.text).bg(theme.bg).add_modifier(Modifier::BOLD)),
+                        Span::styled(format!(" {:<20}", sig), Style::default().fg(theme.muted).bg(theme.bg)),
+                        Span::styled(format!(" {}", desc), Style::default().fg(theme.border).bg(theme.bg)),
+                    ])
+                }
             })
             .collect();
 
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::Cyan))
-            .title(" Commands (Tab: Select · Up/Down: Navigate · Esc: Close) ");
+            .border_style(Style::default().fg(theme.border).bg(theme.bg))
+            .title(Span::styled(" Commands (Tab: Select · Up/Down: Navigate · Esc: Close) ", Style::default().fg(theme.accent)));
 
-        let popup = Paragraph::new(lines).block(block);
+        let popup = Paragraph::new(lines).block(block).style(Style::default().bg(theme.bg));
         f.render_widget(popup, area);
     }
 }
@@ -288,6 +320,7 @@ pub mod tests {
     fn test_autocomplete_slash_matching() {
         let suggestions = AutocompleteEngine::get_suggestions("/");
         assert!(!suggestions.is_empty());
+        assert!(suggestions.len() > 6); // More than 6 suggestions
         assert!(suggestions.iter().any(|(name, _, _)| *name == "/model"));
         assert!(suggestions.iter().any(|(name, _, _)| *name == "/provider"));
         assert!(suggestions.iter().any(|(name, _, _)| *name == "/theme"));
@@ -323,5 +356,29 @@ pub mod tests {
     fn test_autocomplete_non_slash_input() {
         let non_slash = AutocompleteEngine::get_suggestions("Hello agent");
         assert!(non_slash.is_empty());
+
+        let empty = AutocompleteEngine::get_suggestions("");
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn test_autocomplete_windowed_pagination_bounds() {
+        let suggestions = AutocompleteEngine::get_suggestions("/");
+        let total = suggestions.len();
+        assert!(total > 6);
+
+        // Test start/end calculations for various selected indices
+        for selected in 0..total {
+            let start = if selected >= 6 {
+                selected - 6 + 1
+            } else {
+                0
+            };
+            let end = (start + 6).min(total);
+            assert!(start <= selected);
+            assert!(selected < end);
+            assert!(end - start <= 6);
+        }
     }
 }
+

@@ -236,10 +236,16 @@ impl McpManager {
                 continue;
             }
 
-            if let Ok(json_val) = serde_json::from_str::<Value>(trimmed)
-                && json_val.get("id") == Some(&serde_json::json!(expected_id))
-            {
-                return Ok(json_val);
+            if let Ok(json_val) = serde_json::from_str::<Value>(trimmed) {
+                let id_match = json_val.get("id").map(|id| {
+                    id == &serde_json::json!(expected_id)
+                        || id.as_str() == Some(&expected_id.to_string())
+                        || id.as_i64() == Some(expected_id)
+                }).unwrap_or(false);
+
+                if id_match {
+                    return Ok(json_val);
+                }
             }
         }
 
@@ -471,7 +477,7 @@ impl McpManager {
             stdin.write_all(format!("{}\n", serde_json::to_string(&call_req)?).as_bytes()).await?;
             stdin.flush().await?;
 
-            let resp: Value = Self::read_stdio_response(&mut reader, 2, Duration::from_secs(30)).await?;
+            let resp: Value = Self::read_stdio_response(&mut reader, 2, Duration::from_secs(120)).await?;
 
             if let Some(err) = resp.get("error") {
                 let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown MCP error");
@@ -479,18 +485,22 @@ impl McpManager {
             }
 
             if let Some(result) = resp.get("result") {
+                let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+                let mut out = String::new();
                 if let Some(content_arr) = result.get("content").and_then(|c| c.as_array()) {
-                    let mut out = String::new();
                     for item in content_arr {
                         if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
                             out.push_str(text);
                         }
                     }
-                    if !out.is_empty() {
-                        return Ok(out);
-                    }
                 }
-                return Ok(serde_json::to_string_pretty(result)?);
+                if out.is_empty() {
+                    out = serde_json::to_string_pretty(result)?;
+                }
+                if is_error {
+                    return Err(anyhow::anyhow!("MCP tool application error: {}", out));
+                }
+                return Ok(out);
             }
 
             Ok("MCP tool executed with empty response.".to_string())
@@ -508,7 +518,7 @@ impl McpManager {
         };
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(120))
             .build()?;
 
         let call_payload = serde_json::json!({
@@ -540,18 +550,22 @@ impl McpManager {
         }
 
         if let Some(result) = resp.get("result") {
+            let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+            let mut out = String::new();
             if let Some(content_arr) = result.get("content").and_then(|c| c.as_array()) {
-                let mut out = String::new();
                 for item in content_arr {
                     if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
                         out.push_str(text);
                     }
                 }
-                if !out.is_empty() {
-                    return Ok(out);
-                }
             }
-            return Ok(serde_json::to_string_pretty(result)?);
+            if out.is_empty() {
+                out = serde_json::to_string_pretty(result)?;
+            }
+            if is_error {
+                return Err(anyhow::anyhow!("MCP tool application error: {}", out));
+            }
+            return Ok(out);
         }
 
         Ok("MCP tool executed with empty response.".to_string())
@@ -638,8 +652,100 @@ mod tests {
     #[test]
     fn test_auto_discovery_scanner() {
         let mut manager = McpManager::new();
+        // Test discovery runs without panic or error
         manager.discover_servers();
-        // Since we know the host machine has active configs (e.g. ~/.mcporter, ~/.gemini), servers should be found
-        assert!(!manager.servers.is_empty(), "Expected to discover MCP servers on host system");
+
+        // Also test deterministic discovery from a known mock directory
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mock_claude = temp_dir.path().join("claude_desktop_config.json");
+        let mock_json = r#"{
+            "mcpServers": {
+                "sqlite": {
+                    "command": "uvx",
+                    "args": ["mcp-server-sqlite"]
+                }
+            }
+        }"#;
+        fs::write(&mock_claude, mock_json).unwrap();
+        manager.load_from_config_file(&mock_claude, "Claude Desktop");
+        assert!(manager.servers.contains_key("sqlite"));
+        assert_eq!(manager.servers["sqlite"].source_agent, "Claude Desktop");
+    }
+
+    #[test]
+    fn test_mcp_tool_definitions_and_schema() {
+        let mut manager = McpManager::new();
+        manager.cached_tools.insert(
+            "github_create_issue".to_string(),
+            McpToolDefinition {
+                server_name: "github".to_string(),
+                name: "github_create_issue".to_string(),
+                original_name: "create_issue".to_string(),
+                description: "Create an issue on GitHub".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "title": { "type": "string" },
+                        "body": { "type": "string" }
+                    },
+                    "required": ["title"]
+                }),
+            },
+        );
+
+        let defs = manager.get_tool_definitions();
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0]["name"], "github_create_issue");
+        assert!(defs[0]["description"].as_str().unwrap().contains("[MCP: github]"));
+        assert_eq!(defs[0]["parameters"]["required"][0], "title");
+    }
+
+    #[tokio::test]
+    async fn test_mcp_http_execution_and_is_error_handling() {
+        let mock_server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = mock_server.local_addr().unwrap();
+        let url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = mock_server.accept().await {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                // Return MCP application error: isError = true
+                let body = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {
+                        "isError": true,
+                        "content": [
+                            { "type": "text", "text": "Database connection refused" }
+                        ]
+                    }
+                }).to_string();
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(resp.as_bytes()).await;
+            }
+        });
+
+        let config = McpServerConfig {
+            name: "test-db".to_string(),
+            source_agent: "test".to_string(),
+            transport: McpTransportType::Http,
+            command: None,
+            args: Vec::new(),
+            env: HashMap::new(),
+            url: Some(url),
+            disabled: false,
+        };
+
+        let res = McpManager::execute_http_tool(&config, "query", &serde_json::json!({ "sql": "SELECT 1" })).await;
+        assert!(res.is_err());
+        let err_msg = res.unwrap_err().to_string();
+        assert!(err_msg.contains("MCP tool application error"));
+        assert!(err_msg.contains("Database connection refused"));
     }
 }

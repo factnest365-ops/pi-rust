@@ -27,10 +27,13 @@ pub mod autocomplete;
 pub mod diff_view;
 pub mod help_overlay;
 pub mod markdown;
+pub mod memory_overlay;
 pub mod mermaid;
 pub mod messages;
 pub mod model_picker;
+pub mod plan_overlay;
 pub mod provider_picker;
+pub mod question_modal;
 pub mod session_picker;
 pub mod style;
 pub mod theme_picker;
@@ -43,10 +46,13 @@ pub use autocomplete::AutocompleteEngine;
 pub use diff_view::{DiffLine, DiffView, DiffViewState};
 pub use help_overlay::{HelpOverlay, HelpOverlayState};
 pub use markdown::MarkdownRenderer;
+pub use memory_overlay::{MemoryItem, MemoryOverlayState, MemoryOverlayWidget, MemoryScope};
 pub use mermaid::MermaidRenderer;
 pub use messages::{Message, MessageRenderer};
-pub use model_picker::ModelPickerWidget;
+pub use model_picker::{ModelCategoryTab, ModelPickerWidget};
+pub use plan_overlay::{PlanOverlayWidget, PlanState, PlanTaskItem, PlanTaskStatus};
 pub use provider_picker::ProviderPickerWidget;
+pub use question_modal::{QuestionKind, QuestionModalState, QuestionModalWidget, QuestionOption};
 pub use session_picker::SessionPicker;
 pub use style::{Theme, ThemeKind, ThemePalette};
 pub use theme_picker::ThemePickerWidget;
@@ -57,6 +63,7 @@ pub enum AgentTaskEvent {
     Event(TurnEvent),
     Finished(Result<String, String>),
     ModelsRefreshed(Vec<pi_providers::ModelInfo>),
+    GitUpdated { branch: String, status: String },
 }
 
 pub struct PiTuiApp {
@@ -84,10 +91,16 @@ pub struct PiTuiApp {
     pub event_rx: mpsc::UnboundedReceiver<AgentTaskEvent>,
     pub spinner: Spinner,
 
+    // Git Status Cache (Non-blocking)
+    pub cached_git_branch: String,
+    pub cached_git_status: String,
+    pub last_git_poll: std::time::Instant,
+
     // Interactive Overlays
     pub show_model_picker: bool,
     pub all_catalog_models: Vec<pi_providers::ModelInfo>,
     pub model_search_query: String,
+    pub model_picker_tab: ModelCategoryTab,
     pub model_picker_state: ListState,
 
     pub show_provider_picker: bool,
@@ -114,9 +127,21 @@ pub struct PiTuiApp {
     pub show_diff_overlay: bool,
     pub diff_view_state: Option<DiffViewState>,
 
+    pub show_memory_overlay: bool,
+    pub memory_overlay_state: MemoryOverlayState,
+
+    pub show_plan_overlay: bool,
+    pub plan_state: PlanState,
+
+    pub show_question_modal: bool,
+    pub question_modal_state: Option<QuestionModalState>,
+
     pub expand_tools: bool,
     pub show_thinking: bool,
     pub turn_start_time: Option<std::time::Instant>,
+    pub streamed_tokens_count: usize,
+    pub last_turn_duration: Option<std::time::Duration>,
+    pub last_turn_tok_per_sec: Option<f64>,
 }
 
 impl PiTuiApp {
@@ -152,7 +177,7 @@ impl PiTuiApp {
             let _ = bg_tx.send(AgentTaskEvent::ModelsRefreshed(refreshed));
         });
 
-        Self {
+        let mut app = Self {
             model_id: model_id.to_string(),
             context_pct: 0.0,
             estimated_tokens: 0,
@@ -176,7 +201,7 @@ impl PiTuiApp {
                 let mut h = vec![
                     (
                         "system".to_string(),
-                        "  ████████╗ █████╗ ██╗   ██╗\n  ╚══██╔══╝██╔══██╗██║   ██║\n     ██║   ███████║██║   ██║\n     ██║   ██╔══██║██║   ██║\n     ██║   ██║  ██║╚██████╔╝\n     ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ".to_string(),
+                        "\u{00A0}\u{00A0}████████╗\u{00A0}█████╗\u{00A0}██╗\u{00A0}\u{00A0}\u{00A0}██╗\n\u{00A0}\u{00A0}╚══██╔══╝██╔══██╗██║\u{00A0}\u{00A0}\u{00A0}██║\n\u{00A0}\u{00A0}\u{00A0}\u{00A0}\u{00A0}██║\u{00A0}\u{00A0}\u{00A0}███████║██║\u{00A0}\u{00A0}\u{00A0}██║\n\u{00A0}\u{00A0}\u{00A0}\u{00A0}\u{00A0}██║\u{00A0}\u{00A0}\u{00A0}██╔══██║██║\u{00A0}\u{00A0}\u{00A0}██║\n\u{00A0}\u{00A0}\u{00A0}\u{00A0}\u{00A0}██║\u{00A0}\u{00A0}\u{00A0}██║\u{00A0}\u{00A0}██║╚██████╔╝\n\u{00A0}\u{00A0}\u{00A0}\u{00A0}\u{00A0}╚═╝\u{00A0}\u{00A0}\u{00A0}╚═╝\u{00A0}\u{00A0}╚═╝\u{00A0}╚═════╝\u{00A0}".to_string(),
                     ),
                     (
                         "path".to_string(),
@@ -191,10 +216,16 @@ impl PiTuiApp {
                 }
                 let skill_registry = pi_core::skills::SkillRegistry::new();
                 if !skill_registry.skills.is_empty() {
-                    let skills_names = skill_registry.skills.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", ");
+                    let total_skills = skill_registry.skills.len();
+                    let preview_skills = skill_registry.skills.iter().take(6).map(|s| s.name.as_str()).collect::<Vec<_>>().join(", ");
+                    let skills_text = if total_skills > 6 {
+                        format!("[Skills]\n  {} (+{} more)", preview_skills, total_skills - 6)
+                    } else {
+                        format!("[Skills]\n  {}", preview_skills)
+                    };
                     h.push((
                         "system".to_string(),
-                        format!("[Skills]\n  {}", skills_names),
+                        skills_text,
                     ));
                 }
                 h.push((
@@ -213,9 +244,13 @@ impl PiTuiApp {
             event_tx,
             event_rx,
             spinner: Spinner::new(),
+            cached_git_branch: String::new(),
+            cached_git_status: String::new(),
+            last_git_poll: std::time::Instant::now(),
             show_model_picker: false,
             all_catalog_models,
             model_search_query: String::new(),
+            model_picker_tab: ModelCategoryTab::All,
             model_picker_state,
             show_provider_picker: false,
             provider_search_query: String::new(),
@@ -234,10 +269,78 @@ impl PiTuiApp {
             auth_cursor: 0,
             show_diff_overlay: false,
             diff_view_state: None,
+            show_memory_overlay: false,
+            memory_overlay_state: MemoryOverlayState::new(),
+            show_plan_overlay: false,
+            plan_state: PlanState::sample_plan(),
+            show_question_modal: false,
+            question_modal_state: None,
             expand_tools: true,
             show_thinking: true,
             turn_start_time: None,
+            streamed_tokens_count: 0,
+            last_turn_duration: None,
+            last_turn_tok_per_sec: None,
+        };
+
+        // Query initial git branch and status
+        let (branch, status) = Self::query_git_info_sync();
+        app.cached_git_branch = branch;
+        app.cached_git_status = status;
+        app
+    }
+
+    /// Sets and reconfigures the active model on the application and underlying agent loop
+    pub fn set_active_model(&mut self, model_id: &str) -> (String, bool) {
+        self.model_id = model_id.to_string();
+        let new_cfg = ModelConfig::resolve(model_id);
+        let provider = new_cfg.provider.clone();
+        let api_key_empty = new_cfg.api_key.is_empty();
+        if let Ok(mut guard) = self.agent_loop.try_lock() {
+            guard.max_context_tokens = new_cfg.context_window;
+            guard.model_config = new_cfg;
         }
+        (provider, api_key_empty)
+    }
+
+    /// Resolves the exact context token window for the active model
+    pub fn active_context_window(&self) -> usize {
+        if let Ok(guard) = self.agent_loop.try_lock()
+            && guard.model_config.context_window > 0
+        {
+            return guard.model_config.context_window;
+        }
+        pi_providers::ModelCatalogLoader::infer_model_limits(&self.model_id, "").0
+    }
+
+    pub fn query_git_info_sync() -> (String, String) {
+        let branch = match std::process::Command::new("git")
+            .args(["branch", "--show-current"])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
+            }
+            _ => String::new(),
+        };
+
+        let status = match std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                let text = String::from_utf8_lossy(&out.stdout);
+                let count = text.lines().filter(|l| !l.is_empty()).count();
+                if count > 0 {
+                    format!("{} modified", count)
+                } else {
+                    "clean".to_string()
+                }
+            }
+            _ => String::new(),
+        };
+
+        (branch, status)
     }
 
     fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
@@ -279,6 +382,7 @@ impl PiTuiApp {
         self.scroll_offset = 0;
         self.is_agent_running = true;
         self.turn_start_time = Some(std::time::Instant::now());
+        self.streamed_tokens_count = 0;
 
         let agent_loop_arc = Arc::clone(&self.agent_loop);
         let event_tx = self.event_tx.clone();
@@ -306,9 +410,11 @@ impl PiTuiApp {
                 AgentTaskEvent::Event(turn_event) => match turn_event {
                     TurnEvent::ContextPrepared { token_estimate } => {
                         self.estimated_tokens = token_estimate;
-                        self.context_pct = (token_estimate as f32 / 128_000.0) * 100.0;
+                        let window = self.active_context_window();
+                        self.context_pct = (token_estimate as f32 / window as f32) * 100.0;
                     }
                     TurnEvent::ModelStreaming { chunk } => {
+                        self.streamed_tokens_count += (chunk.len() / 4).max(1);
                         if let Some((role, msg)) = self.history.last_mut() {
                             if role == "pi" {
                                 msg.push_str(&chunk);
@@ -339,12 +445,21 @@ impl PiTuiApp {
                     }
                     TurnEvent::TurnCompleted { total_tokens } => {
                         self.estimated_tokens = total_tokens;
-                        self.context_pct = (total_tokens as f32 / 128_000.0) * 100.0;
+                        let window = self.active_context_window();
+                        self.context_pct = (total_tokens as f32 / window as f32) * 100.0;
                     }
                 },
                 AgentTaskEvent::Finished(result) => {
                     self.is_agent_running = false;
                     self.active_turn = None;
+
+                    if let Some(start) = self.turn_start_time {
+                        let dur = start.elapsed();
+                        self.last_turn_duration = Some(dur);
+                        if dur.as_secs_f64() > 0.05 && self.streamed_tokens_count > 0 {
+                            self.last_turn_tok_per_sec = Some(self.streamed_tokens_count as f64 / dur.as_secs_f64());
+                        }
+                    }
 
                     match result {
                         Ok(response) => {
@@ -378,6 +493,10 @@ impl PiTuiApp {
                 }
                 AgentTaskEvent::ModelsRefreshed(models) => {
                     self.all_catalog_models = models;
+                }
+                AgentTaskEvent::GitUpdated { branch, status } => {
+                    self.cached_git_branch = branch;
+                    self.cached_git_status = status;
                 }
             }
         }
@@ -459,19 +578,28 @@ impl PiTuiApp {
             }
             "/model" | "/models" => {
                 if parts.len() > 1 {
-                    let new_model = parts[1];
-                    self.model_id = new_model.to_string();
-                    let new_cfg = ModelConfig::resolve(new_model);
-                    let provider = new_cfg.provider.clone();
-                    if let Ok(mut guard) = self.agent_loop.try_lock() {
-                        guard.model_config = new_cfg;
+                    let search_or_model = parts[1..].join(" ");
+                    if self.all_catalog_models.iter().any(|m| m.id.eq_ignore_ascii_case(&search_or_model))
+                        || search_or_model.contains('/')
+                    {
+                        let (provider, api_key_empty) = self.set_active_model(&search_or_model);
+                        if provider != "ollama" && provider != "llamacpp" && provider != "lmstudio" && api_key_empty {
+                            self.auth_provider = provider.clone();
+                            self.show_auth_modal = true;
+                        }
+                        self.history.push((
+                            "system".to_string(),
+                            format!("Switched model to {} (Provider: {})", self.model_id, provider),
+                        ));
+                    } else {
+                        self.model_search_query = search_or_model;
+                        self.model_picker_tab = ModelCategoryTab::All;
+                        self.model_picker_state.select(Some(0));
+                        self.show_model_picker = true;
                     }
-                    self.history.push((
-                        "system".to_string(),
-                        format!("Switched model to {} (Provider: {})", self.model_id, provider),
-                    ));
                 } else {
                     self.model_search_query.clear();
+                    self.model_picker_tab = ModelCategoryTab::All;
                     self.model_picker_state.select(Some(0));
                     self.show_model_picker = true;
                 }
@@ -569,6 +697,66 @@ impl PiTuiApp {
                     }
                 }
             }
+            "/memory" | "/mem" => {
+                if parts.len() > 1 {
+                    let query = parts[1..].join(" ");
+                    self.memory_overlay_state.search_query = query;
+                    self.memory_overlay_state.is_searching = true;
+                    self.memory_overlay_state.list_state.select(Some(0));
+                } else {
+                    self.memory_overlay_state.search_query.clear();
+                    self.memory_overlay_state.is_searching = false;
+                    self.memory_overlay_state.list_state.select(Some(0));
+                }
+                self.show_memory_overlay = true;
+            }
+            "/plan" | "/todo" => {
+                if parts.len() > 1 {
+                    let sub = parts[1];
+                    if sub == "toggle" || sub == "collapse" {
+                        self.plan_state.toggle_collapsed();
+                        self.history.push((
+                            "system".to_string(),
+                            format!("Task plan checklist: {}", if self.plan_state.is_collapsed { "collapsed" } else { "expanded" }),
+                        ));
+                    } else if sub == "status" {
+                        let progress = self.plan_state.progress_pct();
+                        let completed = self.plan_state.completed_count();
+                        let total = self.plan_state.tasks.len();
+                        self.history.push((
+                            "system".to_string(),
+                            format!("Active Plan: {} ({}/{} tasks completed · {:.0}%)", self.plan_state.goal, completed, total, progress),
+                        ));
+                    } else {
+                        self.show_plan_overlay = true;
+                    }
+                } else {
+                    self.show_plan_overlay = true;
+                }
+            }
+            "/ask" | "/question" => {
+                if parts.len() > 1 {
+                    let query = parts[1..].join(" ");
+                    let options = vec![
+                        QuestionOption {
+                            id: "opt-1".to_string(),
+                            label: "Proceed with proposed approach".to_string(),
+                            description: Some("Implement with standard invariants and full tests".to_string()),
+                            selected: true,
+                        },
+                        QuestionOption {
+                            id: "opt-2".to_string(),
+                            label: "Request alternative strategy".to_string(),
+                            description: Some("Explore alternative design options first".to_string()),
+                            selected: false,
+                        },
+                    ];
+                    self.question_modal_state = Some(QuestionModalState::new_single_choice("User Clarification", &query, options));
+                } else {
+                    self.question_modal_state = Some(QuestionModalState::sample_question());
+                }
+                self.show_question_modal = true;
+            }
             "/replay" => {
                 if let Ok(guard) = self.agent_loop.try_lock() {
                     let history = guard.session_tree.get_active_branch_history();
@@ -605,12 +793,18 @@ impl PiTuiApp {
                 if let Ok(guard) = self.agent_loop.try_lock() {
                     let history = guard.session_tree.get_active_branch_history();
                     let approx_tokens: usize = history.iter().map(|n| n.content.len() / 4).sum();
-                    let pct = (approx_tokens as f32 / 128_000.0) * 100.0;
+                    let window = if guard.model_config.context_window > 0 {
+                        guard.model_config.context_window
+                    } else {
+                        128_000
+                    };
+                    let pct = (approx_tokens as f32 / window as f32) * 100.0;
+                    let window_k = pi_providers::ModelCatalogLoader::format_context_k(window);
                     self.estimated_tokens = approx_tokens;
                     self.context_pct = pct;
                     self.history.push((
                         "system".to_string(),
-                        format!("Session Info:\n  ID: {}\n  Nodes: {}\n  Estimated Tokens: {} / 128,000\n  Context Capacity: {:.2}%\n  Active Theme: {}", guard.session_tree.session_id, history.len(), approx_tokens, pct, self.theme.kind.name()),
+                        format!("Session Info:\n  ID: {}\n  Nodes: {}\n  Estimated Tokens: {} / {} ({})\n  Context Capacity: {:.2}%\n  Active Theme: {}", guard.session_tree.session_id, history.len(), approx_tokens, window, window_k, pct, self.theme.kind.name()),
                     ));
                 } else {
                     self.history.push((
@@ -625,7 +819,8 @@ impl PiTuiApp {
             "/fork" => {
                 if let Ok(mut guard) = self.agent_loop.try_lock() {
                     let new_id = guard.session_tree.append_child(pi_session::Role::System, "Forked branch point".to_string());
-                    self.history.push(("system".to_string(), format!("Created new fork branch at node [{}]", &new_id[..6.min(new_id.len())])));
+                    let short_id = &new_id[..new_id.floor_char_boundary(6.min(new_id.len()))];
+                    self.history.push(("system".to_string(), format!("Created new fork branch at node [{}]", short_id)));
                 }
             }
             "/new" => {
@@ -638,6 +833,14 @@ impl PiTuiApp {
                 }
             }
             "/compact" => {
+                let agent_loop_arc = Arc::clone(&self.agent_loop);
+                let event_tx = self.event_tx.clone();
+                tokio::spawn(async move {
+                    let mut guard = agent_loop_arc.lock().await;
+                    let _ = guard.compact_history_if_needed(&mut |evt| {
+                        let _ = event_tx.send(AgentTaskEvent::Event(evt));
+                    }).await;
+                });
                 self.history.push(("system".to_string(), "Triggered context window compaction...".to_string()));
             }
             "/tools" => {
@@ -705,24 +908,65 @@ impl PiTuiApp {
             self.theme.green
         };
 
+        let window = self.active_context_window();
+        let window_str = pi_providers::ModelCatalogLoader::format_context_k(window);
+
         Line::from(vec![
             Span::styled("[", Style::default().fg(self.theme.muted)),
             Span::styled("█".repeat(filled_chars), Style::default().fg(color)),
             Span::styled("░".repeat(empty_chars), Style::default().fg(self.theme.border)),
-            Span::styled(format!("] {:.0}% / 128k", clamped), Style::default().fg(self.theme.text)),
+            Span::styled(format!("] {:.0}% / {}", clamped, window_str), Style::default().fg(self.theme.text)),
         ])
     }
+}
 
-    pub async fn run_loop(&mut self) -> Result<()> {
+struct TerminalGuard;
+
+impl TerminalGuard {
+    fn new() -> Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
-        let backend = CrosstermBackend::new(stdout);
+        execute!(stdout, EnterAlternateScreen, crossterm::cursor::Hide)?;
+        Ok(Self)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+    }
+}
+
+impl PiTuiApp {
+    pub async fn run_loop(&mut self) -> Result<()> {
+        let prev_panic = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = disable_raw_mode();
+            let _ = execute!(io::stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
+            prev_panic(info);
+        }));
+
+        let _guard = TerminalGuard::new()?;
+        let backend = CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend)?;
+        terminal.clear()?;
 
         while self.is_running {
             // Process all pending background agent events
             self.poll_agent_events();
+
+            // Periodic non-blocking git status poll every 4 seconds
+            if self.last_git_poll.elapsed() >= std::time::Duration::from_secs(4) {
+                self.last_git_poll = std::time::Instant::now();
+                let bg_tx = self.event_tx.clone();
+                tokio::spawn(async move {
+                    let (branch, status) = tokio::task::spawn_blocking(PiTuiApp::query_git_info_sync)
+                        .await
+                        .unwrap_or_default();
+                    let _ = bg_tx.send(AgentTaskEvent::GitUpdated { branch, status });
+                });
+            }
 
             let spinner_frame = if self.is_agent_running {
                 self.spinner.tick()
@@ -735,7 +979,8 @@ impl PiTuiApp {
                 let bg_block = Block::default().style(Style::default().bg(self.theme.bg));
                 f.render_widget(bg_block, f.area());
 
-                let input_line_count = (self.input_text.lines().count().max(1) as u16).min(6);
+                let term_area_width = (f.area().width as usize).max(20);
+                let input_line_count = ((self.input_text.chars().count() + 6) / term_area_width + self.input_text.lines().count().max(1)).clamp(1, 6) as u16;
 
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
@@ -751,11 +996,12 @@ impl PiTuiApp {
                 // Build Structured Transcript with Markdown and Mermaid rendering
                 let mut lines: Vec<Line> = Vec::new();
                 for (role, msg) in &self.history {
-                    lines.extend(MessageRenderer::render_message(
+                    lines.extend(MessageRenderer::render_message_styled(
                         role,
                         msg,
                         self.expand_tools,
                         self.show_thinking,
+                        &self.theme,
                     ));
                 }
 
@@ -768,13 +1014,21 @@ impl PiTuiApp {
                     ]));
                 }
 
-                let total_lines = lines.len();
+                let term_width = (chunks[0].width as usize).max(20);
+                let mut visual_lines = 0;
+                for line in &lines {
+                    let line_len: usize = line.spans.iter().map(|s| s.content.chars().count()).sum();
+                    let wrapped_count = if line_len == 0 { 1 } else { line_len.div_ceil(term_width) };
+                    visual_lines += wrapped_count;
+                }
+
+                let total_lines = visual_lines.max(lines.len());
                 let available_height = chunks[0].height as usize;
                 let max_scroll_from_top = total_lines.saturating_sub(available_height);
                 let effective_scroll = (max_scroll_from_top.saturating_sub(self.scroll_offset as usize)) as u16;
 
                 let transcript = Paragraph::new(lines)
-                    .wrap(Wrap { trim: true })
+                    .wrap(Wrap { trim: false })
                     .scroll((effective_scroll, 0))
                     .style(Style::default().bg(self.theme.bg).fg(self.theme.text));
                 f.render_widget(transcript, chunks[0]);
@@ -786,15 +1040,15 @@ impl PiTuiApp {
                     .style(Style::default().fg(self.theme.border).bg(self.theme.bg));
                 f.render_widget(separator, chunks[1]);
 
-                // Prompt Input — 'tau > ' prefix with block cursor
+                // Prompt Input — 'τ > ' prefix with block cursor
                 let (display_input, input_style) = if self.input_text.is_empty() {
                     (
-                        String::from("tau > █"),
+                        String::from("τ > █"),
                         Style::default().fg(self.theme.text).bg(self.theme.bg),
                     )
                 } else {
                     let chars: Vec<char> = self.input_text.chars().collect();
-                    let mut s = String::from("tau > ");
+                    let mut s = String::from("τ > ");
                     for (i, ch) in chars.iter().enumerate() {
                         if i == self.cursor_pos {
                             s.push('█');
@@ -825,31 +1079,8 @@ impl PiTuiApp {
                     cwd_str.into_owned()
                 };
 
-                let git_branch = match std::process::Command::new("git")
-                    .args(["branch", "--show-current"])
-                    .output()
-                {
-                    Ok(out) if out.status.success() => {
-                        String::from_utf8_lossy(&out.stdout).trim().to_string()
-                    }
-                    _ => String::new(),
-                };
-
-                let git_status_count = match std::process::Command::new("git")
-                    .args(["status", "--porcelain"])
-                    .output()
-                {
-                    Ok(out) if out.status.success() => {
-                        let text = String::from_utf8_lossy(&out.stdout);
-                        let count = text.lines().filter(|l| !l.is_empty()).count();
-                        if count > 0 {
-                            format!("{} modified", count)
-                        } else {
-                            "clean".to_string()
-                        }
-                    }
-                    _ => String::new(),
-                };
+                let git_branch = &self.cached_git_branch;
+                let git_status_count = &self.cached_git_status;
 
                 let provider_name = if let Ok(guard) = self.agent_loop.try_lock() {
                     guard.model_config.provider.clone()
@@ -860,11 +1091,24 @@ impl PiTuiApp {
                 let status_width = chunks[3].width as usize;
 
                 // Status Line 1:
-                // Left: " 📁 ~/<cwd> · ⚡ Tau (τ)"
-                // Right: "[<model_id>] · [<provider>] · [🎨 <theme>] "
-                let left1 = format!(" 📁 {} · ⚡ Tau (τ)", display_cwd);
-                let right1 = format!("🤖 {} · 🌐 {} · 🎨 {} ", self.model_id, provider_name, self.theme.kind.name());
-                let pad1 = status_width.saturating_sub(left1.len() + right1.len());
+                let short_model = if let Some((_prov, m)) = self.model_id.split_once('/') {
+                    m
+                } else {
+                    &self.model_id
+                };
+
+                let left1 = format!(" 📁 {} · ⚡ Tau", display_cwd);
+                let right1 = if status_width >= 100 {
+                    format!("🤖 {} · 🌐 {} · 🎨 {} ", self.model_id, provider_name, self.theme.kind.name())
+                } else if status_width >= 70 {
+                    format!("🤖 {} · 🌐 {} ", short_model, provider_name)
+                } else {
+                    format!("🤖 {} ", short_model)
+                };
+
+                let left1_len = left1.chars().count();
+                let right1_len = right1.chars().count();
+                let pad1 = status_width.saturating_sub(left1_len + right1_len).max(2);
                 let status_line_1 = Line::from(vec![
                     Span::styled(left1, self.theme.status_bar_accent()),
                     Span::styled(" ".repeat(pad1), self.theme.status_bar()),
@@ -892,18 +1136,49 @@ impl PiTuiApp {
                 } else {
                     String::new()
                 };
-                let shortcuts_str = format!("[Ctrl+L: Models] [Ctrl+T: Themes] [?: Help] [Esc: Cancel]{} ", git_info);
+
+                let shortcuts_str = if status_width >= 115 {
+                    format!("[Ctrl+L: Models] [Ctrl+T: Themes] [?: Help] [Esc: Cancel]{} ", git_info)
+                } else if status_width >= 85 {
+                    format!("[Ctrl+L: Models] [?: Help]{} ", git_info)
+                } else if status_width >= 60 {
+                    format!("[?: Help]{} ", git_info)
+                } else {
+                    format!("{} ", git_info)
+                };
+
+                let window = self.active_context_window();
+                let window_str = pi_providers::ModelCatalogLoader::format_context_k(window);
+
+                let speed_and_cost = if self.is_agent_running {
+                    if let Some(start) = self.turn_start_time {
+                        let el = start.elapsed().as_secs_f64();
+                        if el > 0.1 && self.streamed_tokens_count > 0 {
+                            let tps = self.streamed_tokens_count as f64 / el;
+                            format!(" · ⚡ {:.1} tok/s · ⏱ {:.1}s", tps, el)
+                        } else {
+                            format!(" · ⏱ {:.1}s", el)
+                        }
+                    } else {
+                        " · $0.00".to_string()
+                    }
+                } else if let Some(tps) = self.last_turn_tok_per_sec && let Some(dur) = self.last_turn_duration {
+                    format!(" · ⚡ {:.0} tok/s · ⏱ {:.1}s · $0.00", tps, dur.as_secs_f64())
+                } else {
+                    " · $0.00".to_string()
+                };
 
                 let left_spans = vec![
                     Span::styled(" ", self.theme.status_bar()),
                     Span::styled("[", Style::default().fg(self.theme.muted).bg(self.theme.bg)),
                     Span::styled("█".repeat(filled), Style::default().fg(bar_color).bg(self.theme.bg)),
                     Span::styled("░".repeat(empty), Style::default().fg(self.theme.border).bg(self.theme.bg)),
-                    Span::styled(format!("] {:.0}% / 128k · $0.00", clamped_pct), self.theme.status_bar()),
+                    Span::styled(format!("] {:.0}% / {}{}", clamped_pct, window_str, speed_and_cost), self.theme.status_bar()),
                 ];
 
-                let left_len = 1 + 1 + 12 + 1 + format!(" {:.0}% / 128k · $0.00", clamped_pct).len();
-                let pad2 = status_width.saturating_sub(left_len + shortcuts_str.len());
+                let left_len: usize = left_spans.iter().map(|s| s.content.chars().count()).sum();
+                let shortcuts_len = shortcuts_str.chars().count();
+                let pad2 = status_width.saturating_sub(left_len + shortcuts_len).max(2);
 
                 let mut status2_spans = left_spans;
                 status2_spans.push(Span::styled(" ".repeat(pad2), self.theme.status_bar()));
@@ -920,10 +1195,13 @@ impl PiTuiApp {
                     && !self.show_auth_modal
                     && !self.show_tree_overlay
                     && !self.show_diff_overlay
+                    && !self.show_memory_overlay
+                    && !self.show_plan_overlay
+                    && !self.show_question_modal
                     && self.input_text.starts_with('/')
                 {
                     let suggestions = AutocompleteEngine::get_suggestions(&self.input_text);
-                    AutocompleteEngine::render_popup(f, &suggestions, self.autocomplete_selected, chunks[2]);
+                    AutocompleteEngine::render_popup_styled(f, &suggestions, self.autocomplete_selected, chunks[2], &self.theme);
                 }
 
                 // Render Interactive Auth Wizard Modal
@@ -936,29 +1214,51 @@ impl PiTuiApp {
 
                 // Render Interactive Searchable Model Picker Dialog Overlay
                 if self.show_model_picker {
-                    let area = Self::centered_rect(75, 55, f.area());
+                    let area = Self::centered_rect(88, 76, f.area());
                     f.render_widget(Clear, area);
 
-                    let filtered: Vec<pi_providers::ModelInfo> = pi_providers::ModelCatalogLoader::search_models(&self.all_catalog_models, &self.model_search_query)
+                    let searched = pi_providers::ModelCatalogLoader::search_models(&self.all_catalog_models, &self.model_search_query);
+                    let filtered: Vec<pi_providers::ModelInfo> = searched
                         .into_iter()
+                        .filter(|m| self.model_picker_tab.matches(m))
                         .cloned()
                         .collect();
 
-                    let (search_bar, list, block) = ModelPickerWidget::render(
+                    let selected_idx = self.model_picker_state.selected();
+
+                    let (search_bar, tabs_bar, list, detail_card, block) = ModelPickerWidget::render(
                         &self.model_search_query,
+                        self.model_picker_tab,
                         &filtered,
+                        selected_idx,
+                        &self.model_id,
                         self.all_catalog_models.len(),
+                        &self.theme,
                     );
 
-                    let inner_chunks = Layout::default()
+                    let inner_layout = Layout::default()
                         .direction(Direction::Vertical)
-                        .constraints([Constraint::Length(2), Constraint::Min(4)])
+                        .constraints([
+                            Constraint::Length(2),
+                            Constraint::Length(2),
+                            Constraint::Min(6),
+                        ])
                         .margin(1)
                         .split(area);
 
+                    let content_split = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([
+                            Constraint::Percentage(56),
+                            Constraint::Percentage(44),
+                        ])
+                        .split(inner_layout[2]);
+
                     f.render_widget(block, area);
-                    f.render_widget(search_bar, inner_chunks[0]);
-                    f.render_stateful_widget(list, inner_chunks[1], &mut self.model_picker_state);
+                    f.render_widget(search_bar, inner_layout[0]);
+                    f.render_widget(tabs_bar, inner_layout[1]);
+                    f.render_stateful_widget(list, content_split[0], &mut self.model_picker_state);
+                    f.render_widget(detail_card, content_split[1]);
                 }
 
                 // Render Interactive Searchable Provider Picker Dialog Overlay
@@ -1033,7 +1333,8 @@ impl PiTuiApp {
                             .map(|(idx, node)| {
                                 let prefix = if idx == history.len().saturating_sub(1) { "└" } else { "├" };
                                 let preview = node.content.lines().next().unwrap_or("");
-                                format!("{} [{}] {:?}: {}", prefix, &node.id[..6.min(node.id.len())], node.role, preview)
+                                let short_id = &node.id[..node.id.floor_char_boundary(6.min(node.id.len()))];
+                                format!("{} [{}] {:?}: {}", prefix, short_id, node.role, preview)
                             })
                             .collect()
                     } else {
@@ -1051,10 +1352,33 @@ impl PiTuiApp {
                     f.render_widget(Clear, area);
                     DiffView::render(state, f, area);
                 }
+
+                // Render Cognitive Memory Explorer Overlay
+                if self.show_memory_overlay {
+                    let area = Self::centered_rect(85, 75, f.area());
+                    MemoryOverlayWidget::render(&self.memory_overlay_state, f, area, &self.theme);
+                }
+
+                // Render Stateful Plan & Task Checklist Modal Overlay
+                if self.show_plan_overlay {
+                    let area = Self::centered_rect(80, 70, f.area());
+                    PlanOverlayWidget::render_modal(&self.plan_state, f, area, &self.theme);
+                }
+
+                // Render Interactive Clarification Questionnaire Modal
+                if self.show_question_modal && let Some(ref q_state) = self.question_modal_state {
+                    let area = Self::centered_rect(75, 55, f.area());
+                    QuestionModalWidget::render(q_state, f, area, &self.theme);
+                }
             })?;
 
-            // Responsive polling: 25ms allows real-time token rendering and instant interruption
-            if event::poll(std::time::Duration::from_millis(25))? {
+            // Responsive polling: 25ms during agent turns for smooth streaming, 50ms when idle for zero input lag
+            let poll_duration = if self.is_agent_running {
+                std::time::Duration::from_millis(25)
+            } else {
+                std::time::Duration::from_millis(50)
+            };
+            if event::poll(poll_duration)? {
                 let Event::Key(key) = event::read()? else {
                     continue;
                 };
@@ -1212,6 +1536,123 @@ impl PiTuiApp {
                     continue;
                 }
 
+                // Handle Clarification Question Modal Keys
+                if self.show_question_modal {
+                    if let Some(ref mut q_state) = self.question_modal_state {
+                        match key.code {
+                            KeyCode::Esc => {
+                                q_state.dismiss();
+                                self.show_question_modal = false;
+                                self.question_modal_state = None;
+                            }
+                            KeyCode::Up => {
+                                q_state.handle_navigation(true);
+                            }
+                            KeyCode::Down => {
+                                q_state.handle_navigation(false);
+                            }
+                            KeyCode::Char(' ') if !q_state.is_custom_focused => {
+                                q_state.toggle_selected();
+                            }
+                            KeyCode::Enter => {
+                                let answers = q_state.submit();
+                                let summary = answers.join("; ");
+                                self.history.push((
+                                    "user".to_string(),
+                                    format!("[Clarification Answer]: {}", summary),
+                                ));
+                                self.show_question_modal = false;
+                                self.question_modal_state = None;
+                            }
+                            KeyCode::Char(c) if q_state.is_custom_focused => {
+                                q_state.custom_input.push(c);
+                            }
+                            KeyCode::Backspace if q_state.is_custom_focused => {
+                                q_state.custom_input.pop();
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        self.show_question_modal = false;
+                    }
+                    continue;
+                }
+
+                // Handle Plan Checklist Overlay Keys
+                if self.show_plan_overlay {
+                    match key.code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            self.show_plan_overlay = false;
+                        }
+                        KeyCode::Up => {
+                            self.plan_state.handle_navigation(true);
+                        }
+                        KeyCode::Down => {
+                            self.plan_state.handle_navigation(false);
+                        }
+                        KeyCode::Char(' ') | KeyCode::Enter => {
+                            self.plan_state.toggle_selected_task_status();
+                        }
+                        KeyCode::Char('c') => {
+                            self.plan_state.toggle_collapsed();
+                        }
+                        KeyCode::Char('d') => {
+                            self.plan_state.mark_selected_completed();
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
+                // Handle Cognitive Memory Overlay Keys
+                if self.show_memory_overlay {
+                    match key.code {
+                        KeyCode::Esc => {
+                            if self.memory_overlay_state.is_searching && !self.memory_overlay_state.search_query.is_empty() {
+                                self.memory_overlay_state.search_query.clear();
+                                self.memory_overlay_state.is_searching = false;
+                                self.memory_overlay_state.list_state.select(Some(0));
+                            } else {
+                                self.show_memory_overlay = false;
+                            }
+                        }
+                        KeyCode::Char('q') if !self.memory_overlay_state.is_searching => {
+                            self.show_memory_overlay = false;
+                        }
+                        KeyCode::Char('/') if !self.memory_overlay_state.is_searching => {
+                            self.memory_overlay_state.is_searching = true;
+                            self.memory_overlay_state.search_query.clear();
+                        }
+                        KeyCode::Char('t') if !self.memory_overlay_state.is_searching => {
+                            self.memory_overlay_state.cycle_scope_filter();
+                        }
+                        KeyCode::Char('d') if !self.memory_overlay_state.is_searching => {
+                            self.memory_overlay_state.delete_selected();
+                        }
+                        KeyCode::Up => {
+                            self.memory_overlay_state.handle_navigation(true);
+                        }
+                        KeyCode::Down => {
+                            self.memory_overlay_state.handle_navigation(false);
+                        }
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            self.memory_overlay_state.search_query.clear();
+                            self.memory_overlay_state.is_searching = false;
+                            self.memory_overlay_state.list_state.select(Some(0));
+                        }
+                        KeyCode::Char(c) if self.memory_overlay_state.is_searching => {
+                            self.memory_overlay_state.search_query.push(c);
+                            self.memory_overlay_state.list_state.select(Some(0));
+                        }
+                        KeyCode::Backspace if self.memory_overlay_state.is_searching => {
+                            self.memory_overlay_state.search_query.pop();
+                            self.memory_overlay_state.list_state.select(Some(0));
+                        }
+                        _ => {}
+                    }
+                    continue;
+                }
+
                 // Handle Auth Modal First
                 if self.show_auth_modal {
                     match key.code {
@@ -1246,8 +1687,10 @@ impl PiTuiApp {
 
                 // Handle Model Picker Overlay
                 if self.show_model_picker {
-                    let filtered: Vec<pi_providers::ModelInfo> = pi_providers::ModelCatalogLoader::search_models(&self.all_catalog_models, &self.model_search_query)
+                    let searched = pi_providers::ModelCatalogLoader::search_models(&self.all_catalog_models, &self.model_search_query);
+                    let filtered: Vec<pi_providers::ModelInfo> = searched
                         .into_iter()
+                        .filter(|m| self.model_picker_tab.matches(m))
                         .cloned()
                         .collect();
 
@@ -1255,6 +1698,30 @@ impl PiTuiApp {
                         KeyCode::Esc => {
                             self.show_model_picker = false;
                             self.model_search_query.clear();
+                        }
+                        KeyCode::Tab => {
+                            self.model_picker_tab = self.model_picker_tab.next();
+                            self.model_picker_state.select(Some(0));
+                        }
+                        KeyCode::BackTab => {
+                            self.model_picker_tab = self.model_picker_tab.prev();
+                            self.model_picker_state.select(Some(0));
+                        }
+                        KeyCode::PageUp => {
+                            ModelPickerWidget::handle_page_navigation(&mut self.model_picker_state, filtered.len(), true, 6);
+                        }
+                        KeyCode::PageDown => {
+                            ModelPickerWidget::handle_page_navigation(&mut self.model_picker_state, filtered.len(), false, 6);
+                        }
+                        KeyCode::Home => {
+                            if !filtered.is_empty() {
+                                self.model_picker_state.select(Some(0));
+                            }
+                        }
+                        KeyCode::End => {
+                            if !filtered.is_empty() {
+                                self.model_picker_state.select(Some(filtered.len() - 1));
+                            }
                         }
                         KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                             let tx = self.event_tx.clone();
@@ -1283,16 +1750,18 @@ impl PiTuiApp {
                             ModelPickerWidget::handle_navigation(&mut self.model_picker_state, filtered.len(), false);
                         }
                         KeyCode::Enter => {
-                            if let Some(i) = self.model_picker_state.selected()
+                            let chosen_id = if let Some(i) = self.model_picker_state.selected()
                                 && let Some(selected_model) = filtered.get(i)
                             {
-                                self.model_id = selected_model.id.clone();
-                                let new_cfg = ModelConfig::resolve(&selected_model.id);
-                                let provider = new_cfg.provider.clone();
-                                let api_key_empty = new_cfg.api_key.is_empty();
-                                if let Ok(mut guard) = self.agent_loop.try_lock() {
-                                    guard.model_config = new_cfg;
-                                }
+                                selected_model.id.clone()
+                            } else if !self.model_search_query.trim().is_empty() {
+                                self.model_search_query.trim().to_string()
+                            } else {
+                                String::new()
+                            };
+
+                            if !chosen_id.is_empty() {
+                                let (provider, api_key_empty) = self.set_active_model(&chosen_id);
 
                                 if provider != "ollama" && provider != "llamacpp" && provider != "lmstudio" && api_key_empty {
                                     self.auth_provider = provider.clone();
@@ -1396,7 +1865,8 @@ impl PiTuiApp {
                                 if let Some(target_node) = history.get(i) {
                                     let target_id = target_node.id.clone();
                                     guard.session_tree.rewind_to(&target_id);
-                                    self.history.push(("system".to_string(), format!("Rewound active tree node to [{}]", &target_id[..6.min(target_id.len())])));
+                                    let short_id = &target_id[..target_id.floor_char_boundary(6.min(target_id.len()))];
+                                    self.history.push(("system".to_string(), format!("Rewound active tree node to [{}]", short_id)));
                                 }
                             }
                             self.show_tree_overlay = false;
@@ -1443,8 +1913,39 @@ impl PiTuiApp {
                         }
                     }
                     KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.history.clear();
-                        self.history.push(("system".to_string(), "Cleared terminal transcript.".to_string()));
+                        if self.input_text.is_empty() {
+                            self.history.clear();
+                            self.history.push(("system".to_string(), "Cleared terminal transcript.".to_string()));
+                        } else {
+                            let chars: Vec<char> = self.input_text.chars().collect();
+                            self.input_text = chars[..self.cursor_pos.min(chars.len())].iter().collect();
+                        }
+                    }
+                    KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        let chars: Vec<char> = self.input_text.chars().collect();
+                        if self.cursor_pos < chars.len() {
+                            self.input_text = chars[self.cursor_pos..].iter().collect();
+                        } else {
+                            self.input_text.clear();
+                        }
+                        self.cursor_pos = 0;
+                    }
+                    KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        let chars: Vec<char> = self.input_text.chars().collect();
+                        let mut pos = self.cursor_pos;
+                        while pos > 0 && pos <= chars.len() && chars[pos - 1].is_whitespace() {
+                            pos -= 1;
+                        }
+                        while pos > 0 && pos <= chars.len() && !chars[pos - 1].is_whitespace() {
+                            pos -= 1;
+                        }
+                        let mut new_chars = chars[..pos].to_vec();
+                        if self.cursor_pos < chars.len() {
+                            new_chars.extend_from_slice(&chars[self.cursor_pos..]);
+                        }
+                        self.input_text = new_chars.into_iter().collect();
+                        self.cursor_pos = pos;
+                        self.autocomplete_selected = 0;
                     }
                     KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         if self.input_text.is_empty() {
@@ -1452,10 +1953,18 @@ impl PiTuiApp {
                                 self.abort_active_turn();
                             }
                             self.is_running = false;
+                        } else {
+                            let mut chars: Vec<char> = self.input_text.chars().collect();
+                            if self.cursor_pos < chars.len() {
+                                chars.remove(self.cursor_pos);
+                                self.input_text = chars.into_iter().collect();
+                                self.autocomplete_selected = 0;
+                            }
                         }
                     }
                     KeyCode::Char('l') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         self.model_search_query.clear();
+                        self.model_picker_tab = ModelCategoryTab::All;
                         self.model_picker_state.select(Some(0));
                         self.show_model_picker = true;
                     }
@@ -1465,9 +1974,16 @@ impl PiTuiApp {
                         self.show_provider_picker = true;
                     }
                     KeyCode::Char('a') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        self.provider_search_query.clear();
-                        self.provider_picker_state.select(Some(0));
-                        self.show_provider_picker = true;
+                        if self.input_text.is_empty() {
+                            self.provider_search_query.clear();
+                            self.provider_picker_state.select(Some(0));
+                            self.show_provider_picker = true;
+                        } else {
+                            self.cursor_pos = 0;
+                        }
+                    }
+                    KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.cursor_pos = self.input_text.chars().count();
                     }
                     KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         let tx = self.event_tx.clone();
@@ -1487,10 +2003,34 @@ impl PiTuiApp {
                         self.scroll_offset = self.scroll_offset.saturating_sub(5);
                     }
                     KeyCode::Left => {
-                        self.cursor_pos = self.cursor_pos.saturating_sub(1);
+                        if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::ALT) {
+                            let chars: Vec<char> = self.input_text.chars().collect();
+                            let mut pos = self.cursor_pos;
+                            while pos > 0 && pos <= chars.len() && chars[pos - 1].is_whitespace() {
+                                pos -= 1;
+                            }
+                            while pos > 0 && pos <= chars.len() && !chars[pos - 1].is_whitespace() {
+                                pos -= 1;
+                            }
+                            self.cursor_pos = pos;
+                        } else {
+                            self.cursor_pos = self.cursor_pos.saturating_sub(1);
+                        }
                     }
                     KeyCode::Right => {
-                        self.cursor_pos = (self.cursor_pos + 1).min(self.input_text.chars().count());
+                        if key.modifiers.contains(KeyModifiers::CONTROL) || key.modifiers.contains(KeyModifiers::ALT) {
+                            let chars: Vec<char> = self.input_text.chars().collect();
+                            let mut pos = self.cursor_pos;
+                            while pos < chars.len() && !chars[pos].is_whitespace() {
+                                pos += 1;
+                            }
+                            while pos < chars.len() && chars[pos].is_whitespace() {
+                                pos += 1;
+                            }
+                            self.cursor_pos = pos;
+                        } else {
+                            self.cursor_pos = (self.cursor_pos + 1).min(self.input_text.chars().count());
+                        }
                     }
                     KeyCode::Home => {
                         self.cursor_pos = 0;
@@ -1556,8 +2096,6 @@ impl PiTuiApp {
                     KeyCode::Esc => {
                         if self.is_agent_running {
                             self.abort_active_turn();
-                        } else {
-                            self.history.push(("system".to_string(), "Interrupted active execution.".to_string()));
                         }
                     }
                     KeyCode::Enter => {
@@ -1597,6 +2135,16 @@ impl PiTuiApp {
                             }
                         }
                     }
+                    KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        let mut chars: Vec<char> = self.input_text.chars().collect();
+                        if self.cursor_pos >= chars.len() {
+                            chars.push('\n');
+                        } else {
+                            chars.insert(self.cursor_pos, '\n');
+                        }
+                        self.input_text = chars.into_iter().collect();
+                        self.cursor_pos += 1;
+                    }
                     KeyCode::Char(c) => {
                         let mut chars: Vec<char> = self.input_text.chars().collect();
                         if self.cursor_pos >= chars.len() {
@@ -1609,7 +2157,23 @@ impl PiTuiApp {
                         self.autocomplete_selected = 0;
                     }
                     KeyCode::Backspace => {
-                        if self.cursor_pos > 0 {
+                        if key.modifiers.contains(KeyModifiers::ALT) {
+                            let chars: Vec<char> = self.input_text.chars().collect();
+                            let mut pos = self.cursor_pos;
+                            while pos > 0 && pos <= chars.len() && chars[pos - 1].is_whitespace() {
+                                pos -= 1;
+                            }
+                            while pos > 0 && pos <= chars.len() && !chars[pos - 1].is_whitespace() {
+                                pos -= 1;
+                            }
+                            let mut new_chars = chars[..pos].to_vec();
+                            if self.cursor_pos < chars.len() {
+                                new_chars.extend_from_slice(&chars[self.cursor_pos..]);
+                            }
+                            self.input_text = new_chars.into_iter().collect();
+                            self.cursor_pos = pos;
+                            self.autocomplete_selected = 0;
+                        } else if self.cursor_pos > 0 {
                             let mut chars: Vec<char> = self.input_text.chars().collect();
                             if self.cursor_pos <= chars.len() {
                                 chars.remove(self.cursor_pos - 1);
@@ -1635,9 +2199,6 @@ impl PiTuiApp {
         if let Some(handle) = self.active_turn.take() {
             handle.abort();
         }
-        disable_raw_mode()?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-        terminal.show_cursor()?;
         Ok(())
     }
 }
@@ -1691,9 +2252,21 @@ mod tests {
 
         let bar_line = app.render_token_progress_bar(16);
         let rendered_text = bar_line.spans.iter().map(|s| s.content.as_ref()).collect::<String>();
-        assert!(rendered_text.contains("42% / 128k"));
+        assert!(rendered_text.contains("42% / 64k"));
         assert!(rendered_text.contains("█"));
         assert!(rendered_text.contains("░"));
+
+        // Switch to Gemini 2M model
+        app.set_active_model("gemini/gemini-1.5-pro");
+        let bar_gemini = app.render_token_progress_bar(16);
+        let gemini_text = bar_gemini.spans.iter().map(|s| s.content.as_ref()).collect::<String>();
+        assert!(gemini_text.contains("42% / 2M"));
+
+        // Switch to Claude 200k model
+        app.set_active_model("anthropic/claude-3-7-sonnet-latest");
+        let bar_claude = app.render_token_progress_bar(16);
+        let claude_text = bar_claude.spans.iter().map(|s| s.content.as_ref()).collect::<String>();
+        assert!(claude_text.contains("42% / 200k"));
     }
 
     #[tokio::test]
@@ -1764,4 +2337,179 @@ mod tests {
         assert!(!app2.show_diff_overlay);
         assert!(app2.history.last().unwrap().1.contains("File not found"));
     }
+
+    #[tokio::test]
+    async fn test_slash_commands_catalog() {
+        let mut app = PiTuiApp::new("kilo/deepseek-r1");
+
+        // /model exact switch
+        app.handle_slash_command("/model anthropic/claude-3-7-sonnet-latest").await;
+        assert_eq!(app.model_id, "anthropic/claude-3-7-sonnet-latest");
+
+        // /model search query prefill
+        app.handle_slash_command("/model gpt").await;
+        assert!(app.show_model_picker);
+        assert_eq!(app.model_search_query, "gpt");
+        app.show_model_picker = false;
+
+        // /tools toggle
+        let initial_tools = app.expand_tools;
+        app.handle_slash_command("/tools").await;
+        assert_eq!(app.expand_tools, !initial_tools);
+
+        // /thinking toggle
+        let initial_thinking = app.show_thinking;
+        app.handle_slash_command("/thinking").await;
+        assert_eq!(app.show_thinking, !initial_thinking);
+
+        // /clear
+        app.handle_slash_command("/clear").await;
+        assert_eq!(app.history.len(), 1);
+        assert!(app.history[0].1.contains("Cleared terminal"));
+
+        // /provider
+        app.handle_slash_command("/provider openai").await;
+        assert!(app.show_provider_picker);
+        assert_eq!(app.provider_search_query, "openai");
+
+        // /skills
+        app.handle_slash_command("/skills").await;
+        assert!(!app.history.is_empty());
+
+        // /session
+        app.handle_slash_command("/session").await;
+        assert!(app.history.last().unwrap().1.contains("Session Info"));
+    }
+
+    #[tokio::test]
+    async fn test_status_bar_unicode_padding_multibyte() {
+        let app = PiTuiApp::new("kilo/deepseek-r1");
+        let status_width = 100usize;
+
+        let display_cwd = "📁 ~/workspace/🦀-project/日本語";
+        let provider_name = "openrouter";
+        let left1 = format!(" 📁 {} · ⚡ Tau (τ)", display_cwd);
+        let right1 = format!("🤖 {} · 🌐 {} · 🎨 {} ", app.model_id, provider_name, app.theme.kind.name());
+
+        let left1_len = left1.chars().count();
+        let right1_len = right1.chars().count();
+        let pad1 = status_width.saturating_sub(left1_len + right1_len);
+
+        // Check that character padding adds up without panic
+        assert_eq!(left1_len + pad1 + right1_len, status_width);
+    }
+
+    #[tokio::test]
+    async fn test_esc_key_only_aborts_when_running() {
+        let mut app = PiTuiApp::new("kilo/deepseek-r1");
+        assert!(!app.is_agent_running);
+
+        // When idle, Esc should not add interrupted messages
+        let history_len_before = app.history.len();
+        if app.is_agent_running {
+            app.abort_active_turn();
+        }
+        assert_eq!(app.history.len(), history_len_before);
+
+        // When running, abort_active_turn should transition state
+        app.is_agent_running = true;
+        app.abort_active_turn();
+        assert!(!app.is_agent_running);
+        assert_eq!(app.history.len(), history_len_before + 1);
+        assert!(app.history.last().unwrap().1.contains("Interrupted"));
+    }
+
+    #[tokio::test]
+    async fn test_context_compaction_event_handling() {
+        let mut app = PiTuiApp::new("kilo/deepseek-r1");
+
+        app.event_tx.send(AgentTaskEvent::Event(TurnEvent::ContextPrepared {
+            token_estimate: 50_000,
+        })).unwrap();
+
+        app.event_tx.send(AgentTaskEvent::Event(TurnEvent::ContextCompacted {
+            old_turns: 4,
+            new_summary_len: 256,
+        })).unwrap();
+
+        app.poll_agent_events();
+
+        assert_eq!(app.estimated_tokens, 50_000);
+        assert!(app.history.iter().any(|(_, m)| m.contains("Context compacted")));
+    }
+
+    #[tokio::test]
+    async fn test_finished_event_triggers_queued_message() {
+        let mut app = PiTuiApp::new("kilo/deepseek-r1");
+        app.is_agent_running = true;
+        app.queued_messages.push("Next queued task".to_string());
+
+        app.event_tx.send(AgentTaskEvent::Finished(Ok("Completed first turn".to_string()))).unwrap();
+        app.poll_agent_events();
+
+        // The queued turn should have been started
+        assert!(app.is_agent_running);
+        assert!(app.history.iter().any(|(_, m)| m.contains("Queued Execution")));
+        assert!(app.history.iter().any(|(r, m)| r == "user" && m == "Next queued task"));
+
+        // Clean up spawned task
+        app.abort_active_turn();
+    }
+
+    #[tokio::test]
+    async fn test_memory_slash_command_handling() {
+        let mut app = PiTuiApp::new("kilo/deepseek-r1");
+        assert!(!app.show_memory_overlay);
+
+        // Open memory overlay without query
+        app.handle_slash_command("/memory").await;
+        assert!(app.show_memory_overlay);
+        assert!(app.memory_overlay_state.search_query.is_empty());
+
+        // Open memory overlay with search query
+        app.show_memory_overlay = false;
+        app.handle_slash_command("/memory clippy").await;
+        assert!(app.show_memory_overlay);
+        assert_eq!(app.memory_overlay_state.search_query, "clippy");
+        assert!(app.memory_overlay_state.is_searching);
+    }
+
+    #[tokio::test]
+    async fn test_plan_slash_command_handling() {
+        let mut app = PiTuiApp::new("kilo/deepseek-r1");
+        assert!(!app.show_plan_overlay);
+
+        // Open plan overlay
+        app.handle_slash_command("/plan").await;
+        assert!(app.show_plan_overlay);
+
+        // Toggle plan collapse
+        let initial_collapsed = app.plan_state.is_collapsed;
+        app.handle_slash_command("/plan toggle").await;
+        assert_eq!(app.plan_state.is_collapsed, !initial_collapsed);
+
+        // Plan status
+        app.handle_slash_command("/plan status").await;
+        assert!(app.history.last().unwrap().1.contains("Active Plan"));
+    }
+
+    #[tokio::test]
+    async fn test_ask_slash_command_handling() {
+        let mut app = PiTuiApp::new("kilo/deepseek-r1");
+        assert!(!app.show_question_modal);
+        assert!(app.question_modal_state.is_none());
+
+        // Open default sample question modal
+        app.handle_slash_command("/ask").await;
+        assert!(app.show_question_modal);
+        assert!(app.question_modal_state.is_some());
+
+        // Open custom question modal
+        app.show_question_modal = false;
+        app.handle_slash_command("/ask Should we optimize for latency or throughput?").await;
+        assert!(app.show_question_modal);
+        let q_state = app.question_modal_state.as_ref().unwrap();
+        assert!(q_state.question.contains("latency or throughput"));
+    }
 }
+

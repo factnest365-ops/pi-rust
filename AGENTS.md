@@ -8,7 +8,7 @@ This document is the **authoritative reference manual** for all AI coding agents
 
 ## 1. Architectural Blueprint & Crate Dependency Graph
 
-The workspace is strictly partitioned into 7 focused Cargo crates under `crates/`. There is **no monolithic root `src/`**.
+The workspace is strictly partitioned into 8 focused Cargo crates under `crates/`. There is **no monolithic root `src/`**.
 
 ```
                                 +-----------------------------------+
@@ -20,36 +20,43 @@ The workspace is strictly partitioned into 7 focused Cargo crates under `crates/
          |                                        |                                        |
          v                                        v                                        v
 +----------------+                       +----------------+                       +----------------+
-|     pi-tui     |                       |    pi-core     |                       |     pi-rpc     |
-| (Ratatui & UI) |                       | (Agent Engine) |                       |  (JSON-RPC 2.0)|
-+-------+--------+                       +---+---+----+---+                       +--------+-------+
-        |                                    |   |    |                                    |
+|     pi-tui     |                       |    pi-core     |                       |   pi-daemon    |
+| (Ratatui & UI) |                       | (Agent Engine) |                       | (100% Pure Rust|
++-------+--------+                       +---+---+----+---+                       |  Daemon/taud)  |
+        |                                    |   |    |                           +--------+-------+
         +------------------+-----------------+   |    +------------------+-----------------+
-                           |                     |                       |
-                           v                     |                       v
-                  +-----------------+            |              +-----------------+
-                  |  pi-providers   |            |              |   pi-session    |
-                  | (Multi-LLM SSE) |            |              |  (DAG History & |
-                  +-----------------+            |              |  JSONL Storage) |
-                                                 |              +-----------------+
-                                                 v
-                                        +-----------------+
-                                        |    pi-tools     |
-                                        | (Native Tools & |
-                                        |  MCP Discovery) |
+                           |                     |                       |                 |
+                           v                     |                       v                 |
+                  +-----------------+            |              +-----------------+        |
+                  |  pi-providers   |            |              |   pi-session    |        |
+                  | (Multi-LLM SSE) |            |              |  (DAG History & |        |
+                  +-----------------+            |              |  JSONL Storage) |        |
+                                                 |              +-----------------+        |
+                                                 v                                         |
+                                        +-----------------+                                |
+                                        |    pi-tools     |                                |
+                                        | (Native Tools & |                                |
+                                        |  MCP Discovery) |                                |
+                                        +--------+--------+                                |
+                                                 ^                                         |
+                                                 |                                         |
+                                        +--------+--------+                                |
+                                        |     pi-rpc      |<-------------------------------+
+                                        |  (JSON-RPC 2.0) |
                                         +-----------------+
 ```
 
-### Crate Parity Mapping to Upstream Pi (`earendil-works/pi`)
+### Crate Parity Mapping to Upstream Pi & Tau Architecture
 
-| Rust Crate (`pi-rust`) | Upstream TypeScript Package (`earendil-works/pi`) | Primary Responsibility |
+| Rust Crate (`pi-rust`) | Upstream Package / Module | Primary Responsibility |
 | :--- | :--- | :--- |
-| [`crates/pi-cli`](file:///Users/bhavy/pi-rust/crates/pi-cli) | `packages/client` | CLI argument parsing (`clap`), login wizard, `--rpc`, `--print`, `--model`. |
-| [`crates/pi-core`](file:///Users/bhavy/pi-rust/crates/pi-core) | `packages/coding-agent` & `packages/agent` | Agent turn loop, Dual Tool dispatch, Context Compaction, System Prompt Engine. |
+| [`crates/pi-cli`](file:///Users/bhavy/pi-rust/crates/pi-cli) | `packages/client` | CLI entry binary (`tau`), login wizard, daemon connectors (`--daemon-status`, `--daemon-ping`), `--print`, `--model`, `--undo`, `--alfred-check`. |
+| [`crates/pi-daemon`](file:///Users/bhavy/pi-rust/crates/pi-daemon) | `taud` Native Daemon | 100% pure Rust background daemon listening on `~/.tau/taud.sock`, IPC JSON-RPC 2.0 loop, ambient awareness, shared memory vault. |
+| [`crates/pi-core`](file:///Users/bhavy/pi-rust/crates/pi-core) | `packages/coding-agent` & `agent` | Agent turn loop, Dual Tool dispatch, Cognitive Vault (FTS5 + SIMD), Reflexion Engine, Federated Specialist Fleet (`J.A.R.V.I.S.`, `F.R.I.D.A.Y.`, `E.V.`), Plan Executor, Undo Engine, Alfred Protocol, Speculative Engine, Skills Crystallizer. |
 | [`crates/pi-providers`](file:///Users/bhavy/pi-rust/crates/pi-providers) | `packages/ai` | 33+ Multi-LLM provider client, SSE streaming, TokenProfiler, AuthResolver. |
 | [`crates/pi-session`](file:///Users/bhavy/pi-rust/crates/pi-session) | `packages/agent` & `session-backends` | Session DAG tree, node ID assignment, branch rewinds, JSONL disk persistence. |
-| [`crates/pi-tools`](file:///Users/bhavy/pi-rust/crates/pi-tools) | `packages/coding-agent/src/tools/*` | Safe tool executor (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`, `web_fetch`, `web_search`, `git`, `github`, `lsp`, `ast`, `mcp`). |
-| [`crates/pi-tui`](file:///Users/bhavy/pi-rust/crates/pi-tui) | `packages/tui` | Ratatui terminal UI, interactive overlays (Model Picker, Provider Picker, Session Tree, Auth Wizard), syntax highlighting, ASCII/Unicode Mermaid renderer. |
+| [`crates/pi-tools`](file:///Users/bhavy/pi-rust/crates/pi-tools) | `packages/coding-agent/src/tools/*` | Safe tool executor (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`, `web_fetch`, `web_search`, `git`, `github`, `lsp`, `ast`, `mcp`, `subagents`, `crew`). |
+| [`crates/pi-tui`](file:///Users/bhavy/pi-rust/crates/pi-tui) | `packages/tui` | Ratatui terminal UI, interactive overlays (Memory Explorer `/memory`, Plan Mode `/plan`, Clarification Modal `/ask`, Diff View `/diff`, Model Picker), Mermaid renderer. |
 | [`crates/pi-rpc`](file:///Users/bhavy/pi-rust/crates/pi-rpc) | `packages/protocol` & `packages/server` | Bi-directional JSON-RPC 2.0 daemon over stdin/stdout with ordered MPSC event streaming. |
 
 ---
@@ -58,10 +65,11 @@ The workspace is strictly partitioned into 7 focused Cargo crates under `crates/
 
 ### Invariant 1: Dependency Flow & Decoupling
 - `pi-cli` depends on all crates.
+- `pi-daemon` depends on `pi-core`, `pi-providers`, `pi-session`, `pi-tools`.
 - `pi-tui` depends on `pi-core`, `pi-providers`, `pi-session`.
 - `pi-rpc` depends on `pi-core`, `pi-providers`, `pi-session`, `pi-tools`.
 - `pi-core` depends on `pi-providers`, `pi-session`, `pi-tools`.
-- **Leaf Crates Must Remain Decoupled:** `pi-providers`, `pi-session`, and `pi-tools` must never depend on each other or on `pi-core`/`pi-tui`/`pi-rpc`.
+- **Leaf Crates Must Remain Decoupled:** `pi-providers`, `pi-session`, and `pi-tools` must never depend on each other or on `pi-core`/`pi-tui`/`pi-rpc`/`pi-daemon`.
 
 ### Invariant 2: Session DAG Message Causality & Node Metadata
 - **Strict DAG Causality:** Always append `Role::Assistant` (containing tool call metadata) to `SessionTree` *before* executing tools and appending subsequent `Role::Tool` outputs.
@@ -99,6 +107,23 @@ All registered tools must be defined in both:
 
 ### Invariant 9: String Slicing UTF-8 Character Boundaries
 - **Never** slice UTF-8 strings by raw byte indices (`&s[..len]`). Always use `s.floor_char_boundary(len)` to prevent runtime panics on multibyte Unicode characters, emojis, and HTML entities.
+
+### Invariant 10: 100% Pure Rust Background Daemon (`taud`) & Socket Hygiene
+- `taud` listens strictly over Unix Domain Sockets (`~/.tau/taud.sock`) with JSON-RPC 2.0 frames delimited by `\n`.
+- Graceful shutdown (`SIGINT`, `SIGTERM`) must cleanly unlink the socket file from the filesystem.
+- Idle daemon memory consumption must remain $< 5\text{MB}$ RSS.
+
+### Invariant 11: JARVIS Federated Specialist Shared Memory
+- All specialist personas (`J.A.R.V.I.S.`, `F.R.I.D.A.Y.`, `E.V.`) share a unified, synchronized `TauVault` instance.
+- Specialized personas alter conversational tone, formatting, and analysis heuristics without bifurcating persistent hindsight memory.
+
+### Invariant 12: Action Snapshot & Mutation Rollback Guarantees
+- Before executing any file write, edit, or deletion, `UndoEngine` must capture the pre-mutation content snapshot.
+- Single-step and multi-step rollbacks (`undo_last(n)`) must guarantee byte-for-byte fidelity without partial file corruption.
+
+### Invariant 13: The Alfred Moral Override Protocol Non-Blocking Guarantee
+- The Alfred Protocol monitors operational and health boundaries (`Observation` $\to$ `Advisory` $\to$ `Urgent` $\to$ `LastStand`).
+- Alfred advises with solemn conviction but never deadlocks the agent loop without explicit operator intervention.
 
 ---
 
@@ -148,10 +173,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace -- --nocapture
 ```
 
-- [ ] All 64+ workspace tests pass with 100% success rate.
+- [ ] All 249+ workspace tests pass with 100% success rate across all 8 crates.
 - [ ] Session message causality maintained (`User` $\to$ `Assistant` $\to$ `Tool`).
 - [ ] OpenAI `tool_call_id` and Anthropic `tool_result` protocol compliance verified.
 - [ ] String slicing uses `floor_char_boundary`.
 - [ ] Subprocess execution uses async timeouts and kills child handles on timeout.
 - [ ] JSON-RPC stdout is pure JSON-RPC (all logs route to `eprintln!`).
+- [ ] Background daemon `taud` binds to Unix socket cleanly and cleans up on shutdown.
+- [ ] Undo engine snapshots record pre/post states for reversible operations.
 - [ ] No dead code, debug prints, or unhandled unwraps left in production code paths.

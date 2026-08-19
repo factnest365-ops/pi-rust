@@ -1,13 +1,13 @@
 use crate::mermaid::MermaidRenderer;
-use crate::style::Theme;
-use ratatui::style::{Color, Modifier, Style};
+use crate::style::ThemePalette;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 pub struct MarkdownRenderer;
 
 impl MarkdownRenderer {
-    /// Render markdown text into styled Ratatui lines
-    pub fn render(markdown: &str) -> Vec<Line<'static>> {
+    /// Render markdown text into styled Ratatui lines using the active theme
+    pub fn render_styled(markdown: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         let mut in_code_block = false;
         let mut code_lang = String::new();
@@ -25,12 +25,12 @@ impl MarkdownRenderer {
                     } else {
                         let label = if code_lang.is_empty() { "code" } else { &code_lang };
                         lines.push(Line::from(vec![
-                            Span::styled(format!(" ── [{}] ──", label), Theme::code_border()),
+                            Span::styled(format!(" ── [{}] ──", label), theme.code_border()),
                         ]));
                         for cl in &code_lines {
-                            lines.push(Self::highlight_code_line(cl, &code_lang));
+                            lines.push(Self::highlight_code_line_styled(cl, &code_lang, theme));
                         }
-                        lines.push(Line::from(Span::styled(" ────────────", Theme::code_border())));
+                        lines.push(Line::from(Span::styled(" ────────────", theme.code_border())));
                     }
                     in_code_block = false;
                     code_lang.clear();
@@ -53,21 +53,21 @@ impl MarkdownRenderer {
             if let Some(rest) = raw_line.strip_prefix("### ") {
                 lines.push(Line::from(Span::styled(
                     format!("■ {}", rest.trim()),
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD),
                 )));
                 continue;
             }
             if let Some(rest) = raw_line.strip_prefix("## ") {
                 lines.push(Line::from(Span::styled(
                     format!("◆ {}", rest.trim()),
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme.cyan).add_modifier(Modifier::BOLD),
                 )));
                 continue;
             }
             if let Some(rest) = raw_line.strip_prefix("# ") {
                 lines.push(Line::from(Span::styled(
                     format!("● {}", rest.trim()),
-                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                    Style::default().fg(theme.green).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
                 )));
                 continue;
             }
@@ -75,22 +75,22 @@ impl MarkdownRenderer {
             // Blockquotes
             if let Some(rest) = raw_line.strip_prefix("> ") {
                 lines.push(Line::from(vec![
-                    Span::styled(" │ ", Style::default().fg(Color::Cyan)),
-                    Span::styled(rest.to_string(), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
+                    Span::styled(" │ ", Style::default().fg(theme.cyan)),
+                    Span::styled(rest.to_string(), Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC)),
                 ]));
                 continue;
             }
 
             // Bullet points
             if let Some(rest) = raw_line.strip_prefix("- ").or_else(|| raw_line.strip_prefix("* ")) {
-                let mut spans = vec![Span::styled("  • ", Style::default().fg(Color::Cyan))];
-                spans.extend(Self::parse_inline_spans(rest));
+                let mut spans = vec![Span::styled("  • ", Style::default().fg(theme.cyan))];
+                spans.extend(Self::parse_inline_spans_styled(rest, theme));
                 lines.push(Line::from(spans));
                 continue;
             }
 
             // Standard line with inline formatting
-            lines.push(Line::from(Self::parse_inline_spans(raw_line)));
+            lines.push(Line::from(Self::parse_inline_spans_styled(raw_line, theme)));
         }
 
         // Clean up unclosed code block if in streaming state
@@ -101,10 +101,10 @@ impl MarkdownRenderer {
             } else {
                 let label = if code_lang.is_empty() { "code (streaming...)" } else { &code_lang };
                 lines.push(Line::from(vec![
-                    Span::styled(format!(" ── [{}] ──", label), Theme::code_border()),
+                    Span::styled(format!(" ── [{}] ──", label), theme.code_border()),
                 ]));
                 for cl in &code_lines {
-                    lines.push(Self::highlight_code_line(cl, &code_lang));
+                    lines.push(Self::highlight_code_line_styled(cl, &code_lang, theme));
                 }
             }
         }
@@ -112,48 +112,62 @@ impl MarkdownRenderer {
         lines
     }
 
-    fn parse_inline_spans(text: &str) -> Vec<Span<'static>> {
+    pub fn parse_inline_spans(text: &str) -> Vec<Span<'static>> {
+        Self::parse_inline_spans_styled(text, &ThemePalette::default_pi())
+    }
+
+    pub fn parse_inline_spans_styled(text: &str, theme: &ThemePalette) -> Vec<Span<'static>> {
         let mut spans = Vec::new();
         let mut i = 0;
-        let bytes = text.as_bytes();
-        let len = bytes.len();
         let mut curr = String::new();
 
-        while i < len {
+        while i < text.len() {
+            let rem = &text[i..];
+
             // Bold: **text**
-            if i + 1 < len && bytes[i] == b'*' && bytes[i + 1] == b'*' {
+            if let Some(stripped) = rem.strip_prefix("**")
+                && let Some(end) = stripped.find("**")
+            {
                 if !curr.is_empty() {
-                    spans.push(Span::styled(curr.clone(), Style::default().fg(Color::White)));
+                    spans.push(Span::styled(curr.clone(), Style::default().fg(theme.text)));
                     curr.clear();
                 }
-                if let Some(end) = text[i + 2..].find("**") {
-                    let bold_text = &text[i + 2..i + 2 + end];
-                    spans.push(Span::styled(bold_text.to_string(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)));
-                    i += end + 4;
-                    continue;
-                }
+                let bold_text = &stripped[..end];
+                spans.push(Span::styled(
+                    bold_text.to_string(),
+                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                ));
+                i += 4 + end;
+                continue;
             }
 
             // Inline code: `code`
-            if bytes[i] == b'`' {
+            if let Some(stripped) = rem.strip_prefix('`')
+                && let Some(end) = stripped.find('`')
+            {
                 if !curr.is_empty() {
-                    spans.push(Span::styled(curr.clone(), Style::default().fg(Color::White)));
+                    spans.push(Span::styled(curr.clone(), Style::default().fg(theme.text)));
                     curr.clear();
                 }
-                if let Some(end) = text[i + 1..].find('`') {
-                    let code_text = &text[i + 1..i + 1 + end];
-                    spans.push(Span::styled(format!("`{}`", code_text), Style::default().fg(Color::Yellow).bg(Color::Rgb(30, 30, 30))));
-                    i += end + 2;
-                    continue;
-                }
+                let code_text = &stripped[..end];
+                spans.push(Span::styled(
+                    format!("`{}`", code_text),
+                    Style::default().fg(theme.yellow).bg(theme.surface),
+                ));
+                i += 2 + end;
+                continue;
             }
 
-            curr.push(text[i..].chars().next().unwrap_or(' '));
-            i += text[i..].chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+            if let Some(c) = rem.chars().next() {
+                curr.push(c);
+                i += c.len_utf8();
+            } else {
+                break;
+            }
         }
 
         if !curr.is_empty() {
-            spans.push(Span::styled(curr, Style::default().fg(Color::White)));
+            spans.push(Span::styled(curr, Style::default().fg(theme.text)));
         }
 
         if spans.is_empty() {
@@ -163,7 +177,15 @@ impl MarkdownRenderer {
         spans
     }
 
-    pub fn highlight_code_line(line: &str, _lang: &str) -> Line<'static> {
+    pub fn render(markdown: &str) -> Vec<Line<'static>> {
+        Self::render_styled(markdown, &ThemePalette::default_pi())
+    }
+
+    pub fn highlight_code_line(line: &str, lang: &str) -> Line<'static> {
+        Self::highlight_code_line_styled(line, lang, &ThemePalette::default_pi())
+    }
+
+    pub fn highlight_code_line_styled(line: &str, _lang: &str, theme: &ThemePalette) -> Line<'static> {
         let mut spans = Vec::new();
         let trimmed = line.trim_start();
         let indent_len = line.len() - trimmed.len();
@@ -172,7 +194,7 @@ impl MarkdownRenderer {
         }
 
         if trimmed.starts_with("//") || trimmed.starts_with('#') {
-            spans.push(Span::styled(trimmed.to_string(), Theme::highlight_comment()));
+            spans.push(Span::styled(trimmed.to_string(), theme.highlight_comment()));
             return Line::from(spans);
         }
 
@@ -184,18 +206,18 @@ impl MarkdownRenderer {
             let clean = word.trim_matches(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' || c == ';' || c == ',' || c == ':');
             let style = match clean {
                 "fn" | "let" | "mut" | "pub" | "struct" | "enum" | "trait" | "impl" | "async" | "await" | "match" | "if" | "else" | "return" | "use" | "mod" | "type" | "const" | "static" | "self" | "Self" | "def" | "class" | "import" | "from" | "function" | "export" => {
-                    Theme::highlight_keyword()
+                    theme.highlight_keyword()
                 }
                 "String" | "str" | "i32" | "i64" | "u32" | "u64" | "usize" | "f32" | "f64" | "bool" | "Option" | "Result" | "Vec" | "Some" | "None" | "Ok" | "Err" | "true" | "false" => {
-                    Theme::highlight_type()
+                    theme.highlight_type()
                 }
                 s if s.starts_with('"') || s.ends_with('"') || s.starts_with('\'') || s.ends_with('\'') => {
-                    Theme::highlight_string()
+                    theme.highlight_string()
                 }
                 s if s.chars().all(|c| c.is_ascii_digit() || c == '_') && !s.is_empty() => {
-                    Theme::highlight_number()
+                    theme.highlight_number()
                 }
-                _ => Style::default().fg(Color::White),
+                _ => Style::default().fg(theme.text),
             };
             spans.push(Span::styled(word.to_string(), style));
         }
@@ -210,8 +232,26 @@ mod tests {
 
     #[test]
     fn test_markdown_renderer_headings_and_code() {
-        let md = "# Title\n## Subtitle\n```rust\nfn main() {}\n```";
+        let md = "# Title\n## Subtitle\n### Section\n> quote\n- item\n```rust\nfn main() {}\n```";
         let lines = MarkdownRenderer::render(md);
-        assert_eq!(lines.len(), 5);
+        assert_eq!(lines.len(), 8);
+    }
+
+    #[test]
+    fn test_markdown_renderer_styled_themes() {
+        for kind in crate::style::ThemeKind::ALL {
+            let palette = ThemePalette::from_kind(*kind);
+            let md = "# Title\n**bold text** and `code`\n```python\ndef hello(): pass\n```";
+            let lines = MarkdownRenderer::render_styled(md, &palette);
+            assert!(!lines.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_markdown_unicode_and_emojis() {
+        let md = "# 🚀 Title with emoji\n**🦀 Rust 2024** and `let x = \"✨\";`\n- 🎯 Bullet point";
+        let lines = MarkdownRenderer::render(md);
+        assert_eq!(lines.len(), 3);
     }
 }
+

@@ -215,7 +215,7 @@ impl LspTool {
 
     pub fn matches_exact_symbol(line: &str, symbol: &str) -> bool {
         let keywords = [
-            "fn ", "struct ", "enum ", "trait ", "impl ", "def ", "class ", "let ", "const ", "type ",
+            "fn ", "struct ", "enum ", "trait ", "impl ", "impl<", "def ", "class ", "let ", "const ", "type ",
         ];
         for kw in keywords {
             if let Some(pos) = line.find(kw) {
@@ -223,13 +223,31 @@ impl LspTool {
                 if pos > 0 && !line.as_bytes()[pos - 1].is_ascii_whitespace() {
                     continue;
                 }
-                let rest = &line[pos + kw.len()..];
+                let mut rest = &line[pos + kw.len()..];
+                if kw == "impl<"
+                    && let Some(close_angle) = rest.find('>')
+                {
+                    rest = rest[close_angle + 1..].trim_start();
+                }
                 let ident = rest
                     .split(|c: char| !c.is_alphanumeric() && c != '_')
                     .next()
                     .unwrap_or("");
                 if ident == symbol {
                     return true;
+                }
+                // Also match target type for "impl Trait for TargetType"
+                if (kw == "impl " || kw == "impl<")
+                    && let Some(for_pos) = rest.find(" for ")
+                {
+                    let for_rest = rest[for_pos + 5..].trim_start();
+                    let target_ident = for_rest
+                        .split(|c: char| !c.is_alphanumeric() && c != '_')
+                        .next()
+                        .unwrap_or("");
+                    if target_ident == symbol {
+                        return true;
+                    }
                 }
             }
         }
@@ -266,8 +284,10 @@ impl LspTool {
             let line = line_res?;
             let trimmed = line.trim();
 
-            if trimmed.starts_with("///") || trimmed.starts_with("/**") || trimmed.starts_with('*') {
+            if trimmed.starts_with("///") || trimmed.starts_with("/**") || trimmed.starts_with('*') || trimmed.starts_with("//") {
                 doc_comments.push(trimmed.to_string());
+            } else if trimmed.starts_with("#[") || trimmed.starts_with('@') || trimmed.is_empty() {
+                // Skip attributes, annotations, and blank lines without clearing accumulated doc comments
             } else if Self::matches_exact_symbol(trimmed, symbol) {
                 let docs = if doc_comments.is_empty() {
                     "No docstring available.".to_string()
@@ -335,5 +355,49 @@ impl Greeter {
 
         let hover_out = LspTool::hover_info(file_str, "Greeter").unwrap();
         assert!(hover_out.contains("Sample struct documentation"));
+    }
+
+    #[test]
+    fn test_extract_python_and_js_symbols() {
+        let tmp = tempfile::tempdir().unwrap();
+        let py_path = tmp.path().join("service.py");
+        let js_path = tmp.path().join("client.js");
+
+        fs::write(&py_path, "class UserService:\n    def get_user(self, uid):\n        pass\n").unwrap();
+        fs::write(&js_path, "export function fetchData() {}\nexport const API_URL = 'http://api';\n").unwrap();
+
+        let py_symbols = LspTool::extract_symbols(py_path.to_str().unwrap()).unwrap();
+        assert!(py_symbols.contains("[Class] class UserService"));
+        assert!(py_symbols.contains("[Function] def get_user"));
+
+        let js_symbols = LspTool::extract_symbols(js_path.to_str().unwrap()).unwrap();
+        assert!(js_symbols.contains("[Function] export function fetchData"));
+        assert!(js_symbols.contains("[Function] export const API_URL"));
+    }
+
+    #[test]
+    fn test_lsp_find_generic_impl_definition() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("traits.rs");
+        let file_str = file_path.to_str().unwrap();
+
+        let code = r#"
+pub trait Transformer<T> {
+    fn transform(&self, val: T) -> T;
+}
+
+impl<T> Transformer<T> for Pipeline {
+    fn transform(&self, val: T) -> T {
+        val
+    }
+}
+"#;
+        fs::write(&file_path, code).unwrap();
+
+        let def_trait = LspTool::find_definition(file_str, "Transformer").unwrap();
+        assert!(def_trait.contains("Found definition of 'Transformer'"));
+
+        let def_target = LspTool::find_definition(file_str, "Pipeline").unwrap();
+        assert!(def_target.contains("Found definition of 'Pipeline'"));
     }
 }

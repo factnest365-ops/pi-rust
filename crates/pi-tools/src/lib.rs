@@ -11,6 +11,7 @@ pub mod github;
 pub mod lsp;
 pub mod mcp;
 pub mod plugins;
+pub mod speculate;
 pub mod subagents;
 pub mod web;
 
@@ -20,14 +21,18 @@ pub use crew::{
     CrewTools,
 };
 pub use git::{
-    git_worktree_create, git_worktree_create_in_dir, git_worktree_list, git_worktree_list_in_dir,
-    git_worktree_merge, git_worktree_merge_in_dir, git_worktree_remove, git_worktree_remove_in_dir,
-    GitTool, WorktreeInfo,
+    git_merge_branch_in_dir, git_worktree_create, git_worktree_create_at,
+    git_worktree_create_in_dir, git_worktree_list, git_worktree_list_in_dir, git_worktree_merge,
+    git_worktree_merge_in_dir, git_worktree_remove, git_worktree_remove_in_dir,
+    git_worktree_remove_path, GitTool, WorktreeInfo,
 };
 pub use github::GithubTool;
 pub use lsp::LspTool;
 pub use mcp::{get_mcp_manager, McpManager, McpServerConfig, McpToolDefinition};
 pub use plugins::ToolPlugin;
+pub use speculate::{
+    register_speculate_handler, SpeculateArgs, SpeculateTool, SpeculateToolHandler,
+};
 pub use subagents::{
     register_subagent_handler, InvokeSubagentArgs, ManageSubagentsArgs, SubagentToolHandler,
     SubagentTools,
@@ -56,14 +61,14 @@ impl ToolExecutor {
             "read" => Self::execute_read(&call.arguments),
             "write" => Self::execute_write(&call.arguments),
             "edit" => Self::execute_edit(&call.arguments),
-            "bash" => Self::execute_bash_async(&call.arguments).await,
+            "bash" | "sh" | "shell" | "exec" => Self::execute_bash_async(&call.arguments).await,
             "grep" => Self::execute_grep(&call.arguments),
             "find" => Self::execute_find(&call.arguments),
-            "ls" => Self::execute_ls(&call.arguments),
-            "web_fetch" | "web" => WebTool::execute_async(&call.arguments).await,
+            "ls" | "list_dir" | "dir" => Self::execute_ls(&call.arguments),
+            "web_fetch" | "web" | "fetch" => WebTool::execute_async(&call.arguments).await,
             "web_search" | "search" => WebTool::execute_search_async(&call.arguments).await,
             "git" => GitTool::execute(&call.arguments),
-            "github" => GithubTool::execute(&call.arguments),
+            "github" | "gh" => GithubTool::execute(&call.arguments),
             "lsp" => LspTool::execute(&call.arguments),
             "ast" | "ast_slice" => AstTool::execute(&call.arguments),
             "invoke_subagent" => SubagentTools::execute_invoke_async(&call.arguments).await,
@@ -71,6 +76,7 @@ impl ToolExecutor {
             "crew_dispatch" => CrewTools::execute_dispatch_async(&call.arguments).await,
             "crew_status" => CrewTools::execute_status_async(&call.arguments).await,
             "crew_merge" => CrewTools::execute_merge_async(&call.arguments).await,
+            "speculate" | "speculative_race" => SpeculateTool::execute_async(&call.arguments).await,
             mcp_tool_name => {
                 let mcp_mgr = get_mcp_manager();
                 let mgr = mcp_mgr.lock().await;
@@ -366,6 +372,20 @@ impl ToolExecutor {
                     },
                     "required": ["task_id"]
                 }
+            }),
+            serde_json::json!({
+                "name": "speculate",
+                "description": "Run a speculative execution race testing two competing implementation strategies concurrently in ghost worktrees",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "goal": { "type": "string", "description": "The coding task or refactoring goal to execute" },
+                        "strategy_a": { "type": "string", "description": "Optional directive for Approach A (e.g. Zero-alloc / functional)" },
+                        "strategy_b": { "type": "string", "description": "Optional directive for Approach B (e.g. Modular / extensible)" },
+                        "verify_cmd": { "type": "string", "description": "Optional verification command to run (defaults to cargo check/test)" }
+                    },
+                    "required": ["goal"]
+                }
             })
         ];
 
@@ -380,6 +400,9 @@ impl ToolExecutor {
     fn execute_read(args: &serde_json::Value) -> Result<String> {
         let path = args["path"]
             .as_str()
+            .or_else(|| args["file"].as_str())
+            .or_else(|| args["filepath"].as_str())
+            .or_else(|| args["file_path"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path'"))?;
 
         let start_line = args["start_line"]
@@ -391,9 +414,13 @@ impl ToolExecutor {
             .as_u64()
             .map(|v| v as usize)
             .or_else(|| {
-                args["limit"]
-                    .as_u64()
-                    .map(|lim| start_line + (lim as usize).saturating_sub(1))
+                args["limit"].as_u64().map(|lim| {
+                    if lim == 0 {
+                        start_line.saturating_sub(1)
+                    } else {
+                        start_line + (lim as usize).saturating_sub(1)
+                    }
+                })
             })
             .unwrap_or(usize::MAX);
 
@@ -426,9 +453,14 @@ impl ToolExecutor {
     fn execute_write(args: &serde_json::Value) -> Result<String> {
         let path = args["path"]
             .as_str()
+            .or_else(|| args["file"].as_str())
+            .or_else(|| args["filepath"].as_str())
+            .or_else(|| args["file_path"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path'"))?;
         let content = args["content"]
             .as_str()
+            .or_else(|| args["contents"].as_str())
+            .or_else(|| args["text"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'content'"))?;
 
         if let Some(parent) = std::path::Path::new(path).parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -442,14 +474,26 @@ impl ToolExecutor {
     fn execute_edit(args: &serde_json::Value) -> Result<String> {
         let path = args["path"]
             .as_str()
+            .or_else(|| args["file"].as_str())
+            .or_else(|| args["filepath"].as_str())
+            .or_else(|| args["file_path"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'path'"))?;
         let target = args["target"]
             .as_str()
             .or_else(|| args["oldText"].as_str())
+            .or_else(|| args["old_text"].as_str())
+            .or_else(|| args["old_str"].as_str())
+            .or_else(|| args["old"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'target' or 'oldText'"))?;
+        if target.is_empty() {
+            return Err(anyhow::anyhow!("'target' parameter cannot be empty"));
+        }
         let replacement = args["replacement"]
             .as_str()
             .or_else(|| args["newText"].as_str())
+            .or_else(|| args["new_text"].as_str())
+            .or_else(|| args["new_str"].as_str())
+            .or_else(|| args["new"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'replacement' or 'newText'"))?;
 
         let content = fs::read_to_string(path)?;
@@ -465,7 +509,8 @@ impl ToolExecutor {
                 if crlf_occ > 0 {
                     occurrences = crlf_occ;
                     actual_target = crlf_target;
-                    actual_replacement = replacement.replace('\n', "\r\n");
+                    let norm_rep = replacement.replace("\r\n", "\n");
+                    actual_replacement = norm_rep.replace('\n', "\r\n");
                 }
             } else if target.contains("\r\n") && !content.contains("\r\n") {
                 let lf_target = target.replace("\r\n", "\n");
@@ -497,6 +542,7 @@ impl ToolExecutor {
     async fn execute_bash_async(args: &serde_json::Value) -> Result<String> {
         let command_str = args["command"]
             .as_str()
+            .or_else(|| args["cmd"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'command'"))?;
 
         let mut cmd = tokio::process::Command::new("sh");
@@ -504,29 +550,34 @@ impl ToolExecutor {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        if let Some(cwd) = args["cwd"].as_str() {
+        if let Some(cwd) = args["cwd"].as_str().or_else(|| args["working_dir"].as_str()).or_else(|| args["dir"].as_str()) {
             cmd.current_dir(cwd);
         }
 
         let mut child = cmd.spawn()?;
         let timeout_dur = std::time::Duration::from_secs(120);
 
-        let mut stdout_pipe = child.stdout.take();
-        let mut stderr_pipe = child.stderr.take();
+        let stdout_pipe = child.stdout.take();
+        let stderr_pipe = child.stderr.take();
 
         let wait_future = async {
-            let mut stdout_bytes = Vec::new();
-            let mut stderr_bytes = Vec::new();
+            use tokio::io::AsyncReadExt;
+            let stdout_fut = async {
+                let mut buf = Vec::new();
+                if let Some(mut s) = stdout_pipe {
+                    let _ = s.read_to_end(&mut buf).await;
+                }
+                buf
+            };
+            let stderr_fut = async {
+                let mut buf = Vec::new();
+                if let Some(mut s) = stderr_pipe {
+                    let _ = s.read_to_end(&mut buf).await;
+                }
+                buf
+            };
 
-            if let Some(ref mut s) = stdout_pipe {
-                use tokio::io::AsyncReadExt;
-                let _ = s.read_to_end(&mut stdout_bytes).await;
-            }
-            if let Some(ref mut s) = stderr_pipe {
-                use tokio::io::AsyncReadExt;
-                let _ = s.read_to_end(&mut stderr_bytes).await;
-            }
-
+            let (stdout_bytes, stderr_bytes) = tokio::join!(stdout_fut, stderr_fut);
             let _status = child.wait().await?;
             Ok::<_, anyhow::Error>((stdout_bytes, stderr_bytes))
         };
@@ -551,6 +602,7 @@ impl ToolExecutor {
             Ok(Err(e)) => Err(anyhow::anyhow!("Subprocess execution error: {}", e)),
             Err(_) => {
                 let _ = child.kill().await;
+                let _ = child.wait().await;
                 Err(anyhow::anyhow!("Command execution timed out after 120 seconds"))
             }
         }
@@ -559,8 +611,14 @@ impl ToolExecutor {
     fn execute_grep(args: &serde_json::Value) -> Result<String> {
         let pattern = args["pattern"]
             .as_str()
+            .or_else(|| args["query"].as_str())
+            .or_else(|| args["regex"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'pattern'"))?;
-        let search_path = args["path"].as_str().unwrap_or(".");
+        let search_path = args["path"]
+            .as_str()
+            .or_else(|| args["dir"].as_str())
+            .or_else(|| args["directory"].as_str())
+            .unwrap_or(".");
 
         let output = Command::new("grep")
             .arg("-rnI")
@@ -578,8 +636,17 @@ impl ToolExecutor {
     }
 
     fn execute_find(args: &serde_json::Value) -> Result<String> {
-        let pattern = args["pattern"].as_str().unwrap_or("*");
-        let search_path = args["path"].as_str().unwrap_or(".");
+        let pattern = args["pattern"]
+            .as_str()
+            .or_else(|| args["query"].as_str())
+            .or_else(|| args["name"].as_str())
+            .or_else(|| args["glob"].as_str())
+            .unwrap_or("*");
+        let search_path = args["path"]
+            .as_str()
+            .or_else(|| args["dir"].as_str())
+            .or_else(|| args["directory"].as_str())
+            .unwrap_or(".");
 
         let match_flag = if pattern.contains('/') { "-path" } else { "-name" };
 
@@ -598,7 +665,11 @@ impl ToolExecutor {
     }
 
     fn execute_ls(args: &serde_json::Value) -> Result<String> {
-        let dir_path = args["path"].as_str().unwrap_or(".");
+        let dir_path = args["path"]
+            .as_str()
+            .or_else(|| args["dir"].as_str())
+            .or_else(|| args["directory"].as_str())
+            .unwrap_or(".");
         let entries = fs::read_dir(dir_path)?;
 
         let mut items = Vec::new();
@@ -938,5 +1009,235 @@ mod tests {
         let res = ToolExecutor::execute(&call).await;
         assert!(!res.is_error);
         assert!(res.output.contains("Active Git Worktrees") || res.output.contains("No active worktrees"));
+    }
+
+    #[tokio::test]
+    async fn test_read_tool_zero_start_line_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("zero_start.txt");
+        fs::write(&file_path, "sample content\n").unwrap();
+
+        let call = ToolCall {
+            id: "call-zero".to_string(),
+            name: "read".to_string(),
+            arguments: serde_json::json!({
+                "path": file_path.to_str().unwrap(),
+                "start_line": 0
+            }),
+        };
+        let res = ToolExecutor::execute(&call).await;
+        assert!(res.is_error);
+        assert!(res.output.contains("1-indexed"));
+    }
+
+    #[tokio::test]
+    async fn test_read_tool_limit_zero_and_beyond_eof() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("lim_zero.txt");
+        fs::write(&file_path, "line 1\nline 2\n").unwrap();
+
+        let call_lim0 = ToolCall {
+            id: "call-lim0".to_string(),
+            name: "read".to_string(),
+            arguments: serde_json::json!({
+                "path": file_path.to_str().unwrap(),
+                "offset": 1,
+                "limit": 0
+            }),
+        };
+        let res_lim0 = ToolExecutor::execute(&call_lim0).await;
+        assert!(!res_lim0.is_error);
+        assert_eq!(res_lim0.output, "");
+
+        let call_eof = ToolCall {
+            id: "call-eof".to_string(),
+            name: "read".to_string(),
+            arguments: serde_json::json!({
+                "path": file_path.to_str().unwrap(),
+                "start_line": 100
+            }),
+        };
+        let res_eof = ToolExecutor::execute(&call_eof).await;
+        assert!(!res_eof.is_error);
+        assert_eq!(res_eof.output, "");
+    }
+
+    #[tokio::test]
+    async fn test_read_tool_aliases_and_missing_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("aliases.txt");
+        fs::write(&file_path, "Hello Alias!\n").unwrap();
+
+        let call_alias = ToolCall {
+            id: "call-alias".to_string(),
+            name: "read".to_string(),
+            arguments: serde_json::json!({
+                "filepath": file_path.to_str().unwrap()
+            }),
+        };
+        let res_alias = ToolExecutor::execute(&call_alias).await;
+        assert!(!res_alias.is_error);
+        assert!(res_alias.output.contains("Hello Alias!"));
+
+        let call_missing = ToolCall {
+            id: "call-missing".to_string(),
+            name: "read".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let res_missing = ToolExecutor::execute(&call_missing).await;
+        assert!(res_missing.is_error);
+        assert!(res_missing.output.contains("Missing 'path'"));
+    }
+
+    #[tokio::test]
+    async fn test_write_nested_directory_creation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nested_file = tmp.path().join("deep").join("nested").join("dir").join("file.rs");
+
+        let call = ToolCall {
+            id: "call-write-nest".to_string(),
+            name: "write".to_string(),
+            arguments: serde_json::json!({
+                "file_path": nested_file.to_str().unwrap(),
+                "contents": "pub fn hello() {}\n"
+            }),
+        };
+        let res = ToolExecutor::execute(&call).await;
+        assert!(!res.is_error);
+        assert!(nested_file.exists());
+        assert_eq!(fs::read_to_string(&nested_file).unwrap(), "pub fn hello() {}\n");
+    }
+
+    #[tokio::test]
+    async fn test_edit_tool_edge_cases() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("edit_edges.txt");
+        fs::write(&file_path, "fn first() {}\nfn second() {}\nfn third() {}\n").unwrap();
+
+        // 1. Empty target error
+        let call_empty = ToolCall {
+            id: "call-edit-empty".to_string(),
+            name: "edit".to_string(),
+            arguments: serde_json::json!({
+                "path": file_path.to_str().unwrap(),
+                "target": "",
+                "replacement": "anything"
+            }),
+        };
+        let res_empty = ToolExecutor::execute(&call_empty).await;
+        assert!(res_empty.is_error);
+        assert!(res_empty.output.contains("cannot be empty"));
+
+        // 2. Target not found error
+        let call_not_found = ToolCall {
+            id: "call-edit-nf".to_string(),
+            name: "edit".to_string(),
+            arguments: serde_json::json!({
+                "path": file_path.to_str().unwrap(),
+                "target": "fn non_existent()",
+                "replacement": "fn replacement()"
+            }),
+        };
+        let res_nf = ToolExecutor::execute(&call_not_found).await;
+        assert!(res_nf.is_error);
+        assert!(res_nf.output.contains("Target string not found"));
+
+        // 3. Multiline unambiguous edit with aliases
+        let call_multi = ToolCall {
+            id: "call-edit-multi".to_string(),
+            name: "edit".to_string(),
+            arguments: serde_json::json!({
+                "file": file_path.to_str().unwrap(),
+                "old_text": "fn second() {}\nfn third() {}",
+                "new_text": "fn second_renamed() {}\nfn third_renamed() {}"
+            }),
+        };
+        let res_multi = ToolExecutor::execute(&call_multi).await;
+        assert!(!res_multi.is_error);
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("fn second_renamed() {}"));
+        assert!(content.contains("fn third_renamed() {}"));
+        assert!(!content.contains("fn second()"));
+    }
+
+    #[tokio::test]
+    async fn test_bash_tool_aliases_and_stderr() {
+        let tmp = tempfile::tempdir().unwrap();
+        let call = ToolCall {
+            id: "call-sh".to_string(),
+            name: "sh".to_string(),
+            arguments: serde_json::json!({
+                "cmd": "echo 'hello out' && echo 'hello err' >&2",
+                "working_dir": tmp.path().to_str().unwrap()
+            }),
+        };
+        let res = ToolExecutor::execute(&call).await;
+        assert!(!res.is_error);
+        assert!(res.output.contains("hello out"));
+        assert!(res.output.contains("--- STDERR ---"));
+        assert!(res.output.contains("hello err"));
+    }
+
+    #[tokio::test]
+    async fn test_find_and_ls_tools() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sub_dir = tmp.path().join("sub_folder");
+        fs::create_dir_all(&sub_dir).unwrap();
+        let file_a = tmp.path().join("alpha.rs");
+        let file_b = sub_dir.join("beta.txt");
+        fs::write(&file_a, "alpha").unwrap();
+        fs::write(&file_b, "beta").unwrap();
+
+        // Test find
+        let find_call = ToolCall {
+            id: "call-find".to_string(),
+            name: "find".to_string(),
+            arguments: serde_json::json!({
+                "path": tmp.path().to_str().unwrap(),
+                "pattern": "*.rs"
+            }),
+        };
+        let find_res = ToolExecutor::execute(&find_call).await;
+        assert!(!find_res.is_error);
+        assert!(find_res.output.contains("alpha.rs"));
+
+        // Test ls directory sorting
+        let ls_call = ToolCall {
+            id: "call-ls".to_string(),
+            name: "list_dir".to_string(),
+            arguments: serde_json::json!({
+                "directory": tmp.path().to_str().unwrap()
+            }),
+        };
+        let ls_res = ToolExecutor::execute(&ls_call).await;
+        assert!(!ls_res.is_error);
+        assert!(ls_res.output.contains("DIR  | sub_folder"));
+        assert!(ls_res.output.contains("FILE | alpha.rs (5 bytes)"));
+
+        // Test empty ls
+        let empty_tmp = tempfile::tempdir().unwrap();
+        let ls_empty = ToolCall {
+            id: "call-ls-empty".to_string(),
+            name: "dir".to_string(),
+            arguments: serde_json::json!({
+                "path": empty_tmp.path().to_str().unwrap()
+            }),
+        };
+        let empty_res = ToolExecutor::execute(&ls_empty).await;
+        assert!(!empty_res.is_error);
+        assert_eq!(empty_res.output, "(empty directory)");
+    }
+
+    #[tokio::test]
+    async fn test_tool_executor_unknown_tool_error() {
+        let call = ToolCall {
+            id: "call-unknown".to_string(),
+            name: "non_existent_tool_name".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let res = ToolExecutor::execute(&call).await;
+        assert!(res.is_error);
+        assert!(res.output.contains("Unknown tool: non_existent_tool_name"));
     }
 }

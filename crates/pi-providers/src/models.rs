@@ -87,21 +87,155 @@ impl ModelCatalogLoader {
         pi_dir.join("models_cache.json")
     }
 
+    /// Format context window tokens into human readable string (e.g. 2M, 1M, 200k, 128k, 64k, 32k)
+    pub fn format_context_k(context_window: usize) -> String {
+        if context_window >= 1_000_000 {
+            let m = context_window / 1_000_000;
+            let remainder = (context_window % 1_000_000) / 100_000;
+            if remainder > 0 {
+                format!("{}.{}M", m, remainder)
+            } else {
+                format!("{}M", m)
+            }
+        } else if context_window >= 1_000 {
+            format!("{}k", context_window / 1_000)
+        } else {
+            format!("{}", context_window)
+        }
+    }
+
+    /// Dynamically infers the exact context window and maximum output limits based on model architecture
+    pub fn infer_model_limits(model_id: &str, provider: &str) -> (usize, usize) {
+        let clean_id = model_id.to_lowercase();
+        let clean_prov = provider.to_lowercase();
+
+        // 1. First check high-precision heuristics by known model families
+        if clean_id.contains("gemini-3.1")
+            || clean_id.contains("gemini-3.0")
+            || clean_id.contains("gemini-2.5-pro")
+            || clean_id.contains("gemini-2.0-pro")
+            || clean_id.contains("gemini-1.5-pro")
+            || clean_id.contains("gemini-exp")
+        {
+            return (2_097_152, 64_000); // 2M Context + 64k Output
+        } else if clean_id.contains("gemini-2.5-flash")
+            || clean_id.contains("gemini-2.0-flash")
+            || clean_id.contains("gemini-flash")
+            || clean_id.contains("gemini")
+        {
+            return (1_048_576, 64_000); // 1M Context + 64k Output
+        } else if clean_id.contains("grok-4.6") || clean_id.contains("grok-4") {
+            return (1_048_576, 128_000); // 1M Context + 128k Output
+        } else if clean_id.contains("opus-5") || clean_id.contains("claude-4") || clean_id.contains("gpt-5") {
+            return (500_000, 128_000); // 500k Context + 128k Output
+        } else if clean_id.contains("glm-5") || clean_id.contains("kimi-k3") {
+            return (256_000, 64_000); // 256k Context
+        } else if clean_id.contains("codestral") {
+            return (256_000, 16_384); // 256k Context
+        } else if clean_id.contains("qwen-3") || clean_id.contains("qwq-72b") {
+            return (256_000, 32_768); // 256k Context
+        } else if clean_id.contains("claude-3-7") || clean_id.contains("3-7-sonnet") {
+            return (200_000, 64_000); // 200k Context + 64k Output
+        } else if clean_id.contains("claude-3-5") || clean_id.contains("claude-3") || clean_id.contains("anthropic") {
+            return (200_000, 8_192); // 200k Context
+        } else if clean_id.contains("o3") || clean_id.contains("o1") || clean_id.contains("grok-3") {
+            return (200_000, 100_000); // 200k Context + 100k Output
+        } else if clean_id.contains("deepseek-r2") || clean_id.contains("deepseek-v4") {
+            return (128_000, 16_384); // 128k Context
+        } else if clean_id.contains("deepseek-r1")
+            || clean_id.contains("deepseek-reasoner")
+            || clean_id.contains("deepseek-chat")
+            || clean_id.contains("deepseek-v3")
+        {
+            return (64_000, 8_000); // 64k Context
+        } else if clean_id.contains("grok-2")
+            || clean_id.contains("grok")
+            || clean_id.contains("qwq")
+            || clean_id.contains("llama-4")
+            || clean_id.contains("llama-3.3")
+            || clean_id.contains("llama-3.1")
+            || clean_id.contains("qwen-2.5")
+            || clean_id.contains("gpt-4.5")
+            || clean_id.contains("gpt-4o")
+            || clean_id.contains("gpt-4")
+        {
+            return (128_000, 16_384); // 128k Context
+        } else if clean_id.contains("mistral-small") {
+            return (32_000, 4_096); // 32k Context
+        }
+
+        // 2. Exact match in static catalog or cached catalog
+        let full_prefixed = format!("{}/{}", provider, model_id);
+        for m in Self::load_cached_or_static() {
+            if m.id.eq_ignore_ascii_case(model_id) || m.id.eq_ignore_ascii_case(&full_prefixed) {
+                return (m.context_window, m.max_output);
+            }
+        }
+
+        // 3. Fallbacks by provider type
+        if clean_prov == "ollama" || clean_prov == "llamacpp" {
+            (32_000, 4_096)
+        } else {
+            (128_000, 8_192)
+        }
+    }
+
     /// Curated list of all latest frontier, gateway, cloud, and specialized models
     pub fn static_frontier_models() -> Vec<ModelInfo> {
         vec![
-            // Anthropic Claude
-            ModelInfo::new("anthropic/claude-3-7-sonnet-latest", "Anthropic", 200_000, 64_000, true, true, "Most intelligent Claude model with hybrid reasoning & coding"),
-            ModelInfo::new("anthropic/claude-3-5-sonnet-latest", "Anthropic", 200_000, 8_192, false, true, "Industry benchmark for high-performance agentic coding"),
-            ModelInfo::new("anthropic/claude-3-5-haiku-latest", "Anthropic", 200_000, 8_192, false, false, "Ultra-fast low-latency code assistant"),
-            ModelInfo::new("anthropic/claude-3-opus-latest", "Anthropic", 200_000, 4_096, false, true, "Deep analysis and complex reasoning"),
+            // xAI Grok (2026 SOTA Frontier Flagship)
+            ModelInfo::new("xai/grok-4.6", "xAI", 1_048_576, 128_000, true, true, "Flagship Grok 4.6 frontier deep reasoning model with 1M context"),
+            ModelInfo::new("xai/grok-4", "xAI", 1_048_576, 128_000, true, true, "xAI Grok 4 frontier multimodal reasoning engine"),
+            ModelInfo::new("xai/grok-4-mini", "xAI", 500_000, 64_000, true, false, "xAI Grok 4 Mini ultra-fast reasoning model"),
+            ModelInfo::new("xai/grok-3-latest", "xAI", 200_000, 100_000, true, true, "xAI Grok 3 high-capacity reasoning model"),
+            ModelInfo::new("openrouter/x-ai/grok-4.6", "OpenRouter", 1_048_576, 128_000, true, true, "Grok 4.6 via OpenRouter Gateway"),
 
-            // OpenAI Frontier
-            ModelInfo::new("openai/gpt-4.5-preview", "OpenAI", 128_000, 16_384, false, true, "Massive world-knowledge frontier model"),
+            // Anthropic Claude (2026 Hybrid Reasoning & Frontier Coding)
+            ModelInfo::new("anthropic/claude-opus-5", "Anthropic", 500_000, 128_000, true, true, "Claude Opus 5 top-tier deep refactoring & verified agentic coding"),
+            ModelInfo::new("anthropic/claude-4-sonnet", "Anthropic", 500_000, 128_000, true, true, "Anthropic Claude 4 Sonnet flagship hybrid reasoning & coding"),
+            ModelInfo::new("anthropic/claude-4-opus", "Anthropic", 500_000, 128_000, true, true, "Claude 4 Opus deep architecture analysis & verified coding"),
+            ModelInfo::new("anthropic/claude-3-7-sonnet-latest", "Anthropic", 200_000, 64_000, true, true, "Claude 3.7 Sonnet hybrid reasoning & coding"),
+            ModelInfo::new("anthropic/claude-3-5-sonnet-latest", "Anthropic", 200_000, 8_192, false, true, "Claude 3.5 Sonnet benchmark coding model"),
+            ModelInfo::new("anthropic/claude-3-5-haiku-latest", "Anthropic", 200_000, 8_192, false, false, "Ultra-fast low-latency code assistant"),
+
+            // OpenAI Frontier (2026 Flagship Intelligence & Deep Reasoning)
+            ModelInfo::new("openai/gpt-5.6-sol", "OpenAI", 500_000, 128_000, true, true, "GPT-5.6 Sol terminal-first autonomous agent leader"),
+            ModelInfo::new("openai/gpt-5-preview", "OpenAI", 500_000, 128_000, true, true, "OpenAI GPT-5 flagship frontier reasoning model"),
+            ModelInfo::new("openai/gpt-5", "OpenAI", 500_000, 128_000, true, true, "OpenAI GPT-5 next-generation general intelligence"),
+            ModelInfo::new("openai/o3", "OpenAI", 200_000, 100_000, true, true, "OpenAI o3 flagship deep reasoning & verification"),
+            ModelInfo::new("openai/o3-mini", "OpenAI", 200_000, 100_000, true, false, "OpenAI o3-mini fast reasoning and code synthesis"),
+            ModelInfo::new("openai/gpt-4.5-preview", "OpenAI", 128_000, 16_384, false, true, "GPT-4.5 massive world-knowledge model"),
             ModelInfo::new("openai/gpt-4o", "OpenAI", 128_000, 16_384, false, true, "Flagship versatile multimodal intelligence"),
-            ModelInfo::new("openai/gpt-4o-mini", "OpenAI", 128_000, 16_384, false, true, "Fast, lightweight multimodal model"),
-            ModelInfo::new("openai/o1", "OpenAI", 200_000, 100_000, true, true, "Full deep reasoning model for hard STEM & architecture"),
-            ModelInfo::new("openai/o3-mini", "OpenAI", 200_000, 100_000, true, false, "Fast reasoning and code synthesis model"),
+
+            // Google Gemini (2026 Multimodal & Ultra-Long 2M Context)
+            ModelInfo::new("gemini/gemini-3.1-pro", "Google", 2_097_152, 64_000, true, true, "Gemini 3.1 Pro 2M context large-repo and UI coding leader"),
+            ModelInfo::new("gemini/gemini-3.0-pro", "Google", 2_097_152, 64_000, true, true, "Gemini 3.0 Pro frontier 2M context deep reasoning"),
+            ModelInfo::new("gemini/gemini-2.5-pro", "Google", 2_097_152, 64_000, true, true, "Gemini 2.5 Pro with 2M context comprehension"),
+            ModelInfo::new("gemini/gemini-2.5-flash", "Google", 1_048_576, 64_000, true, true, "Gemini 2.5 Flash low-latency multimodal intelligence"),
+            ModelInfo::new("gemini/gemini-2.0-flash", "Google", 1_048_576, 8_192, false, true, "Next-gen multimodal flash speed with 1M context"),
+            ModelInfo::new("gemini/gemini-2.0-flash-thinking-exp", "Google (Free Exp)", 1_048_576, 64_000, true, true, "Gemini 2.0 Flash Thinking Experimental reasoning"),
+
+            // DeepSeek & Open Weight Frontier (2026)
+            ModelInfo::new("deepseek/deepseek-v4-pro", "DeepSeek", 128_000, 16_384, true, false, "DeepSeek-V4 Pro high-value frontier reasoning"),
+            ModelInfo::new("deepseek/deepseek-v4", "DeepSeek", 128_000, 16_384, false, false, "DeepSeek-V4 frontier MoE model"),
+            ModelInfo::new("deepseek/deepseek-r2", "DeepSeek", 128_000, 16_384, true, false, "DeepSeek-R2 next-gen open reasoning architecture"),
+            ModelInfo::new("deepseek/deepseek-reasoner", "DeepSeek", 64_000, 8_000, true, false, "DeepSeek-R1 open reasoning model"),
+            ModelInfo::new("deepseek/deepseek-chat", "DeepSeek", 64_000, 8_000, false, false, "DeepSeek-V3 671B MoE coding model"),
+
+            // GLM & Kimi (2026 Long-Horizon & Frontend SOTA)
+            ModelInfo::new("zhipu/glm-5.2", "Zhipu AI", 256_000, 64_000, true, false, "GLM 5.2 premier open-weight long-horizon agentic coding"),
+            ModelInfo::new("moonshot/kimi-k3", "Moonshot", 256_000, 64_000, true, true, "Kimi K3 exceptional frontend & web coding model"),
+
+            // Mistral & Codestral (2026 SOTA)
+            ModelInfo::new("mistral/codestral-2601", "Mistral", 256_000, 16_384, false, false, "Codestral 2601 frontier coding model with 256k context"),
+            ModelInfo::new("mistral/codestral-latest", "Mistral", 256_000, 8_192, false, false, "Specialized coding LLM with 256k context"),
+            ModelInfo::new("mistral/mistral-large-latest", "Mistral", 128_000, 8_192, false, false, "Flagship European multilingual model"),
+
+            // Alibaba Qwen & QwQ Reasoning
+            ModelInfo::new("qwen/qwen-3.6-coder", "Qwen", 256_000, 32_768, false, false, "Qwen 3.6 Coder open champion for multi-file generation"),
+            ModelInfo::new("qwen/qwen-3-coder-32b", "Qwen", 256_000, 32_768, false, false, "Qwen 3 Coder 32B next-gen open coding champion"),
+            ModelInfo::new("qwen/qwq-72b", "Qwen", 256_000, 32_768, true, false, "QwQ 72B open frontier reasoning model"),
+            ModelInfo::new("qwen/qwq-32b", "Qwen", 128_000, 16_384, true, false, "QwQ 32B open mathematical and code reasoning"),
 
             // OpenRouter Free Tier Models (Zero Cost)
             ModelInfo::new("openrouter/deepseek/deepseek-r1:free", "OpenRouter (Free)", 64_000, 8_000, true, false, "Free DeepSeek-R1 full open reasoning model"),
@@ -112,23 +246,11 @@ impl ModelCatalogLoader {
             ModelInfo::new("openrouter/qwen/qwen-2.5-coder-32b-instruct:free", "OpenRouter (Free)", 128_000, 8_192, false, false, "Free Qwen 2.5 Coder 32B specialized coding model"),
             ModelInfo::new("openrouter/mistralai/mistral-small-24b-instruct-2501:free", "OpenRouter (Free)", 32_000, 8_192, false, false, "Free Mistral Small 24B lightweight model"),
 
-            // Google Gemini & Free Experimental Models
-            ModelInfo::new("gemini/gemini-2.0-flash", "Google", 1_048_576, 8_192, false, true, "Next-gen multimodal flash speed with 1M context"),
-            ModelInfo::new("gemini/gemini-2.0-flash-exp", "Google (Free Exp)", 1_048_576, 8_192, false, true, "Gemini 2.0 Flash Experimental with 1M context"),
-            ModelInfo::new("gemini/gemini-2.0-flash-thinking-exp", "Google (Free Exp)", 1_048_576, 64_000, true, true, "Gemini 2.0 Flash Thinking Experimental reasoning"),
-            ModelInfo::new("gemini/gemini-exp-1206", "Google (Free Exp)", 2_097_152, 8_192, true, true, "Gemini Quality Experimental 1206 with 2M context"),
-            ModelInfo::new("gemini/gemini-2.0-pro-exp", "Google", 2_097_152, 8_192, true, true, "2M context frontier reasoning and coding"),
-            ModelInfo::new("gemini/gemini-1.5-pro", "Google", 2_097_152, 8_192, false, true, "Ultra-long 2M context comprehension"),
-
             // Ollama / Local Models (Zero Cost / Free Local Daemons)
             ModelInfo::new("ollama/qwen2.5-coder:32b", "Ollama (Local Free)", 128_000, 16_384, false, false, "Local Qwen 2.5 Coder 32B running via Ollama"),
             ModelInfo::new("ollama/deepseek-r1:32b", "Ollama (Local Free)", 64_000, 8_000, true, false, "Local DeepSeek R1 32B reasoning running via Ollama"),
             ModelInfo::new("ollama/llama3.3:70b", "Ollama (Local Free)", 128_000, 8_192, false, false, "Local Llama 3.3 70B running via Ollama"),
             ModelInfo::new("lmstudio/local-model", "LM Studio (Local Free)", 128_000, 8_192, false, true, "Local LLM loaded in LM Studio on port 1234"),
-
-            // DeepSeek
-            ModelInfo::new("deepseek/deepseek-chat", "DeepSeek", 64_000, 8_000, false, false, "DeepSeek-V3 671B MoE frontier coding"),
-            ModelInfo::new("deepseek/deepseek-reasoner", "DeepSeek", 64_000, 8_000, true, false, "DeepSeek-R1 open reasoning model"),
 
             // GitHub Copilot Gateway
             ModelInfo::new("copilot/claude-3.5-sonnet", "GitHub Copilot", 200_000, 8_192, false, true, "GitHub Copilot Claude 3.5 Sonnet pipeline"),
@@ -139,13 +261,9 @@ impl ModelCatalogLoader {
             ModelInfo::new("bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0", "Amazon Bedrock", 200_000, 8_192, false, true, "Amazon Bedrock Claude 3.5 Sonnet"),
             ModelInfo::new("bedrock/anthropic.claude-3-5-haiku-20241022-v1:0", "Amazon Bedrock", 200_000, 8_192, false, false, "Amazon Bedrock Claude 3.5 Haiku"),
 
-            // Groq High-Throughput
+            // Groq High-Throughput (300+ tok/s)
             ModelInfo::new("groq/llama-3.3-70b-versatile", "Groq", 128_000, 32_768, false, false, "Llama 3.3 70B running at 300+ tok/s"),
             ModelInfo::new("groq/deepseek-r1-distill-llama-70b", "Groq", 128_000, 8_192, true, false, "High-speed DeepSeek-R1 distillation"),
-
-            // Mistral & Codestral
-            ModelInfo::new("mistral/mistral-large-latest", "Mistral", 128_000, 8_192, false, false, "Flagship European multilingual model"),
-            ModelInfo::new("mistral/codestral-latest", "Mistral", 256_000, 8_192, false, false, "Specialized coding LLM with 256k context"),
 
             // Cerebras Ultra-Low Latency
             ModelInfo::new("cerebras/llama-3.3-70b", "Cerebras", 128_000, 8_192, false, false, "Ultra-fast Cerebras CS-3 wafer engine"),
@@ -654,5 +772,126 @@ mod tests {
         let results = ModelCatalogLoader::search_models(&models, "claude sonnet");
         assert!(!results.is_empty());
         assert!(results.iter().all(|m| m.id.contains("claude") && m.id.contains("sonnet")));
+    }
+
+    #[test]
+    fn test_search_models_empty_and_no_match() {
+        let models = ModelCatalogLoader::static_frontier_models();
+        let all_models = ModelCatalogLoader::search_models(&models, "   ");
+        assert_eq!(all_models.len(), models.len());
+
+        let no_match = ModelCatalogLoader::search_models(&models, "nonexistent_model_xyz_12345");
+        assert!(no_match.is_empty());
+    }
+
+    #[test]
+    fn test_model_info_properties() {
+        let m = ModelInfo::new("my-prov/custom-llm", "MyProvider", 65536, 4096, true, true, "Custom test description");
+        assert_eq!(m.id, "my-prov/custom-llm");
+        assert_eq!(m.name, "custom-llm");
+        assert_eq!(m.provider, "MyProvider");
+        assert_eq!(m.context_window, 65536);
+        assert_eq!(m.max_output, 4096);
+        assert!(m.supports_reasoning);
+        assert!(m.supports_vision);
+    }
+
+    #[test]
+    fn test_custom_models_config_deserialization() {
+        let json_str = r#"{
+            "providers": {
+                "custom_gw": {
+                    "baseUrl": "https://custom.ai/v1",
+                    "apiKey": "gw_key",
+                    "models": [
+                        {
+                            "id": "custom-fast",
+                            "name": "Custom Fast",
+                            "contextWindow": 32000,
+                            "reasoning": true
+                        }
+                    ]
+                }
+            },
+            "models": [
+                {
+                    "id": "standalone/coder-v1",
+                    "provider": "Standalone",
+                    "contextWindow": 64000
+                }
+            ]
+        }"#;
+
+        let cfg: CustomModelsConfig = serde_json::from_str(json_str).expect("Valid JSON config");
+        assert!(cfg.providers.is_some());
+        let provs = cfg.providers.unwrap();
+        assert!(provs.contains_key("custom_gw"));
+        assert_eq!(provs["custom_gw"].base_url.as_deref(), Some("https://custom.ai/v1"));
+        let p_models = provs["custom_gw"].models.as_ref().unwrap();
+        assert_eq!(p_models[0].id, "custom-fast");
+        assert_eq!(p_models[0].context_window, Some(32000));
+        assert_eq!(p_models[0].reasoning, Some(true));
+
+        let s_models = cfg.models.unwrap();
+        assert_eq!(s_models[0].id, "standalone/coder-v1");
+        assert_eq!(s_models[0].provider.as_deref(), Some("Standalone"));
+    }
+
+    #[test]
+    fn test_infer_model_limits_dynamic_resolution() {
+        // xAI Grok 4.6 (1M context + 128k output)
+        let (cw_grok, out_grok) = ModelCatalogLoader::infer_model_limits("xai/grok-4.6", "xai");
+        assert_eq!(cw_grok, 1_048_576);
+        assert_eq!(out_grok, 128_000);
+
+        // OpenAI GPT-5 (500k context + 128k output)
+        let (cw_gpt5, out_gpt5) = ModelCatalogLoader::infer_model_limits("openai/gpt-5-preview", "openai");
+        assert_eq!(cw_gpt5, 500_000);
+        assert_eq!(out_gpt5, 128_000);
+
+        // Anthropic Claude 4 (500k context + 128k output)
+        let (cw_claude4, out_claude4) = ModelCatalogLoader::infer_model_limits("anthropic/claude-4-sonnet", "anthropic");
+        assert_eq!(cw_claude4, 500_000);
+        assert_eq!(out_claude4, 128_000);
+
+        // Gemini 3.0 2M
+        let (cw_gemini_pro, _) = ModelCatalogLoader::infer_model_limits("gemini/gemini-3.0-pro", "gemini");
+        assert_eq!(cw_gemini_pro, 2_097_152);
+
+        // Gemini 2.0 Flash 1M
+        let (cw_gemini_flash, _) = ModelCatalogLoader::infer_model_limits("gemini-2.0-flash", "gemini");
+        assert_eq!(cw_gemini_flash, 1_048_576);
+
+        // Codestral 256k
+        let (cw_codestral, _) = ModelCatalogLoader::infer_model_limits("mistral/codestral-2601", "mistral");
+        assert_eq!(cw_codestral, 256_000);
+
+        // Claude 3.7 200k
+        let (cw_claude, max_out) = ModelCatalogLoader::infer_model_limits("anthropic/claude-3-7-sonnet-latest", "anthropic");
+        assert_eq!(cw_claude, 200_000);
+        assert_eq!(max_out, 64_000);
+
+        // OpenAI o1 / o3-mini 200k
+        let (cw_o1, _) = ModelCatalogLoader::infer_model_limits("openai/o1", "openai");
+        assert_eq!(cw_o1, 200_000);
+
+        // DeepSeek 64k
+        let (cw_deepseek, _) = ModelCatalogLoader::infer_model_limits("deepseek/deepseek-reasoner", "deepseek");
+        assert_eq!(cw_deepseek, 64_000);
+
+        // Local Ollama 32k
+        let (cw_ollama, _) = ModelCatalogLoader::infer_model_limits("mistral-small", "ollama");
+        assert_eq!(cw_ollama, 32_000);
+    }
+
+    #[test]
+    fn test_format_context_k_representation() {
+        assert_eq!(ModelCatalogLoader::format_context_k(2_097_152), "2M");
+        assert_eq!(ModelCatalogLoader::format_context_k(1_048_576), "1M");
+        assert_eq!(ModelCatalogLoader::format_context_k(256_000), "256k");
+        assert_eq!(ModelCatalogLoader::format_context_k(200_000), "200k");
+        assert_eq!(ModelCatalogLoader::format_context_k(128_000), "128k");
+        assert_eq!(ModelCatalogLoader::format_context_k(64_000), "64k");
+        assert_eq!(ModelCatalogLoader::format_context_k(32_000), "32k");
     }
 }

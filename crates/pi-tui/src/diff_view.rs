@@ -98,36 +98,63 @@ impl DiffView {
         let n = old_lines.len();
         let m = new_lines.len();
 
-        // Standard LCS table calculation
-        let mut dp = vec![vec![0u32; m + 1]; n + 1];
-        for i in 0..n {
-            for j in 0..m {
-                if old_lines[i] == new_lines[j] {
-                    dp[i + 1][j + 1] = dp[i][j] + 1;
-                } else {
-                    dp[i + 1][j + 1] = dp[i + 1][j].max(dp[i][j + 1]);
+        let ops = if n > 1000 || m > 1000 || n * m > 1_000_000 {
+            // Fast prefix/suffix diff for large files
+            let mut ops = Vec::new();
+            let mut start_eq = 0;
+            while start_eq < n && start_eq < m && old_lines[start_eq] == new_lines[start_eq] {
+                ops.push(DiffOp::Equal(old_lines[start_eq]));
+                start_eq += 1;
+            }
+            let mut old_end = n;
+            let mut new_end = m;
+            while old_end > start_eq && new_end > start_eq && old_lines[old_end - 1] == new_lines[new_end - 1] {
+                old_end -= 1;
+                new_end -= 1;
+            }
+            for line in &old_lines[start_eq..old_end] {
+                ops.push(DiffOp::Delete(line));
+            }
+            for line in &new_lines[start_eq..new_end] {
+                ops.push(DiffOp::Insert(line));
+            }
+            for line in &old_lines[old_end..n] {
+                ops.push(DiffOp::Equal(line));
+            }
+            ops
+        } else {
+            // Standard LCS table calculation
+            let mut dp = vec![vec![0u32; m + 1]; n + 1];
+            for i in 0..n {
+                for j in 0..m {
+                    if old_lines[i] == new_lines[j] {
+                        dp[i + 1][j + 1] = dp[i][j] + 1;
+                    } else {
+                        dp[i + 1][j + 1] = dp[i][j].max(dp[i + 1][j]);
+                    }
                 }
             }
-        }
 
-        // Backtrack to extract edit script
-        let mut i = n;
-        let mut j = m;
-        let mut ops = Vec::new();
-        while i > 0 || j > 0 {
-            if i > 0 && j > 0 && old_lines[i - 1] == new_lines[j - 1] {
-                ops.push(DiffOp::Equal(old_lines[i - 1]));
-                i -= 1;
-                j -= 1;
-            } else if j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j]) {
-                ops.push(DiffOp::Insert(new_lines[j - 1]));
-                j -= 1;
-            } else if i > 0 {
-                ops.push(DiffOp::Delete(old_lines[i - 1]));
-                i -= 1;
+            // Backtrack to extract edit script
+            let mut i = n;
+            let mut j = m;
+            let mut script = Vec::new();
+            while i > 0 || j > 0 {
+                if i > 0 && j > 0 && old_lines[i - 1] == new_lines[j - 1] {
+                    script.push(DiffOp::Equal(old_lines[i - 1]));
+                    i -= 1;
+                    j -= 1;
+                } else if j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j]) {
+                    script.push(DiffOp::Insert(new_lines[j - 1]));
+                    j -= 1;
+                } else if i > 0 {
+                    script.push(DiffOp::Delete(old_lines[i - 1]));
+                    i -= 1;
+                }
             }
-        }
-        ops.reverse();
+            script.reverse();
+            script
+        };
 
         // 3 lines of context around change hunks
         const CONTEXT_SIZE: usize = 3;
@@ -439,4 +466,35 @@ mod tests {
 
         state.scroll_up(2);
     }
+
+    #[test]
+    fn test_large_file_prefix_suffix_diff_fallback() {
+        // Create 1200 lines to trigger the n > 1000 branch (O(N+M) prefix/suffix fallback)
+        let old_lines: Vec<String> = (0..1200).map(|i| format!("line_{:04}", i)).collect();
+        let mut new_lines = old_lines.clone();
+        // Modify a few lines in the middle
+        new_lines[500] = "line_0500_MODIFIED".to_string();
+        new_lines[501] = "line_0501_MODIFIED".to_string();
+        // Insert a new line
+        new_lines.insert(600, "line_inserted_xyz".to_string());
+
+        let old_str = old_lines.join("\n");
+        let new_str = new_lines.join("\n");
+
+        let diff = DiffView::compute_unified_diff(&old_str, &new_str, "big_file.txt");
+        assert!(!diff.is_empty());
+        assert!(diff.iter().any(|l| matches!(l, DiffLine::Deletion(d) if d.contains("line_0500"))));
+        assert!(diff.iter().any(|l| matches!(l, DiffLine::Addition(a) if a.contains("line_0500_MODIFIED"))));
+        assert!(diff.iter().any(|l| matches!(l, DiffLine::Addition(a) if a.contains("line_inserted_xyz"))));
+    }
+
+    #[test]
+    fn test_windows_crlf_diff() {
+        let old = "line1\r\nline2\r\nline3\r\n";
+        let new = "line1\r\nline2_changed\r\nline3\r\n";
+        let diff = DiffView::compute_unified_diff(old, new, "windows.txt");
+        assert!(diff.iter().any(|l| matches!(l, DiffLine::Addition(a) if a == "+line2_changed")));
+        assert!(diff.iter().any(|l| matches!(l, DiffLine::Deletion(d) if d == "-line2")));
+    }
 }
+

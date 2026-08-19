@@ -41,6 +41,10 @@ pub struct PiConfig {
     pub cerebras_api_key: Option<String>,
     pub mistral_api_key: Option<String>,
     pub default_model: Option<String>,
+    pub default_mode: Option<String>,
+    pub default_specialist: Option<String>,
+    pub theme: Option<String>,
+    pub alfred_level: Option<String>,
     #[serde(flatten)]
     pub custom_keys: std::collections::BTreeMap<String, serde_json::Value>,
 }
@@ -50,6 +54,15 @@ impl PiConfig {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         let pi_dir = home.join(".pi");
         let _ = fs::create_dir_all(&pi_dir);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = fs::metadata(&pi_dir) {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o700);
+                let _ = fs::set_permissions(&pi_dir, perms);
+            }
+        }
         pi_dir.join("config.json")
     }
 
@@ -69,67 +82,27 @@ impl PiConfig {
         if let Ok(json) = fs::read_to_string(Self::agent_auth_path())
             .map_err(anyhow::Error::from)
             .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).map_err(anyhow::Error::from))
+            && let Some(obj) = json.as_object()
         {
-            if cfg.opencode_api_key.is_none() {
-                cfg.opencode_api_key = json.get("opencode")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.kilo_api_key.is_none() {
-                cfg.kilo_api_key = json.get("kilo")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.anthropic_api_key.is_none() {
-                cfg.anthropic_api_key = json.get("anthropic")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.openai_api_key.is_none() {
-                cfg.openai_api_key = json.get("openai")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.gemini_api_key.is_none() {
-                cfg.gemini_api_key = json.get("gemini")
-                    .or_else(|| json.get("google"))
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.openrouter_api_key.is_none() {
-                cfg.openrouter_api_key = json.get("openrouter")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.deepseek_api_key.is_none() {
-                cfg.deepseek_api_key = json.get("deepseek")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.groq_api_key.is_none() {
-                cfg.groq_api_key = json.get("groq")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.cerebras_api_key.is_none() {
-                cfg.cerebras_api_key = json.get("cerebras")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
-            }
-            if cfg.mistral_api_key.is_none() {
-                cfg.mistral_api_key = json.get("mistral")
-                    .and_then(|v| v.get("key"))
-                    .and_then(|k| k.as_str())
-                    .map(ToString::to_string);
+            for (prov, val) in obj {
+                let key = val.get("key").and_then(|k| k.as_str()).map(ToString::to_string);
+                if let Some(k) = key {
+                    match prov.as_str() {
+                        "opencode" => if cfg.opencode_api_key.is_none() { cfg.opencode_api_key = Some(k); },
+                        "kilo" => if cfg.kilo_api_key.is_none() { cfg.kilo_api_key = Some(k); },
+                        "anthropic" => if cfg.anthropic_api_key.is_none() { cfg.anthropic_api_key = Some(k); },
+                        "openai" => if cfg.openai_api_key.is_none() { cfg.openai_api_key = Some(k); },
+                        "gemini" | "google" => if cfg.gemini_api_key.is_none() { cfg.gemini_api_key = Some(k); },
+                        "openrouter" => if cfg.openrouter_api_key.is_none() { cfg.openrouter_api_key = Some(k); },
+                        "deepseek" => if cfg.deepseek_api_key.is_none() { cfg.deepseek_api_key = Some(k); },
+                        "groq" => if cfg.groq_api_key.is_none() { cfg.groq_api_key = Some(k); },
+                        "cerebras" => if cfg.cerebras_api_key.is_none() { cfg.cerebras_api_key = Some(k); },
+                        "mistral" => if cfg.mistral_api_key.is_none() { cfg.mistral_api_key = Some(k); },
+                        _ => {
+                            cfg.custom_keys.entry(format!("{}_api_key", prov)).or_insert(serde_json::Value::String(k));
+                        }
+                    }
+                }
             }
         }
 
@@ -139,7 +112,16 @@ impl PiConfig {
     pub fn save(&self) -> Result<()> {
         let path = Self::config_path();
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(path, json)?;
+        fs::write(&path, json)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = fs::metadata(&path) {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o600);
+                let _ = fs::set_permissions(&path, perms);
+            }
+        }
         Ok(())
     }
 
@@ -305,6 +287,18 @@ pub struct ModelConfig {
     pub model_id: String,
     pub api_key: String,
     pub base_url: Option<String>,
+    #[serde(default = "default_context_window")]
+    pub context_window: usize,
+    #[serde(default = "default_max_output")]
+    pub max_output: usize,
+}
+
+fn default_context_window() -> usize {
+    128_000
+}
+
+fn default_max_output() -> usize {
+    8_192
 }
 
 impl ModelConfig {
@@ -321,7 +315,17 @@ impl ModelConfig {
     }
 
     pub fn resolve(raw_model: &str) -> Self {
-        let (provider, model_id) = if let Some((p, m)) = raw_model.split_once('/') {
+        let (provider, model_id) = if let Some(m) = raw_model.strip_prefix("openrouter/") {
+            ("openrouter", m)
+        } else if let Some(m) = raw_model.strip_prefix("ollama/") {
+            ("ollama", m)
+        } else if let Some(m) = raw_model.strip_prefix("llamacpp/") {
+            ("llamacpp", m)
+        } else if let Some(m) = raw_model.strip_prefix("lmstudio/") {
+            ("lmstudio", m)
+        } else if let Some(m) = raw_model.strip_prefix("vllm/") {
+            ("vllm", m)
+        } else if let Some((p, m)) = raw_model.split_once('/') {
             (p, m)
         } else if raw_model == "big-pickle"
             || raw_model.ends_with("-free")
@@ -349,139 +353,112 @@ impl ModelConfig {
             ("llamacpp", raw_model)
         } else if raw_model.contains("lmstudio") {
             ("lmstudio", raw_model)
+        } else if raw_model.contains("vllm") {
+            ("vllm", raw_model)
+        } else if raw_model.contains("mistral") || raw_model.contains("codestral") {
+            ("mistral", raw_model)
+        } else if raw_model.contains("cerebras") {
+            ("cerebras", raw_model)
+        } else if raw_model.contains("copilot") {
+            ("copilot", raw_model)
+        } else if raw_model.contains("bedrock") {
+            ("bedrock", raw_model)
         } else {
             ("opencode", raw_model)
         };
 
-        let mut resolved_key = AuthResolver::resolve_key(provider).unwrap_or_default();
-        if resolved_key.is_empty() && (provider == "opencode" || provider == "openrouter") {
+        let provider_lower = provider.to_lowercase();
+        let norm_provider = match provider_lower.as_str() {
+            "claude" => "anthropic",
+            "gpt" => "openai",
+            "google" => "gemini",
+            "zen" | "opencode-zen" | "opencode-go" => "opencode",
+            "kilo-gateway" => "kilo",
+            "agnes-gateway" => "agnes",
+            "together-ai" => "together",
+            "github-copilot" => "copilot",
+            "amazon-bedrock" => "bedrock",
+            "azure-openai" => "azure",
+            "nvidia-nim" => "nvidia",
+            "llama.cpp" => "llamacpp",
+            "cloudflare-ai-gateway" | "cloudflare-workers-ai" => "cloudflare",
+            "vercel-ai-gateway" => "vercel",
+            "kimi" => "moonshot",
+            "mimo" => "xiaomi",
+            "qwen-token-plan" => "qwen",
+            "hf" => "huggingface",
+            "codestral" => "mistral",
+            p => p,
+        };
+
+        let mut resolved_key = AuthResolver::resolve_key(norm_provider).unwrap_or_default();
+        if resolved_key.is_empty() && (norm_provider == "opencode" || norm_provider == "openrouter") {
             // Free tier models work with empty or public bearer token
             resolved_key = String::new();
         }
 
-        let (api_key, base_url) = match provider {
-            "opencode" | "opencode-zen" | "zen" => (
-                resolved_key,
-                Some(
-                    std::env::var("OPENCODE_BASE_URL")
-                        .ok()
-                        .or_else(|| Self::lookup_models_json_base_url("opencode"))
-                        .unwrap_or_else(|| "https://opencode.ai/zen/v1".to_string()),
-                ),
-            ),
-            "agnes" | "agnes-gateway" => (
-                resolved_key,
-                Some(
-                    std::env::var("AGNES_BASE_URL")
-                        .ok()
-                        .or_else(|| Self::lookup_models_json_base_url("agnes"))
-                        .unwrap_or_else(|| "https://api.agnes.ai/v1".to_string()),
-                ),
-            ),
-            "kilo" | "kilo-gateway" => (
-                resolved_key,
-                Some(
-                    std::env::var("KILO_BASE_URL")
-                        .ok()
-                        .or_else(|| Self::lookup_models_json_base_url("kilo"))
-                        .unwrap_or_else(|| "https://api.kilo.ai/api/gateway".to_string()),
-                ),
-            ),
+        let custom_base_url = std::env::var(format!("{}_BASE_URL", norm_provider.replace(['-', '.'], "_").to_uppercase()))
+            .ok()
+            .or_else(|| Self::lookup_models_json_base_url(norm_provider));
+
+        let (api_key, default_base_url) = match norm_provider {
+            "opencode" => (resolved_key, "https://opencode.ai/zen/v1"),
+            "agnes" => (resolved_key, "https://api.agnes.ai/v1"),
+            "kilo" => (resolved_key, "https://api.kilo.ai/api/gateway"),
             "ollama" => (
-                "ollama".to_string(),
-                Some("http://localhost:11434/v1".to_string()),
+                if resolved_key.is_empty() { "ollama".to_string() } else { resolved_key },
+                "http://localhost:11434/v1",
             ),
-            "llamacpp" | "llama.cpp" => (
-                "llamacpp".to_string(),
-                Some("http://localhost:8080/v1".to_string()),
+            "llamacpp" => (
+                if resolved_key.is_empty() { "llamacpp".to_string() } else { resolved_key },
+                "http://localhost:8080/v1",
             ),
             "lmstudio" => (
-                "lmstudio".to_string(),
-                Some("http://localhost:1234/v1".to_string()),
+                if resolved_key.is_empty() { "lmstudio".to_string() } else { resolved_key },
+                "http://localhost:1234/v1",
             ),
             "vllm" => (
-                "vllm".to_string(),
-                Some("http://localhost:8000/v1".to_string()),
+                if resolved_key.is_empty() { "vllm".to_string() } else { resolved_key },
+                "http://localhost:8000/v1",
             ),
-            "anthropic" => (
-                resolved_key,
-                Some("https://api.anthropic.com/v1".to_string()),
-            ),
-            "openai" => (
-                resolved_key,
-                Some("https://api.openai.com/v1".to_string()),
-            ),
-            "gemini" | "google" => (
-                resolved_key,
-                Some("https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
-            ),
-            "openrouter" => (
-                resolved_key,
-                Some("https://openrouter.ai/api/v1".to_string()),
-            ),
-            "deepseek" => (
-                resolved_key,
-                Some("https://api.deepseek.com/v1".to_string()),
-            ),
-            "groq" => (
-                resolved_key,
-                Some("https://api.groq.com/openai/v1".to_string()),
-            ),
-            "cerebras" => (
-                resolved_key,
-                Some("https://api.cerebras.ai/v1".to_string()),
-            ),
-            "mistral" => (
-                resolved_key,
-                Some("https://api.mistral.ai/v1".to_string()),
-            ),
-            "xai" => (
-                resolved_key,
-                Some("https://api.x.ai/v1".to_string()),
-            ),
-            "together" | "together-ai" => (
-                resolved_key,
-                Some("https://api.together.xyz/v1".to_string()),
-            ),
-            "fireworks" => (
-                resolved_key,
-                Some("https://api.fireworks.ai/inference/v1".to_string()),
-            ),
-            "perplexity" => (
-                resolved_key,
-                Some("https://api.perplexity.ai".to_string()),
-            ),
-            "copilot" | "github-copilot" => (
-                resolved_key,
-                Some("https://api.githubcopilot.com".to_string()),
-            ),
-            "qwen" | "qwen-token-plan" => (
-                resolved_key,
-                Some("https://dashscope-intl.aliyuncs.com/compatible-mode/v1".to_string()),
-            ),
-            "xiaomi" | "mimo" => (
-                resolved_key,
-                Some("https://api.mimo.xiaomi.com/v1".to_string()),
-            ),
-            "moonshot" | "kimi" => (
-                resolved_key,
-                Some("https://api.moonshot.cn/v1".to_string()),
-            ),
-            "huggingface" | "hf" => (
-                resolved_key,
-                Some("https://api-inference.huggingface.co/v1".to_string()),
-            ),
-            _ => (
-                resolved_key,
-                Some("https://api.kilo.ai/v1".to_string()),
-            ),
+            "anthropic" => (resolved_key, "https://api.anthropic.com/v1"),
+            "openai" => (resolved_key, "https://api.openai.com/v1"),
+            "gemini" => (resolved_key, "https://generativelanguage.googleapis.com/v1beta/openai"),
+            "openrouter" => (resolved_key, "https://openrouter.ai/api/v1"),
+            "deepseek" => (resolved_key, "https://api.deepseek.com/v1"),
+            "groq" => (resolved_key, "https://api.groq.com/openai/v1"),
+            "cerebras" => (resolved_key, "https://api.cerebras.ai/v1"),
+            "mistral" => (resolved_key, "https://api.mistral.ai/v1"),
+            "xai" => (resolved_key, "https://api.x.ai/v1"),
+            "together" => (resolved_key, "https://api.together.xyz/v1"),
+            "fireworks" => (resolved_key, "https://api.fireworks.ai/inference/v1"),
+            "perplexity" => (resolved_key, "https://api.perplexity.ai"),
+            "copilot" => (resolved_key, "https://api.githubcopilot.com"),
+            "qwen" => (resolved_key, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+            "xiaomi" => (resolved_key, "https://api.mimo.xiaomi.com/v1"),
+            "moonshot" => (resolved_key, "https://api.moonshot.cn/v1"),
+            "huggingface" => (resolved_key, "https://api-inference.huggingface.co/v1"),
+            "azure" => (resolved_key, "https://models.inference.ai.azure.com"),
+            "nvidia" => (resolved_key, "https://integrate.api.nvidia.com/v1"),
+            "bedrock" => (resolved_key, "https://bedrock-runtime.us-east-1.amazonaws.com"),
+            "cloudflare" => (resolved_key, "https://gateway.ai.cloudflare.com/v1"),
+            "vercel" => (resolved_key, "https://ai-gateway.vercel.sh/v1"),
+            "zai" => (resolved_key, "https://api.zai.cn/v1"),
+            "minimax" => (resolved_key, "https://api.minimax.chat/v1"),
+            "baseten" => (resolved_key, "https://bridge.baseten.co/v1"),
+            _ => (resolved_key, "https://api.kilo.ai/v1"),
         };
 
+        let base_url = custom_base_url.or_else(|| Some(default_base_url.to_string()));
+        let (context_window, max_output) = ModelCatalogLoader::infer_model_limits(raw_model, norm_provider);
+
         Self {
-            provider: provider.to_string(),
+            provider: norm_provider.to_string(),
             model_id: model_id.to_string(),
             api_key,
             base_url,
+            context_window,
+            max_output,
         }
     }
 }
@@ -630,6 +607,11 @@ impl OpenAiStreamState {
                         on_chunk(content.to_string());
                     }
                     if let Some(tool_calls_arr) = delta.get("tool_calls").and_then(|t| t.as_array()) {
+                        if self.is_thinking {
+                            self.is_thinking = false;
+                            self.full_text.push_str("\n</thinking>\n\n");
+                            on_chunk("\n</thinking>\n\n".to_string());
+                        }
                         for tc in tool_calls_arr {
                             let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
                             let entry = self.tool_calls.entry(index).or_default();
@@ -644,8 +626,12 @@ impl OpenAiStreamState {
                             {
                                 entry.name = name.to_string();
                             }
-                            if let Some(args) = tc.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str()) {
-                                entry.arguments_buf.push_str(args);
+                            if let Some(args_val) = tc.get("function").and_then(|f| f.get("arguments")) {
+                                if let Some(args_str) = args_val.as_str() {
+                                    entry.arguments_buf.push_str(args_str);
+                                } else if args_val.is_object() || args_val.is_array() {
+                                    entry.arguments_buf = args_val.to_string();
+                                }
                             }
                         }
                     }
@@ -738,11 +724,29 @@ impl AnthropicStreamState {
                 if let Some(cb) = json.get("content_block") {
                     let cb_type = cb.get("type").and_then(|t| t.as_str()).unwrap_or("");
                     if cb_type == "tool_use" {
+                        if self.is_thinking {
+                            self.is_thinking = false;
+                            self.full_text.push_str("\n</thinking>\n\n");
+                            on_chunk("\n</thinking>\n\n".to_string());
+                        }
                         let id = cb.get("id").and_then(|i| i.as_str()).unwrap_or("call_unknown").to_string();
                         let name = cb.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
                         let entry = self.tool_calls.entry(index).or_default();
                         entry.id = id;
                         entry.name = name;
+                        if let Some(input_val) = cb.get("input") && input_val.is_object() && !input_val.as_object().unwrap().is_empty() {
+                            entry.arguments_buf = input_val.to_string();
+                        }
+                    } else if cb_type == "thinking" {
+                        if !self.is_thinking {
+                            self.is_thinking = true;
+                            self.full_text.push_str("<thinking>\n");
+                            on_chunk("<thinking>\n".to_string());
+                        }
+                        if let Some(th) = cb.get("thinking").and_then(|t| t.as_str()) && !th.is_empty() {
+                            self.full_text.push_str(th);
+                            on_chunk(th.to_string());
+                        }
                     }
                 }
             }
@@ -787,8 +791,15 @@ impl AnthropicStreamState {
                     }
                 }
             }
+            "content_block_stop" if self.is_thinking => {
+                self.is_thinking = false;
+                self.full_text.push_str("\n</thinking>\n\n");
+                on_chunk("\n</thinking>\n\n".to_string());
+            }
             _ => {}
         }
+
+        self.current_event = None;
     }
 
     pub fn finish(mut self) -> ProviderResponse {
@@ -827,6 +838,185 @@ impl AnthropicStreamState {
 pub struct ProviderClient;
 
 impl ProviderClient {
+    /// Formats an array of ChatMessages into Anthropic Messages API format
+    /// Enforces alternating user/assistant roles and merges sequential tool_result blocks.
+    pub fn format_anthropic_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+        let mut anthropic_messages: Vec<serde_json::Value> = Vec::new();
+        for msg in messages {
+            if msg.role == "tool" {
+                let tool_use_id = msg.tool_call_id.as_deref().unwrap_or("tool_fallback_id");
+                let tool_result_block = serde_json::json!({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": msg.content,
+                });
+                if let Some(last) = anthropic_messages.last_mut()
+                    && last["role"] == "user"
+                    && last["content"].is_array()
+                {
+                    if let Some(arr) = last["content"].as_array_mut() {
+                        arr.push(tool_result_block);
+                    }
+                } else {
+                    anthropic_messages.push(serde_json::json!({
+                        "role": "user",
+                        "content": vec![tool_result_block]
+                    }));
+                }
+            } else if msg.role == "assistant" && let Some(ref tc) = msg.tool_calls && let Some(tc_arr) = tc.as_array() {
+                let mut content_blocks = Vec::new();
+                if !msg.content.is_empty() {
+                    content_blocks.push(serde_json::json!({
+                        "type": "text",
+                        "text": msg.content
+                    }));
+                }
+                for call in tc_arr {
+                    let id = call.get("id").and_then(|i| i.as_str()).unwrap_or("toolu_unknown");
+                    let name = call.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).unwrap_or("");
+                    let parsed_args = if let Some(func) = call.get("function") {
+                        if let Some(args_val) = func.get("arguments") {
+                            if args_val.is_object() {
+                                args_val.clone()
+                            } else if let Some(a_str) = args_val.as_str() {
+                                serde_json::from_str(a_str).unwrap_or_else(|_| serde_json::json!({}))
+                            } else {
+                                serde_json::json!({})
+                            }
+                        } else {
+                            serde_json::json!({})
+                        }
+                    } else {
+                        serde_json::json!({})
+                    };
+                    content_blocks.push(serde_json::json!({
+                        "type": "tool_use",
+                        "id": id,
+                        "name": name,
+                        "input": parsed_args
+                    }));
+                }
+                anthropic_messages.push(serde_json::json!({
+                    "role": "assistant",
+                    "content": content_blocks
+                }));
+            } else {
+                let role = match msg.role.as_str() {
+                    "assistant" => "assistant",
+                    _ => "user",
+                };
+                if let Some(last) = anthropic_messages.last_mut()
+                    && last["role"] == role
+                {
+                    if let Some(prev_text) = last["content"].as_str() {
+                        last["content"] = serde_json::json!(format!("{}\n\n{}", prev_text, msg.content));
+                    } else if let Some(arr) = last["content"].as_array_mut() {
+                        arr.push(serde_json::json!({
+                            "type": "text",
+                            "text": msg.content
+                        }));
+                    } else {
+                        anthropic_messages.push(serde_json::json!({
+                            "role": role,
+                            "content": msg.content
+                        }));
+                    }
+                } else {
+                    anthropic_messages.push(serde_json::json!({
+                        "role": role,
+                        "content": msg.content
+                    }));
+                }
+            }
+        }
+
+        if anthropic_messages.is_empty() {
+            anthropic_messages.push(serde_json::json!({
+                "role": "user",
+                "content": "Hello"
+            }));
+        }
+
+        anthropic_messages
+    }
+
+    /// Formats tool definitions for Anthropic Messages API
+    pub fn format_anthropic_tools(tools: &[serde_json::Value]) -> Vec<serde_json::Value> {
+        tools
+            .iter()
+            .map(|t| {
+                let name = t.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let description = t.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                let input_schema = t
+                    .get("parameters")
+                    .or_else(|| t.get("input_schema"))
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({"type": "object"}));
+                serde_json::json!({
+                    "name": name,
+                    "description": description,
+                    "input_schema": input_schema
+                })
+            })
+            .collect()
+    }
+
+    /// Formats an array of ChatMessages into OpenAI Chat Completions API format
+    /// Invariant: role "tool" always transmits "tool_call_id".
+    pub fn format_openai_messages(system_prompt: &str, messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+        let mut openai_messages = Vec::new();
+        if !system_prompt.is_empty() {
+            openai_messages.push(serde_json::json!({
+                "role": "system",
+                "content": system_prompt
+            }));
+        }
+        for msg in messages {
+            let mut msg_obj = serde_json::json!({
+                "role": msg.role,
+                "content": msg.content
+            });
+            if let Some(ref tcid) = msg.tool_call_id {
+                msg_obj["tool_call_id"] = serde_json::Value::String(tcid.clone());
+            } else if msg.role == "tool" {
+                msg_obj["tool_call_id"] = serde_json::Value::String("call_unknown".to_string());
+            }
+            if let Some(ref name) = msg.name {
+                msg_obj["name"] = serde_json::Value::String(name.clone());
+            }
+            if let Some(ref tc) = msg.tool_calls {
+                msg_obj["tool_calls"] = tc.clone();
+            }
+            openai_messages.push(msg_obj);
+        }
+
+        if openai_messages.is_empty() {
+            openai_messages.push(serde_json::json!({
+                "role": "user",
+                "content": "Hello"
+            }));
+        }
+
+        openai_messages
+    }
+
+    /// Formats tool definitions for OpenAI Chat Completions API
+    pub fn format_openai_tools(tools: &[serde_json::Value]) -> Vec<serde_json::Value> {
+        tools
+            .iter()
+            .map(|t| {
+                if t.get("type").and_then(|tp| tp.as_str()) == Some("function") {
+                    t.clone()
+                } else {
+                    serde_json::json!({
+                        "type": "function",
+                        "function": t
+                    })
+                }
+            })
+            .collect()
+    }
+
     pub async fn complete_text(
         config: &ModelConfig,
         system_prompt: &str,
@@ -878,99 +1068,44 @@ impl ProviderClient {
         let client = get_http_client();
 
         if config.provider == "anthropic" {
-            // Anthropic Messages API requires alternating user/assistant roles with structured tool_use and tool_result blocks.
-            let mut anthropic_messages: Vec<serde_json::Value> = Vec::new();
-            for msg in messages {
-                if msg.role == "tool" {
-                    let tool_use_id = msg.tool_call_id.as_deref().unwrap_or("tool_fallback_id");
-                    let tool_result_block = serde_json::json!({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": msg.content,
-                    });
-                    if let Some(last) = anthropic_messages.last_mut()
-                        && last["role"] == "user"
-                        && last["content"].is_array()
-                    {
-                        if let Some(arr) = last["content"].as_array_mut() {
-                            arr.push(tool_result_block);
-                        }
-                    } else {
-                        anthropic_messages.push(serde_json::json!({
-                            "role": "user",
-                            "content": vec![tool_result_block]
-                        }));
-                    }
-                } else if msg.role == "assistant" && let Some(ref tc) = msg.tool_calls && let Some(tc_arr) = tc.as_array() {
-                    let mut content_blocks = Vec::new();
-                    if !msg.content.is_empty() {
-                        content_blocks.push(serde_json::json!({
-                            "type": "text",
-                            "text": msg.content
-                        }));
-                    }
-                    for call in tc_arr {
-                        let id = call.get("id").and_then(|i| i.as_str()).unwrap_or("toolu_unknown");
-                        let name = call.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).unwrap_or("");
-                        let args_str = call.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str()).unwrap_or("{}");
-                        let parsed_args: serde_json::Value = serde_json::from_str(args_str).unwrap_or_else(|_| serde_json::json!({}));
-                        content_blocks.push(serde_json::json!({
-                            "type": "tool_use",
-                            "id": id,
-                            "name": name,
-                            "input": parsed_args
-                        }));
-                    }
-                    anthropic_messages.push(serde_json::json!({
-                        "role": "assistant",
-                        "content": content_blocks
-                    }));
-                } else {
-                    let role = match msg.role.as_str() {
-                        "assistant" => "assistant",
-                        _ => "user",
-                    };
-                    if let Some(last) = anthropic_messages.last_mut()
-                        && last["role"] == role
-                        && let Some(prev_text) = last["content"].as_str()
-                    {
-                        last["content"] = serde_json::json!(format!("{}\n\n{}", prev_text, msg.content));
-                    } else {
-                        anthropic_messages.push(serde_json::json!({
-                            "role": role,
-                            "content": msg.content
-                        }));
-                    }
-                }
-            }
+            let anthropic_messages = Self::format_anthropic_messages(messages);
 
-            if anthropic_messages.is_empty() {
-                anthropic_messages.push(serde_json::json!({
-                    "role": "user",
-                    "content": "Hello"
-                }));
-            }
+            let is_claude_37 = config.model_id.contains("3-7") || config.model_id.contains("claude-3-7");
+            let max_tokens = if is_claude_37 {
+                32000
+            } else if config.model_id.contains("3-5") || config.model_id.contains("claude") {
+                8192
+            } else {
+                4096
+            };
+
+            // Anthropic Prompt Caching System Blocks
+            let system_blocks = serde_json::json!([
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": { "type": "ephemeral" }
+                }
+            ]);
 
             let mut body = serde_json::json!({
                 "model": config.model_id,
-                "max_tokens": 4096,
-                "system": system_prompt,
+                "max_tokens": max_tokens,
+                "system": system_blocks,
                 "messages": anthropic_messages,
                 "stream": true,
             });
 
+            // Claude 3.7 Hybrid Extended Thinking
+            if is_claude_37 {
+                body["thinking"] = serde_json::json!({
+                    "type": "enabled",
+                    "budget_tokens": 16000
+                });
+            }
+
             if !tools.is_empty() {
-                let anthropic_tools: Vec<serde_json::Value> = tools
-                    .iter()
-                    .map(|t| {
-                        serde_json::json!({
-                            "name": t["name"],
-                            "description": t["description"],
-                            "input_schema": t["parameters"]
-                        })
-                    })
-                    .collect();
-                body["tools"] = serde_json::Value::Array(anthropic_tools);
+                body["tools"] = serde_json::Value::Array(Self::format_anthropic_tools(tools));
             }
 
             let base_url = config
@@ -987,6 +1122,7 @@ impl ProviderClient {
             let mut req = client
                 .post(&endpoint)
                 .header("anthropic-version", "2023-06-01")
+                .header("anthropic-beta", "prompt-caching-2024-07-31")
                 .header("content-type", "application/json");
 
             if !config.api_key.is_empty() {
@@ -1036,36 +1172,7 @@ impl ProviderClient {
                 format!("{}/chat/completions", base_url.trim_end_matches('/'))
             };
 
-            let mut openai_messages = Vec::new();
-            if !system_prompt.is_empty() {
-                openai_messages.push(serde_json::json!({
-                    "role": "system",
-                    "content": system_prompt
-                }));
-            }
-            for msg in messages {
-                let mut msg_obj = serde_json::json!({
-                    "role": msg.role,
-                    "content": msg.content
-                });
-                if let Some(ref tcid) = msg.tool_call_id {
-                    msg_obj["tool_call_id"] = serde_json::Value::String(tcid.clone());
-                }
-                if let Some(ref name) = msg.name {
-                    msg_obj["name"] = serde_json::Value::String(name.clone());
-                }
-                if let Some(ref tc) = msg.tool_calls {
-                    msg_obj["tool_calls"] = tc.clone();
-                }
-                openai_messages.push(msg_obj);
-            }
-
-            if openai_messages.is_empty() {
-                openai_messages.push(serde_json::json!({
-                    "role": "user",
-                    "content": "Hello"
-                }));
-            }
+            let openai_messages = Self::format_openai_messages(system_prompt, messages);
 
             let mut body = serde_json::json!({
                 "model": config.model_id,
@@ -1073,22 +1180,24 @@ impl ProviderClient {
                 "stream": true,
             });
 
+            // OpenAI o1 / o3-mini Reasoning Parameters
+            let is_o_series = config.model_id.starts_with("o1") || config.model_id.starts_with("o3")
+                || config.model_id.contains("/o1") || config.model_id.contains("/o3");
+            if is_o_series {
+                body["reasoning_effort"] = serde_json::json!("medium");
+            }
+
             if !tools.is_empty() {
-                let openai_tools: Vec<serde_json::Value> = tools
-                    .iter()
-                    .map(|t| {
-                        serde_json::json!({
-                            "type": "function",
-                            "function": t
-                        })
-                    })
-                    .collect();
-                body["tools"] = serde_json::Value::Array(openai_tools);
+                body["tools"] = serde_json::Value::Array(Self::format_openai_tools(tools));
             }
 
             let mut req = client.post(&endpoint);
             if !config.api_key.is_empty() {
                 req = req.bearer_auth(&config.api_key);
+            }
+            if config.provider == "openrouter" {
+                req = req.header("HTTP-Referer", "https://pi.dev")
+                    .header("X-Title", "Tau Coding Agent 2026");
             }
 
             let res = req.json(&body).send().await?;
@@ -1150,7 +1259,47 @@ mod tests {
         let agnes = ModelConfig::resolve("agnes/agnes-core");
         assert_eq!(agnes.provider, "agnes");
         assert_eq!(agnes.model_id, "agnes-core");
-        assert_eq!(agnes.base_url.as_deref(), Some("https://api.agnes.ai/v1"));
+        let expected_agnes_base = std::env::var("AGNES_BASE_URL")
+            .ok()
+            .or_else(|| ModelConfig::lookup_models_json_base_url("agnes"))
+            .unwrap_or_else(|| "https://api.agnes.ai/v1".to_string());
+        assert_eq!(agnes.base_url.as_deref(), Some(expected_agnes_base.as_str()));
+
+        let claude = ModelConfig::resolve("claude/claude-3-7-sonnet");
+        assert_eq!(claude.provider, "anthropic");
+        assert_eq!(claude.model_id, "claude-3-7-sonnet");
+        let expected_anthropic_base = std::env::var("ANTHROPIC_BASE_URL")
+            .unwrap_or_else(|_| "https://api.anthropic.com/v1".to_string());
+        assert_eq!(claude.base_url.as_deref(), Some(expected_anthropic_base.as_str()));
+
+        let gemini = ModelConfig::resolve("google/gemini-2.0-flash");
+        assert_eq!(gemini.provider, "gemini");
+        assert_eq!(gemini.model_id, "gemini-2.0-flash");
+        assert_eq!(gemini.base_url.as_deref(), Some("https://generativelanguage.googleapis.com/v1beta/openai"));
+
+        let groq = ModelConfig::resolve("groq/llama-3.3-70b-versatile");
+        assert_eq!(groq.provider, "groq");
+        assert_eq!(groq.base_url.as_deref(), Some("https://api.groq.com/openai/v1"));
+
+        let cerebras = ModelConfig::resolve("cerebras/llama-3.3-70b");
+        assert_eq!(cerebras.provider, "cerebras");
+        assert_eq!(cerebras.base_url.as_deref(), Some("https://api.cerebras.ai/v1"));
+
+        let mistral = ModelConfig::resolve("mistral/codestral-latest");
+        assert_eq!(mistral.provider, "mistral");
+        assert_eq!(mistral.base_url.as_deref(), Some("https://api.mistral.ai/v1"));
+
+        let deepseek = ModelConfig::resolve("deepseek/deepseek-reasoner");
+        assert_eq!(deepseek.provider, "deepseek");
+        assert_eq!(deepseek.base_url.as_deref(), Some("https://api.deepseek.com/v1"));
+
+        let copilot = ModelConfig::resolve("copilot/gpt-4o");
+        assert_eq!(copilot.provider, "copilot");
+        assert_eq!(copilot.base_url.as_deref(), Some("https://api.githubcopilot.com"));
+
+        let bedrock = ModelConfig::resolve("bedrock/anthropic.claude-3-5-sonnet");
+        assert_eq!(bedrock.provider, "bedrock");
+        assert_eq!(bedrock.base_url.as_deref(), Some("https://bedrock-runtime.us-east-1.amazonaws.com"));
 
         let ollama = ModelConfig::resolve("ollama/llama3");
         assert_eq!(ollama.provider, "ollama");
@@ -1170,6 +1319,11 @@ mod tests {
         assert_eq!(lmstudio.api_key, "lmstudio");
         assert_eq!(lmstudio.base_url.as_deref(), Some("http://localhost:1234/v1"));
 
+        let vllm = ModelConfig::resolve("vllm/qwen-2.5");
+        assert_eq!(vllm.provider, "vllm");
+        assert_eq!(vllm.api_key, "vllm");
+        assert_eq!(vllm.base_url.as_deref(), Some("http://localhost:8000/v1"));
+
         // Fallbacks without slash
         let ollama_fallback = ModelConfig::resolve("local-ollama-llama3");
         assert_eq!(ollama_fallback.provider, "ollama");
@@ -1185,6 +1339,18 @@ mod tests {
         assert_eq!(lmstudio_fallback.provider, "lmstudio");
         assert_eq!(lmstudio_fallback.api_key, "lmstudio");
         assert_eq!(lmstudio_fallback.base_url.as_deref(), Some("http://localhost:1234/v1"));
+    }
+
+    #[test]
+    fn test_model_config_env_override() {
+        unsafe {
+            std::env::set_var("ZAI_BASE_URL", "https://custom-proxy.zai.com/v1");
+        }
+        let cfg = ModelConfig::resolve("zai/glm-4-flash");
+        assert_eq!(cfg.base_url.as_deref(), Some("https://custom-proxy.zai.com/v1"));
+        unsafe {
+            std::env::remove_var("ZAI_BASE_URL");
+        }
     }
 
     #[test]
@@ -1318,5 +1484,291 @@ mod tests {
         let resp = state.finish();
         assert_eq!(resp.tool_calls.len(), 1);
         assert_eq!(resp.tool_calls[0].name, "read");
+    }
+
+    #[test]
+    fn test_anthropic_message_role_alternation_and_tool_merging() {
+        // Multi-turn session: User -> Assistant (calls 2 tools) -> Tool 1 -> Tool 2 -> Assistant
+        let messages = vec![
+            ChatMessage::user("Search and read file"),
+            ChatMessage::assistant_with_tool_calls(
+                "Searching now",
+                serde_json::json!([
+                    {
+                        "id": "toolu_search_1",
+                        "function": {
+                            "name": "find",
+                            "arguments": "{\"pattern\": \"*.rs\"}"
+                        }
+                    },
+                    {
+                        "id": "toolu_read_2",
+                        "function": {
+                            "name": "read",
+                            "arguments": "{\"path\": \"src/main.rs\"}"
+                        }
+                    }
+                ]),
+            ),
+            ChatMessage::tool_result("toolu_search_1", "find", "src/main.rs"),
+            ChatMessage::tool_result("toolu_read_2", "read", "fn main() {}"),
+            ChatMessage::assistant("Found and read main.rs"),
+            ChatMessage::user("Please format it"),
+            ChatMessage::user("And run cargo check"),
+        ];
+
+        let anthropic_msgs = ProviderClient::format_anthropic_messages(&messages);
+
+        // Turn 1: user
+        assert_eq!(anthropic_msgs[0]["role"], "user");
+        assert_eq!(anthropic_msgs[0]["content"], "Search and read file");
+
+        // Turn 2: assistant with 2 tool_use content blocks
+        assert_eq!(anthropic_msgs[1]["role"], "assistant");
+        let asst_blocks = anthropic_msgs[1]["content"].as_array().unwrap();
+        assert_eq!(asst_blocks.len(), 3); // 1 text + 2 tool_use
+        assert_eq!(asst_blocks[0]["type"], "text");
+        assert_eq!(asst_blocks[1]["type"], "tool_use");
+        assert_eq!(asst_blocks[1]["id"], "toolu_search_1");
+        assert_eq!(asst_blocks[2]["type"], "tool_use");
+        assert_eq!(asst_blocks[2]["id"], "toolu_read_2");
+
+        // Turn 3: user containing BOTH tool results in a single message
+        assert_eq!(anthropic_msgs[2]["role"], "user");
+        let tool_result_blocks = anthropic_msgs[2]["content"].as_array().unwrap();
+        assert_eq!(tool_result_blocks.len(), 2);
+        assert_eq!(tool_result_blocks[0]["type"], "tool_result");
+        assert_eq!(tool_result_blocks[0]["tool_use_id"], "toolu_search_1");
+        assert_eq!(tool_result_blocks[1]["type"], "tool_result");
+        assert_eq!(tool_result_blocks[1]["tool_use_id"], "toolu_read_2");
+
+        // Turn 4: assistant
+        assert_eq!(anthropic_msgs[3]["role"], "assistant");
+
+        // Turn 5: user (merged sequential user messages)
+        assert_eq!(anthropic_msgs[4]["role"], "user");
+        assert_eq!(
+            anthropic_msgs[4]["content"],
+            "Please format it\n\nAnd run cargo check"
+        );
+
+        // Verify strictly alternating roles
+        for i in 1..anthropic_msgs.len() {
+            assert_ne!(
+                anthropic_msgs[i]["role"],
+                anthropic_msgs[i - 1]["role"],
+                "Anthropic roles must strictly alternate"
+            );
+        }
+    }
+
+    #[test]
+    fn test_openai_message_serialization_with_tool_call_id() {
+        let messages = vec![
+            ChatMessage::user("Run tests"),
+            ChatMessage::assistant_with_tool_calls(
+                "",
+                serde_json::json!([
+                    {
+                        "id": "call_bash_99",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "{\"command\": \"cargo test\"}"
+                        }
+                    }
+                ]),
+            ),
+            ChatMessage::tool_result("call_bash_99", "bash", "test result: ok"),
+            ChatMessage::tool("fallback without id"),
+        ];
+
+        let openai_msgs = ProviderClient::format_openai_messages("System instruction", &messages);
+
+        // First message must be system
+        assert_eq!(openai_msgs[0]["role"], "system");
+        assert_eq!(openai_msgs[0]["content"], "System instruction");
+
+        // Second message: user
+        assert_eq!(openai_msgs[1]["role"], "user");
+
+        // Third message: assistant with tool_calls
+        assert_eq!(openai_msgs[2]["role"], "assistant");
+        assert!(openai_msgs[2]["tool_calls"].is_array());
+
+        // Fourth message: tool with explicit tool_call_id
+        assert_eq!(openai_msgs[3]["role"], "tool");
+        assert_eq!(openai_msgs[3]["tool_call_id"], "call_bash_99");
+
+        // Fifth message: tool without explicit id gets fallback
+        assert_eq!(openai_msgs[4]["role"], "tool");
+        assert_eq!(openai_msgs[4]["tool_call_id"], "call_unknown");
+    }
+
+    #[test]
+    fn test_tool_formatting_helpers() {
+        let tools = vec![
+            serde_json::json!({
+                "name": "read",
+                "description": "Read file contents",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" }
+                    },
+                    "required": ["path"]
+                }
+            }),
+            serde_json::json!({
+                "name": "write",
+                "description": "Write file",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "content": { "type": "string" }
+                    }
+                }
+            }),
+        ];
+
+        let ant_tools = ProviderClient::format_anthropic_tools(&tools);
+        assert_eq!(ant_tools.len(), 2);
+        assert_eq!(ant_tools[0]["name"], "read");
+        assert!(ant_tools[0]["input_schema"]["properties"]["path"].is_object());
+        assert_eq!(ant_tools[1]["name"], "write");
+        assert!(ant_tools[1]["input_schema"]["properties"]["content"].is_object());
+
+        let openai_tools = ProviderClient::format_openai_tools(&tools);
+        assert_eq!(openai_tools.len(), 2);
+        assert_eq!(openai_tools[0]["type"], "function");
+        assert_eq!(openai_tools[0]["function"]["name"], "read");
+    }
+
+    #[test]
+    fn test_interleaved_parallel_tool_calls_openai_sse() {
+        let lines = vec![
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_0\",\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"path\\\":\"}}]}}]}\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_1\",\"function\":{\"name\":\"edit\",\"arguments\":\"{\\\"path\\\":\"}}]}}]}\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"\\\"a.rs\\\"}\"}}]}}]}\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"function\":{\"arguments\":\"\\\"b.rs\\\"}\"}}]}}]}\n",
+            "data: [DONE]\n",
+        ];
+
+        let mut state = OpenAiStreamState::new();
+        for line in lines {
+            state.process_line(line, |_| {});
+        }
+        let resp = state.finish();
+        assert_eq!(resp.tool_calls.len(), 2);
+        assert_eq!(resp.tool_calls[0].id, "call_0");
+        assert_eq!(resp.tool_calls[0].name, "read");
+        assert_eq!(resp.tool_calls[0].arguments, serde_json::json!({"path": "a.rs"}));
+        assert_eq!(resp.tool_calls[1].id, "call_1");
+        assert_eq!(resp.tool_calls[1].name, "edit");
+        assert_eq!(resp.tool_calls[1].arguments, serde_json::json!({"path": "b.rs"}));
+    }
+
+    #[test]
+    fn test_thinking_transition_directly_to_tool_use() {
+        // OpenAI: reasoning_content followed directly by tool_calls
+        let openai_lines = vec![
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"I should check file status.\"}}]}\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_git\",\"function\":{\"name\":\"git\",\"arguments\":\"{\\\"action\\\":\\\"status\\\"}\"}}]}}]}\n",
+            "data: [DONE]\n",
+        ];
+        let mut chunks = Vec::new();
+        let mut oai_state = OpenAiStreamState::new();
+        for line in openai_lines {
+            oai_state.process_line(line, |c| chunks.push(c));
+        }
+        let oai_resp = oai_state.finish();
+        assert!(chunks.contains(&"<thinking>\n".to_string()));
+        assert!(chunks.contains(&"\n</thinking>\n\n".to_string()));
+        assert_eq!(oai_resp.tool_calls.len(), 1);
+        assert_eq!(oai_resp.tool_calls[0].name, "git");
+
+        // Anthropic: thinking_delta followed by content_block_stop then content_block_start tool_use
+        let ant_lines = vec![
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"Analyzing project...\"}}\n",
+            "event: content_block_stop\n",
+            "data: {\"type\":\"content_block_stop\",\"index\":0}\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_git\",\"name\":\"git\",\"input\":{}}}\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"action\\\":\\\"status\\\"}\"}}\n",
+            "event: content_block_stop\n",
+            "data: {\"type\":\"content_block_stop\",\"index\":1}\n",
+        ];
+        let mut ant_chunks = Vec::new();
+        let mut ant_state = AnthropicStreamState::new();
+        for line in ant_lines {
+            ant_state.process_line(line, |c| ant_chunks.push(c));
+        }
+        let ant_resp = ant_state.finish();
+        assert!(ant_resp.text.contains("<thinking>\nAnalyzing project...\n</thinking>\n\n"));
+        assert_eq!(ant_resp.tool_calls.len(), 1);
+        assert_eq!(ant_resp.tool_calls[0].name, "git");
+    }
+
+    #[test]
+    fn test_malformed_sse_chunks_ignored() {
+        let lines = vec![
+            "",
+            "   ",
+            ": ping",
+            ": keep-alive comment",
+            "data:",
+            "data:    ",
+            "data: not valid json at all {{}}",
+            "data: 12345",
+            "data: {\"choices\": [{\"delta\": {\"content\": \"Valid after noise\"}}]}",
+            "data: [DONE]",
+        ];
+        let mut chunks = Vec::new();
+        let mut state = OpenAiStreamState::new();
+        for line in lines {
+            state.process_line(line, |c| chunks.push(c));
+        }
+        let resp = state.finish();
+        assert_eq!(chunks, vec!["Valid after noise"]);
+        assert_eq!(resp.text, "Valid after noise");
+    }
+
+    #[test]
+    fn test_model_config_routing_and_limits() {
+        // 1. OpenRouter with nested slash
+        let or_cfg = ModelConfig::resolve("openrouter/deepseek/deepseek-r1:free");
+        assert_eq!(or_cfg.provider, "openrouter");
+        assert_eq!(or_cfg.model_id, "deepseek/deepseek-r1:free");
+        assert_eq!(or_cfg.context_window, 64_000);
+
+        // 2. Gemini 2M
+        let gemini_cfg = ModelConfig::resolve("gemini/gemini-1.5-pro");
+        assert_eq!(gemini_cfg.provider, "gemini");
+        assert_eq!(gemini_cfg.model_id, "gemini-1.5-pro");
+        assert_eq!(gemini_cfg.context_window, 2_097_152);
+
+        // 3. Claude 3.7 Sonnet
+        let claude_cfg = ModelConfig::resolve("anthropic/claude-3-7-sonnet-latest");
+        assert_eq!(claude_cfg.provider, "anthropic");
+        assert_eq!(claude_cfg.model_id, "claude-3-7-sonnet-latest");
+        assert_eq!(claude_cfg.context_window, 200_000);
+        assert_eq!(claude_cfg.max_output, 64_000);
+
+        // 4. Codestral 256k
+        let code_cfg = ModelConfig::resolve("mistral/codestral-latest");
+        assert_eq!(code_cfg.provider, "mistral");
+        assert_eq!(code_cfg.model_id, "codestral-latest");
+        assert_eq!(code_cfg.context_window, 256_000);
+
+        // 5. Local Ollama
+        let ollama_cfg = ModelConfig::resolve("ollama/qwen2.5-coder:32b");
+        assert_eq!(ollama_cfg.provider, "ollama");
+        assert_eq!(ollama_cfg.model_id, "qwen2.5-coder:32b");
+        assert_eq!(ollama_cfg.context_window, 128_000);
     }
 }

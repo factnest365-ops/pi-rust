@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
-use pi_tools::git::{git_worktree_create, git_worktree_merge, git_worktree_remove};
+use pi_tools::git::{
+    git_worktree_create_in_dir, git_worktree_merge_in_dir, git_worktree_remove_in_dir,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -85,7 +86,7 @@ impl FirstMateDistro {
 
         let (worktree_path, branch_name) = match shape {
             CrewTaskShape::Ship => {
-                let wt_path = git_worktree_create("HEAD", &task_id)?;
+                let wt_path = git_worktree_create_in_dir("HEAD", &task_id, Some(&self.repo_root))?;
                 let branch = format!("pi-task-{}", task_id);
                 (Some(wt_path), Some(branch))
             }
@@ -150,12 +151,16 @@ impl FirstMateDistro {
         if let Some(cmd_str) = test_cmd
             && let Some(ref wt) = worktree_path
         {
-            let status = Command::new("sh")
-                .arg("-c")
-                .arg(cmd_str)
-                .current_dir(wt)
-                .status()
-                .map_err(|e| anyhow!("Failed to run verification command '{}': {}", cmd_str, e))?;
+            let mut cmd = tokio::process::Command::new("sh");
+            cmd.arg("-c").arg(cmd_str).current_dir(wt);
+            let mut child = cmd.spawn().map_err(|e| anyhow!("Failed to spawn verification command '{}': {}", cmd_str, e))?;
+            let status = tokio::time::timeout(std::time::Duration::from_secs(120), child.wait())
+                .await
+                .map_err(|_| {
+                    let _ = child.start_kill();
+                    anyhow!("Verification command '{}' timed out after 120 seconds", cmd_str)
+                })?
+                .map_err(|e| anyhow!("Verification command execution failed: {}", e))?;
 
             if !status.success() {
                 return Err(anyhow!(
@@ -166,11 +171,11 @@ impl FirstMateDistro {
             }
         }
 
-        // 2. Perform git worktree merge
-        let merge_output = git_worktree_merge(task_id, target_branch)?;
+        // 2. Perform git worktree merge in repo_root
+        let merge_output = git_worktree_merge_in_dir(task_id, target_branch, Some(&self.repo_root))?;
 
-        // 3. Clean up the disposable worktree
-        let _ = git_worktree_remove(task_id, false);
+        // 3. Clean up the disposable worktree in repo_root
+        let _ = git_worktree_remove_in_dir(task_id, false, Some(&self.repo_root));
 
         // 4. Update task state
         {
@@ -182,6 +187,26 @@ impl FirstMateDistro {
         }
 
         Ok(merge_output)
+    }
+
+    /// Cancels a running or pending crew task and cleans up any allocated worktree
+    pub async fn cancel_task(&self, task_id: &str) -> Result<()> {
+        let (worktree_path, shape) = {
+            let mut lock = self.tasks.write().await;
+            let task = lock
+                .get_mut(task_id)
+                .ok_or_else(|| anyhow!("Crew task not found: {}", task_id))?;
+
+            task.status = CrewTaskStatus::Failed("Cancelled by user".to_string());
+            task.finished_at = Some(Utc::now().to_rfc3339());
+            (task.worktree_path.clone(), task.shape)
+        };
+
+        if shape == CrewTaskShape::Ship && worktree_path.is_some() {
+            let _ = git_worktree_remove_in_dir(task_id, true, Some(&self.repo_root));
+        }
+
+        Ok(())
     }
 
     /// Reconciles the status of all crew tasks on disk and in memory
@@ -260,6 +285,16 @@ impl pi_tools::CrewToolHandler for FirstMateToolHandlerBridge {
         args: &'a pi_tools::CrewStatusArgs,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>> + Send + 'a>> {
         Box::pin(async move {
+            let action = args.action.to_lowercase();
+            if action == "cancel" {
+                let tid = args
+                    .task_id
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("Missing 'task_id' for cancel action"))?;
+                self.distro.cancel_task(tid).await?;
+                return Ok(format!("Crew task {} cancelled", tid));
+            }
+
             let tasks = self.distro.reconcile_fleet().await;
             if let Some(ref tid) = args.task_id {
                 if let Some(task) = tasks.into_iter().find(|t| t.id == *tid) {
@@ -295,6 +330,7 @@ impl pi_tools::CrewToolHandler for FirstMateToolHandlerBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
     use tempfile::tempdir;
 
     fn setup_git_repo(dir: &Path) {
@@ -343,9 +379,6 @@ mod tests {
         let tmp = tempdir().unwrap();
         setup_git_repo(tmp.path());
 
-        // Change current directory to temp repo for git worktree operations
-        let _guard = std::env::set_current_dir(tmp.path());
-
         let distro = FirstMateDistro::new(tmp.path());
         let task = distro
             .dispatch(
@@ -371,5 +404,89 @@ mod tests {
         // Merge worktree change back to current branch
         let merge_res = distro.merge_ship_task(&task.id, "HEAD", None).await;
         assert!(merge_res.is_ok(), "Merge failed: {:?}", merge_res);
+    }
+
+    #[tokio::test]
+    async fn test_firstmate_verification_command_failure_aborts_merge() {
+        let tmp = tempdir().unwrap();
+        setup_git_repo(tmp.path());
+
+        let distro = FirstMateDistro::new(tmp.path());
+        let task = distro
+            .dispatch(
+                CrewTaskShape::Ship,
+                "Broken feature".to_string(),
+                CrewMergeMode::LocalOnly,
+                CrewBackend::Worktree,
+                Some("exit 1".to_string()),
+            )
+            .await
+            .unwrap();
+
+        let merge_res = distro.merge_ship_task(&task.id, "HEAD", None).await;
+        assert!(merge_res.is_err());
+        assert!(merge_res.unwrap_err().to_string().contains("Aborting merge"));
+    }
+
+    #[tokio::test]
+    async fn test_firstmate_cannot_merge_scout_task() {
+        let tmp = tempdir().unwrap();
+        let distro = FirstMateDistro::new(tmp.path());
+
+        let task = distro
+            .dispatch(
+                CrewTaskShape::Scout,
+                "Read-only scout".to_string(),
+                CrewMergeMode::LocalOnly,
+                CrewBackend::Herdr,
+                None,
+            )
+            .await
+            .unwrap();
+
+        let merge_res = distro.merge_ship_task(&task.id, "HEAD", None).await;
+        assert!(merge_res.is_err());
+        assert!(merge_res.unwrap_err().to_string().contains("Cannot merge Scout task"));
+    }
+
+    #[tokio::test]
+    async fn test_firstmate_cancel_task_and_bridge() {
+        let tmp = tempdir().unwrap();
+        setup_git_repo(tmp.path());
+
+        let distro = Arc::new(FirstMateDistro::new(tmp.path()));
+        let handler = distro.create_tool_handler();
+
+        let dispatch_args = pi_tools::CrewDispatchArgs {
+            shape: "ship".to_string(),
+            task: "Task to cancel".to_string(),
+            mode: "local-only".to_string(),
+            backend: "worktree".to_string(),
+            verify_cmd: None,
+        };
+
+        let dispatch_res = handler.dispatch(&dispatch_args).await.unwrap();
+        let created_task: CrewTask = serde_json::from_str(&dispatch_res).unwrap();
+
+        // Check status query
+        let status_args = pi_tools::CrewStatusArgs {
+            task_id: Some(created_task.id.clone()),
+            action: "list".to_string(),
+        };
+        let status_res = handler.status(&status_args).await.unwrap();
+        assert!(status_res.contains(&created_task.id));
+
+        // Cancel task via handler
+        let cancel_args = pi_tools::CrewStatusArgs {
+            task_id: Some(created_task.id.clone()),
+            action: "cancel".to_string(),
+        };
+        let cancel_res = handler.status(&cancel_args).await.unwrap();
+        assert!(cancel_res.contains("cancelled"));
+
+        // Fleet status
+        let all_tasks = distro.reconcile_fleet().await;
+        assert_eq!(all_tasks.len(), 1);
+        assert!(matches!(all_tasks[0].status, CrewTaskStatus::Failed(_)));
     }
 }

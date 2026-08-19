@@ -50,8 +50,10 @@ impl MermaidRenderer {
 
                     let (edge_label, right_part) = if let Some(stripped) = right_raw.strip_prefix('|') {
                         if let Some(second_pipe) = stripped.find('|') {
-                            let lbl = stripped[..second_pipe].trim().to_string();
-                            let rest = stripped[second_pipe + 1..].trim();
+                            let safe_pipe = stripped.floor_char_boundary(second_pipe);
+                            let lbl = stripped[..safe_pipe].trim().to_string();
+                            let safe_rest = stripped.floor_char_boundary((safe_pipe + 1).min(stripped.len()));
+                            let rest = stripped[safe_rest..].trim();
                             (Some(lbl), rest)
                         } else {
                             (None, right_raw)
@@ -265,16 +267,22 @@ impl MermaidRenderer {
     fn parse_node(token: &str) -> (String, String) {
         let trimmed = token.trim();
         if let Some(pos) = trimmed.find('[') {
-            let id = trimmed[..pos].trim().to_string();
-            let label = trimmed[pos + 1..].trim_end_matches(']').trim_matches('"').to_string();
+            let safe_pos = trimmed.floor_char_boundary(pos);
+            let id = trimmed[..safe_pos].trim().to_string();
+            let safe_rest = trimmed.floor_char_boundary((safe_pos + 1).min(trimmed.len()));
+            let label = trimmed[safe_rest..].trim_end_matches(']').trim_matches('"').to_string();
             (id, label)
         } else if let Some(pos) = trimmed.find('(') {
-            let id = trimmed[..pos].trim().to_string();
-            let label = trimmed[pos + 1..].trim_end_matches(')').trim_matches('"').to_string();
+            let safe_pos = trimmed.floor_char_boundary(pos);
+            let id = trimmed[..safe_pos].trim().to_string();
+            let safe_rest = trimmed.floor_char_boundary((safe_pos + 1).min(trimmed.len()));
+            let label = trimmed[safe_rest..].trim_end_matches(')').trim_matches('"').to_string();
             (id, label)
         } else if let Some(pos) = trimmed.find('{') {
-            let id = trimmed[..pos].trim().to_string();
-            let label = trimmed[pos + 1..].trim_end_matches('}').trim_matches('"').to_string();
+            let safe_pos = trimmed.floor_char_boundary(pos);
+            let id = trimmed[..safe_pos].trim().to_string();
+            let safe_rest = trimmed.floor_char_boundary((safe_pos + 1).min(trimmed.len()));
+            let label = trimmed[safe_rest..].trim_end_matches('}').trim_matches('"').to_string();
             (id, label)
         } else {
             (trimmed.to_string(), trimmed.to_string())
@@ -318,4 +326,29 @@ sequenceDiagram
         assert!(full_text.contains("Agent"));
         assert!(full_text.contains("Send task prompt"));
     }
+
+    #[test]
+    fn test_render_mermaid_unicode_and_emojis() {
+        let code = r#"
+flowchart LR
+    A[🚀 Client (ユーザー)] --> B{⚡ Proxy 🦀}
+    B -->|OK ✨| C[🎯 Backend]
+"#;
+        let rendered = MermaidRenderer::render(code);
+        assert!(!rendered.is_empty());
+    }
+
+    #[test]
+    fn test_render_generic_diagram() {
+        let code = r#"
+pie title Pets
+    "Dogs" : 386
+    "Cats" : 85
+"#;
+        let rendered = MermaidRenderer::render(code);
+        assert!(!rendered.is_empty());
+        let full_text: String = rendered.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(full_text.contains("Pets"));
+    }
 }
+

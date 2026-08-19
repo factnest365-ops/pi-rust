@@ -153,36 +153,72 @@ impl WebTool {
         let bytes = html.as_bytes();
         let len = bytes.len();
 
+        fn find_closing_tag(html: &str, start_idx: usize, tag: &str) -> Option<(usize, usize)> {
+            let bytes = html.as_bytes();
+            let slice = &bytes[start_idx..];
+            let prefix = format!("</{}", tag);
+            let p_bytes = prefix.as_bytes();
+
+            let mut offset = 0;
+            while offset + p_bytes.len() <= slice.len() {
+                if slice[offset..offset + p_bytes.len()].eq_ignore_ascii_case(p_bytes) {
+                    let rest = &slice[offset + p_bytes.len()..];
+                    if let Some(pos) = rest.iter().position(|&b| b == b'>') {
+                        let tag_interior = &rest[..pos];
+                        if tag_interior.iter().all(|b| b.is_ascii_whitespace()) {
+                            let total_len = p_bytes.len() + pos + 1;
+                            let full_idx = start_idx + offset;
+                            if html.is_char_boundary(full_idx) {
+                                return Some((offset, total_len));
+                            }
+                        }
+                    }
+                }
+                offset += 1;
+            }
+            None
+        }
+
+        fn starts_with_ascii_ci(slice: &[u8], prefix: &str) -> bool {
+            let prefix_bytes = prefix.as_bytes();
+            if slice.len() < prefix_bytes.len() {
+                return false;
+            }
+            slice[..prefix_bytes.len()]
+                .iter()
+                .zip(prefix_bytes.iter())
+                .all(|(&h, &p)| h.eq_ignore_ascii_case(&p))
+        }
+
         while i < len {
             if in_ignored_block {
-                let close_tag = format!("</{}>", ignored_tag);
-                if let Some(pos) = html[i..].to_lowercase().find(&close_tag) {
-                    i += pos + close_tag.len();
+                if let Some((pos, close_len)) = find_closing_tag(html, i, ignored_tag) {
+                    i += pos + close_len;
                     in_ignored_block = false;
                 } else {
                     break;
                 }
             } else if bytes[i] == b'<' {
-                let rest = &html[i..];
-                let rest_lower = rest.to_lowercase();
-                if rest_lower.starts_with("<script") {
+                let rest_bytes = &bytes[i..];
+                if starts_with_ascii_ci(rest_bytes, "<script") {
                     in_ignored_block = true;
                     ignored_tag = "script";
                     i += 7;
-                } else if rest_lower.starts_with("<style") {
+                } else if starts_with_ascii_ci(rest_bytes, "<style") {
                     in_ignored_block = true;
                     ignored_tag = "style";
                     i += 6;
-                } else if rest_lower.starts_with("<noscript") {
+                } else if starts_with_ascii_ci(rest_bytes, "<noscript") {
                     in_ignored_block = true;
                     ignored_tag = "noscript";
                     i += 9;
-                } else if rest_lower.starts_with("<svg") {
+                } else if starts_with_ascii_ci(rest_bytes, "<svg") {
                     in_ignored_block = true;
                     ignored_tag = "svg";
                     i += 4;
                 } else {
                     // Check standard tags
+                    let rest = &html[i..];
                     if let Some(tag_end) = rest.find('>') {
                         let tag_content = rest[1..tag_end].trim();
                         let tag_name = tag_content.split_whitespace().next().unwrap_or("").to_lowercase();
@@ -223,18 +259,34 @@ impl WebTool {
             }
         }
 
-        // Decode basic HTML entities
+        // Decode HTML entities
         let decoded = cleaned
             .replace("&nbsp;", " ")
             .replace("&amp;", "&")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
             .replace("&quot;", "\"")
+            .replace("&#34;", "\"")
+            .replace("&#38;", "&")
+            .replace("&#60;", "<")
+            .replace("&#62;", ">")
             .replace("&#39;", "'")
             .replace("&apos;", "'")
             .replace("&#x27;", "'")
+            .replace("&ldquo;", "“")
+            .replace("&rdquo;", "”")
+            .replace("&lsquo;", "‘")
+            .replace("&rsquo;", "’")
+            .replace("&hellip;", "…")
             .replace("&ndash;", "–")
-            .replace("&mdash;", "—");
+            .replace("&mdash;", "—")
+            .replace("&copy;", "©")
+            .replace("&reg;", "®")
+            .replace("&trade;", "™")
+            .replace("&bull;", "•")
+            .replace("&middot;", "·")
+            .replace("&laquo;", "«")
+            .replace("&raquo;", "»");
 
         // Clean redundant whitespace and blank lines
         let mut final_lines = Vec::new();
@@ -293,5 +345,64 @@ mod tests {
         assert!(md.contains("```\nfn main()"));
         assert!(!md.contains("ignore me"));
         assert!(!md.contains("color: red"));
+    }
+
+    #[test]
+    fn test_html_entity_decoding_and_spaced_tags() {
+        let html = r#"
+        <div class="content">
+            <script type="text/javascript" >
+                const x = 42;
+            </script >
+            <style >
+                .hide { display: none; }
+            </style  >
+            <noscript>
+                Please enable JS
+            </noscript >
+            <svg>
+                <path d="M0 0"/>
+            </svg >
+            <h2>Entities &amp; Symbols</h2>
+            <p>&ldquo;Quotes&rdquo; &lsquo;Single&rsquo; &ndash; &mdash; &hellip; &copy; &reg; &trade; &bull; &middot; &laquo; &raquo; &#34;double&#34; &#60;tag&#62;</p>
+            <blockquote>Quoted text</blockquote>
+        </div>
+        "#;
+
+        let md = WebTool::html_to_markdown(html);
+        assert!(!md.contains("const x = 42"));
+        assert!(!md.contains("display: none"));
+        assert!(!md.contains("Please enable JS"));
+        assert!(!md.contains("M0 0"));
+        assert!(md.contains("## Entities & Symbols"));
+        assert!(md.contains("“Quotes” ‘Single’ – — … © ® ™ • · « » \"double\" <tag>"));
+        assert!(md.contains("> Quoted text"));
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_utf8_truncation() {
+        let mock_server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = mock_server.local_addr().unwrap();
+        let url = format!("http://{}", addr);
+
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = mock_server.accept().await {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let mut buf = [0u8; 1024];
+                let _ = socket.read(&mut buf).await;
+                // Multibyte emojis and UTF-8 characters
+                let body = "🚀🌟🦀 Rust Web Page with lots of multibyte unicode characters to test safe truncation 🚀🌟🦀";
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = socket.write_all(resp.as_bytes()).await;
+            }
+        });
+
+        // Fetch with small max_length that could land in middle of UTF-8 emoji
+        let result = WebTool::fetch_url(&url, Some(10)).await.unwrap();
+        assert!(result.contains("Truncated:"));
     }
 }

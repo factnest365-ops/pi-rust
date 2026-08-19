@@ -24,6 +24,8 @@ pi-tools.workspace = true
 pi-providers.workspace = true
 pi-tui.workspace = true
 pi-rpc.workspace = true
+pi-daemon.workspace = true
+crossterm.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

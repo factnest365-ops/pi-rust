@@ -1,52 +1,87 @@
-# Phase 2 Technical Implementation Plan
+# Implementation Plan: 100% Pure Rust Daemon (`taud`) & JARVIS Architecture
 
-## Task Breakdown & Order
-
-### Task 1: Real-time SSE Streaming & Local Model Autodiscovery in `pi-providers`
-- Implement SSE response stream handler for Anthropic Messages and OpenAI/compatible Chat Completions.
-- Provide `ProviderClient::stream_with_tools` with real-time chunk callbacks and structured tool call assembly.
-- Extend `ModelCatalog::get_models` to probe Ollama (`:11434`), llama.cpp (`:8080`), and LM Studio (`:1234`).
-- Update `ModelConfig::resolve` to support `llamacpp` and `lmstudio` provider prefixes.
-- Unit tests for SSE stream decoding and provider resolution.
-
-### Task 2: Dual Tool Protocol & Streaming Integration in `pi-core`
-- Update `AgentLoop::run_turn` to use `ProviderClient::stream_with_tools` and emit `TurnEvent::ModelStreaming`.
-- Implement robust multi-format markdown fallback tool parser (for `bash`, `write`, `edit`, `read`) when structured tool calls are absent.
-- Ensure tool execution outputs are recorded into `SessionTree` and passed recursively back into model context.
-- Unit tests for fallback extraction and multi-tool markdown execution.
-
-### Task 3: Interactive Streaming & Interruption Handling in `pi-tui`
-- Wire real-time streaming chunks into live TUI transcript updates.
-- Implement async task execution with cancellation handle: pressing `Escape` interrupts active generation immediately and returns control to user without freezing or crashing.
-- Support autodiscovered models in the interactive Model Picker dialog (`Ctrl+L` / `Ctrl+R`).
-
-### Task 4: Comprehensive Workspace Verification & Code Review ✅
-- Run `cargo test --workspace` across all crates.
-- Run `cargo check --workspace --all-targets` and `cargo clippy --workspace --all-targets`.
-- Conduct subagent code review across correctness, readability, architecture, security, and performance.
-- Update `ROADMAP.md` marking Phase 2 as completed.
+## Overview
+Implement a 100% pure Rust background daemon (`crates/pi-daemon` / `taud`) that provides always-on ambient monitoring, Unix domain socket / JSON-RPC IPC, federated specialist sub-agent fleet orchestration (JARVIS, FRIDAY, E.V.), GitHub cognitive state versioning, full undo/rollback engine, and the Alfred moral override protocol.
 
 ---
 
-# Phase 3 Technical Implementation Plan (Native Pi Packages)
+## Architecture & Component Dependency Graph
 
-### Task 3.1: `pi-git` — Pure Rust Git Integration
-- Implement pure Rust Git operations using `gix` / Git CLI.
-- Add tools for staging (`git_stage`), hunk inspection (`git_diff`), and AI commit synthesis (`git_commit`).
-- Unit and integration tests in `crates/pi-tools`.
+```
+                             +-----------------------------------+
+                             |               taud                |
+                             |      (100% Pure Rust Daemon)      |
+                             +-----------------+-----------------+
+                                               |
+         +-------------------------------------+-------------------------------------+
+         |                                     |                                     |
+         v                                     v                                     v
++------------------+                  +------------------+                  +------------------+
+|   Daemon Core    |                  | Federated Fleet  |                  |   State Sync &   |
+| (Unix Socket IPC |                  | (JARVIS, FRIDAY, |                  |  Rollback Engine |
+| & Ambient Select)|                  |  E.V. Specialists|                  |  (Git / Undo)    |
++--------+---------+                  +--------+---------+                  +--------+---------+
+         |                                     |                                     |
+         +-------------------------------------+-------------------------------------+
+                                               |
+                                               v
+                                      +------------------+
+                                      |     pi-core      |
+                                      | (Vault, Plan,    |
+                                      |  Reflexion, AST) |
+                                      +------------------+
+```
 
-### Task 3.2: `pi-web` — Headless Web Scraping & Article Extraction
-- Build fast headless HTTP article extractor using connection-pooled `reqwest` and HTML-to-markdown parser.
-- Add `web_search` and `web_fetch` tools to `pi-tools`.
-- Verify zero headless browser overhead.
+---
 
-### Task 3.3: `pi-tokens` — BPE Tokenization Engine
-- Integrate `tiktoken-rs` for exact BPE token counting (cl100k_base, o200k_base, and Anthropic estimators).
-- Provide accurate context window usage and compaction thresholds in `pi-providers`.
+## Phases & Sequential Implementation Order
 
-### Task 3.4: `pi-lsp` — Language Server Protocol Bridge
-- Implement native LSP client over stdio for Rust (`rust-analyzer`), TypeScript (`tsserver`/`vtsls`), Python (`pyright`/`basedpyright`).
-- Provide tools for `lsp_diagnostics`, `lsp_definitions`, `lsp_references`.
+### Phase 1: Daemon Core & Unix Domain Socket IPC (`crates/pi-daemon`)
+- Add new crate `crates/pi-daemon` with binary `taud`.
+- Unix domain socket server at `~/.tau/taud.sock` with graceful shutdown (`SIGTERM`, `SIGINT`).
+- Bi-directional JSON-RPC 2.0 protocol over Unix socket connecting to `pi-core` engine.
+- Ambient event loop with non-blocking 50ms polling, monitoring workspace files and cognitive state.
 
-### Task 3.5: `pi-github` — PR & Issue Automation
-- Bridge to GitHub REST API / `gh` CLI for PR reviews, issue triage, and workflow run checks.
+### Phase 2: Federated Specialist Sub-Agents (`crates/pi-core/src/federation.rs`)
+- Implement `SpecialistIdentity`:
+  - `J.A.R.V.I.S.` (Engineering, Architecture, Speculative Code Execution, Witty British Persona).
+  - `F.R.I.D.A.Y.` (Tactical Analysis, Rapid Security Audit, Zero-Banter Brevity).
+  - `E.V.` (Personal Companion, Cognitive State / Fatigue Monitoring, Empathetic Support).
+- Central dispatch loop routing goals to the optimal specialist while sharing a unified `TauVault`.
+
+### Phase 3: Full Autonomy & Rollback Engine (`crates/pi-core/src/undo.rs`)
+- Implement `UndoEngine` capturing `ActionSnapshot` before any mutation.
+- File-level snapshots via ephemeral Git blobs and worktrees.
+- Support `undo(action_id)`, `undo_last(n)`, and `preview_undo(action_id)` diff generation.
+
+### Phase 4: GitHub Cognitive State Fragmentation (`crates/pi-core/src/sync.rs`)
+- Implement automated Git version control for `~/.tau/` (vault, skills, reflexion counter-rules, personalities).
+- Auto-commit on skill crystallization and reflexion rule generation with semantic commit messages.
+- Optional background push to user's private `tau-mind` GitHub repository.
+
+### Phase 5: The Alfred Moral Override Protocol (`crates/pi-core/src/alfred.rs`)
+- Implement `AlfredProtocol` monitoring user-stated values and mission integrity.
+- Escalation tiers (`Observation`, `Advisory`, `Urgent`, `LastStand`).
+- Reflexion-tuned framing that adapts advisory delivery based on historical user receptivity.
+
+### Phase 6: Client Daemon Connectors (`crates/pi-cli` & `crates/pi-tui`)
+- Update `tau` CLI with `--daemon`, `tau daemon start`, `tau daemon stop`, `tau daemon status`.
+- Auto-detect running `taud.sock` for zero-latency client connections.
+
+---
+
+## Verification Checkpoints
+
+1. **Compilation & Clippy:**
+   ```bash
+   cargo check --workspace --all-targets
+   cargo clippy --workspace --all-targets -- -D warnings
+   ```
+2. **Test Suite:**
+   ```bash
+   cargo test --workspace -- --nocapture
+   ```
+3. **Daemon Smoke Test:**
+   - Launch `taud` in background test mode, send Ping request over Unix socket, receive Pong.
+   - Dispatch task to `J.A.R.V.I.S.` specialist, verify result written to shared vault.
+   - Trigger file mutation, execute `undo`, verify exact byte-for-byte restoration.

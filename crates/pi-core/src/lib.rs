@@ -5,20 +5,40 @@ use pi_tools::{ToolCall, ToolExecutor, ToolResult};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
+pub mod alfred;
+pub mod crystallize;
+pub mod federation;
 pub mod firstmate;
 pub mod herdr;
+pub mod plan;
 pub mod skills;
+pub mod speculate;
 pub mod subagents;
+pub mod sync;
+pub mod undo;
+pub mod vault;
+
+pub use alfred::{AlfredAdvisory, AlfredProtocol, EscalationLevel, ValueStatement};
+pub use crystallize::SkillCrystallizer;
+pub use federation::{FederatedFleet, SpecialistIdentity, SpecialistInfo};
 pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
 };
 pub use herdr::{HerdrAgentState, HerdrEnvironment, HerdrProtocol};
 pub use pi_tools::{get_mcp_manager, McpManager, McpServerConfig, McpToolDefinition};
+pub use plan::{ExecutionPlan, PlanExecutor, PlanTask, TaskStatus};
 pub use skills::{SkillDefinition, SkillRegistry};
+pub use speculate::{
+    ArbitrationDecision, SpeculativeBranchResult, SpeculativeEngine, SpeculativeRaceResult,
+    SpeculativeStatus, SpeculativeStrategy,
+};
 pub use subagents::{
     SubagentConfig, SubagentInstance, SubagentManager, SubagentRunner, SubagentStatus,
     SubagentSummary,
 };
+pub use sync::StateSynchronizer;
+pub use undo::{ActionSnapshot, ActionSnapshotKind, UndoEngine};
+pub use vault::{MemoryEntry, ReflexionEngine, TauVault};
 
 pub const DEFAULT_PI_SYSTEM_PROMPT: &str = r#"You are Pi, a minimal, fast, and capable AI coding agent.
 Your primary goal is to help the user write, debug, refactor, and maintain code cleanly.
@@ -48,6 +68,7 @@ You have access to native tools:
 - crew_dispatch: Dispatch a First Mate crew task (Ship in isolated worktree, or Scout investigation)
 - crew_status: Query status and reconciliation of active fleet tasks
 - crew_merge: Review and merge a completed Ship task worktree back into target branch
+- speculate: Run a speculative execution race testing two competing implementation strategies concurrently in ghost worktrees
 "#;
 
 #[derive(Debug, Clone)]
@@ -55,6 +76,7 @@ pub struct SystemPromptEngine {
     pub base_prompt: String,
     pub agents_md: Option<String>,
     pub skill_registry: SkillRegistry,
+    pub vault: TauVault,
 }
 
 impl Default for SystemPromptEngine {
@@ -65,15 +87,21 @@ impl Default for SystemPromptEngine {
 
 impl SystemPromptEngine {
     pub fn new() -> Self {
+        Self::with_vault(TauVault::new())
+    }
+
+    pub fn with_vault(vault: TauVault) -> Self {
         let agents_md = fs::read_to_string("AGENTS.md")
             .or_else(|_| fs::read_to_string(".agents/AGENTS.md"))
             .or_else(|_| fs::read_to_string(".pi/AGENTS.md"))
             .or_else(|_| fs::read_to_string("CLAUDE.md"))
+            .or_else(|_| fs::read_to_string(".cursorrules"))
             .ok();
         Self {
             base_prompt: DEFAULT_PI_SYSTEM_PROMPT.to_string(),
             agents_md,
             skill_registry: SkillRegistry::new(),
+            vault,
         }
     }
 
@@ -84,6 +112,26 @@ impl SystemPromptEngine {
             full.push_str(agents);
         }
         full.push_str(&self.skill_registry.format_prompt_summary());
+        let hindsight = self.vault.format_hindsight_prompt("");
+        if !hindsight.is_empty() {
+            full.push_str("\n\n");
+            full.push_str(&hindsight);
+        }
+        full
+    }
+
+    pub fn build_prompt_for_turn(&self, query: &str) -> String {
+        let mut full = self.base_prompt.clone();
+        if let Some(ref agents) = self.agents_md {
+            full.push_str("\n\n--- Project Instructions (AGENTS.md) ---\n");
+            full.push_str(agents);
+        }
+        full.push_str(&self.skill_registry.format_prompt_summary());
+        let hindsight = self.vault.format_hindsight_prompt(query);
+        if !hindsight.is_empty() {
+            full.push_str("\n\n");
+            full.push_str(&hindsight);
+        }
         full
     }
 }
@@ -105,17 +153,70 @@ pub struct AgentLoop {
     pub model_config: ModelConfig,
     pub max_context_tokens: usize,
     pub max_tool_iterations: usize,
+    pub allowed_tools: Option<Vec<String>>,
+    pub execution_plan: Option<ExecutionPlan>,
 }
 
 impl AgentLoop {
     pub fn new(model_config: ModelConfig) -> Self {
+        let max_context_tokens = if model_config.context_window > 0 {
+            model_config.context_window
+        } else {
+            128_000
+        };
         Self {
             system_engine: SystemPromptEngine::new(),
             session_tree: SessionTree::new(),
             model_config,
-            max_context_tokens: 128_000,
+            max_context_tokens,
             max_tool_iterations: 5,
+            allowed_tools: None,
+            execution_plan: None,
         }
+    }
+
+    pub fn with_allowed_tools(mut self, tools: Vec<String>) -> Self {
+        self.allowed_tools = Some(tools);
+        self
+    }
+
+    pub fn with_execution_plan(mut self, plan: ExecutionPlan) -> Self {
+        self.execution_plan = Some(plan);
+        self
+    }
+
+    pub fn set_execution_plan(&mut self, plan: ExecutionPlan) {
+        self.execution_plan = Some(plan);
+    }
+
+    pub fn get_execution_plan(&self) -> Option<&ExecutionPlan> {
+        self.execution_plan.as_ref()
+    }
+
+    pub fn get_execution_plan_mut(&mut self) -> Option<&mut ExecutionPlan> {
+        self.execution_plan.as_mut()
+    }
+
+    pub fn format_plan_markdown(&self) -> Option<String> {
+        self.execution_plan.as_ref().map(|p| {
+            let executor = PlanExecutor::new(p.clone());
+            executor.to_markdown_checklist()
+        })
+    }
+
+    pub fn crystallize_active_session(
+        &mut self,
+        skill_name: &str,
+        description: &str,
+    ) -> Result<std::path::PathBuf> {
+        let history = self.session_tree.get_active_branch_history();
+        let (path, _) = SkillCrystallizer::crystallize_and_register_refs(
+            &mut self.system_engine.skill_registry,
+            &history,
+            skill_name,
+            description,
+        )?;
+        Ok(path)
     }
 
     fn build_conversation_messages(&self) -> Vec<ChatMessage> {
@@ -156,7 +257,11 @@ impl AgentLoop {
 
         for node in history {
             match node.role {
-                Role::System => {}
+                Role::System => {
+                    if node.content.contains("Context Compaction Summary") {
+                        prompt.push_str(&format!("System Summary: {}\n\n", node.content));
+                    }
+                }
                 Role::User => {
                     prompt.push_str(&format!("User: {}\n\n", node.content));
                 }
@@ -194,14 +299,23 @@ impl AgentLoop {
             return Ok(());
         }
 
-        // Find turn cut boundary (aligned to a User message)
+        // Find turn cut boundary (aligned to a User message so to_keep starts cleanly)
         let target_cut = history.len() / 2;
-        let mut cut_idx = target_cut;
-        for (i, node) in history.iter().enumerate().take(target_cut + 2) {
-            if i >= 2 && node.role == Role::User {
-                cut_idx = i;
+        let mut cut_idx = None;
+        for (i, node) in history.iter().enumerate().take(target_cut + 3) {
+            if i >= 1 && node.role == Role::User {
+                cut_idx = Some(i);
             }
         }
+        if cut_idx.is_none() {
+            for (i, node) in history.iter().enumerate().skip(target_cut) {
+                if node.role == Role::User {
+                    cut_idx = Some(i);
+                    break;
+                }
+            }
+        }
+        let cut_idx = cut_idx.unwrap_or(target_cut);
 
         let to_summarize = &history[..cut_idx];
         let to_keep = &history[cut_idx..];
@@ -212,7 +326,11 @@ impl AgentLoop {
                 Role::User => transcript_to_summarize.push_str(&format!("User: {}\n\n", node.content)),
                 Role::Assistant => transcript_to_summarize.push_str(&format!("Assistant: {}\n\n", node.content)),
                 Role::Tool => transcript_to_summarize.push_str(&format!("Tool: {}\n\n", node.content)),
-                Role::System => {}
+                Role::System => {
+                    if node.content.contains("Context Compaction Summary") {
+                        transcript_to_summarize.push_str(&format!("Previous History Summary:\n{}\n\n", node.content));
+                    }
+                }
             }
         }
 
@@ -260,7 +378,7 @@ impl AgentLoop {
 
         for node in to_keep {
             new_tree.append_child_with_metadata(
-                node.role.clone(),
+                node.role,
                 node.content.clone(),
                 node.tool_call_id.clone(),
                 node.tool_name.clone(),
@@ -288,7 +406,12 @@ impl AgentLoop {
 
         let _ = self.compact_history_if_needed(&mut event_tx).await;
 
-        let full_system_prompt = self.system_engine.build_full_prompt();
+        let mut full_system_prompt = self.system_engine.build_prompt_for_turn(user_input);
+        if let Some(ref plan) = self.execution_plan {
+            let executor = PlanExecutor::new(plan.clone());
+            full_system_prompt.push_str("\n\n--- Active Execution Plan ---\n");
+            full_system_prompt.push_str(&executor.to_markdown_checklist());
+        }
         let mut turn_iteration = 0;
         let mut final_response = String::new();
 
@@ -297,12 +420,30 @@ impl AgentLoop {
 
             let conversation_messages = self.build_conversation_messages();
             let conversation_prompt = self.build_conversation_prompt();
-            let token_estimate = conversation_prompt.len() / 4;
+            let token_estimate = TokenProfiler::estimate_tokens(&conversation_prompt, &self.model_config.model_id);
             event_tx(TurnEvent::ContextPrepared { token_estimate });
 
-            let tool_defs = ToolExecutor::tool_definitions();
+            let tool_defs = {
+                let all_defs = ToolExecutor::tool_definitions();
+                if let Some(ref allowed) = self.allowed_tools {
+                    all_defs
+                        .into_iter()
+                        .filter(|td| {
+                            let name = td
+                                .get("function")
+                                .and_then(|f| f.get("name"))
+                                .and_then(|n| n.as_str())
+                                .or_else(|| td.get("name").and_then(|n| n.as_str()))
+                                .unwrap_or("");
+                            allowed.iter().any(|a| a.eq_ignore_ascii_case(name))
+                        })
+                        .collect()
+                } else {
+                    all_defs
+                }
+            };
 
-            let provider_resp = ProviderClient::stream_messages_with_tools(
+            let provider_resp = match ProviderClient::stream_messages_with_tools(
                 &self.model_config,
                 &full_system_prompt,
                 &conversation_messages,
@@ -311,13 +452,24 @@ impl AgentLoop {
                     event_tx(TurnEvent::ModelStreaming { chunk });
                 },
             )
-            .await?;
+            .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    ReflexionEngine::distill_turn_error(
+                        &self.system_engine.vault,
+                        user_input,
+                        &e.to_string(),
+                    );
+                    return Err(e);
+                }
+            };
 
             let response_text = provider_resp.text;
 
             // Dual Tool Protocol: Prefer structured JSON tool calls, fallback to markdown parsing
             let tool_calls_to_execute: Vec<ToolCall> = if !provider_resp.tool_calls.is_empty() {
-                provider_resp
+                let calls: Vec<ToolCall> = provider_resp
                     .tool_calls
                     .into_iter()
                     .map(|call| ToolCall {
@@ -325,9 +477,25 @@ impl AgentLoop {
                         name: call.name,
                         arguments: call.arguments,
                     })
-                    .collect()
+                    .collect();
+                if let Some(ref allowed) = self.allowed_tools {
+                    calls
+                        .into_iter()
+                        .filter(|c| allowed.iter().any(|a| a.eq_ignore_ascii_case(&c.name)))
+                        .collect()
+                } else {
+                    calls
+                }
             } else {
-                Self::extract_fallback_tool_calls(&response_text)
+                let calls = Self::extract_fallback_tool_calls(&response_text);
+                if let Some(ref allowed) = self.allowed_tools {
+                    calls
+                        .into_iter()
+                        .filter(|c| allowed.iter().any(|a| a.eq_ignore_ascii_case(&c.name)))
+                        .collect()
+                } else {
+                    calls
+                }
             };
 
             if !tool_calls_to_execute.is_empty() {
@@ -371,6 +539,15 @@ impl AgentLoop {
                         is_error: tool_res.is_error,
                     });
 
+                    if tool_res.is_error {
+                        ReflexionEngine::distill_tool_failure(
+                            &self.system_engine.vault,
+                            &call.name,
+                            &call.arguments,
+                            &tool_res.output,
+                        );
+                    }
+
                     self.session_tree.append_child_with_metadata(
                         Role::Tool,
                         tool_res.output.clone(),
@@ -398,7 +575,7 @@ impl AgentLoop {
             }
         }
 
-        let total_tokens = self.build_conversation_prompt().len() / 4;
+        let total_tokens = TokenProfiler::estimate_tokens(&self.build_conversation_prompt(), &self.model_config.model_id);
         event_tx(TurnEvent::TurnCompleted { total_tokens });
         HerdrProtocol::emit_state(HerdrAgentState::Done);
         HerdrProtocol::emit_state(HerdrAgentState::Idle);
@@ -1161,6 +1338,7 @@ mod tests {
             base_prompt: "Base system prompt".to_string(),
             agents_md: Some("Custom AGENTS guidelines".to_string()),
             skill_registry: SkillRegistry::default(),
+            vault: TauVault::open_in_memory().unwrap(),
         };
         let full = engine.build_full_prompt();
         assert!(full.contains("Base system prompt"));
@@ -1387,6 +1565,8 @@ cat test.txt
             model_id: "test-model".to_string(),
             api_key: "test-key".to_string(),
             base_url: Some(base_url),
+            context_window: 128_000,
+            max_output: 8_192,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1459,6 +1639,8 @@ cat test.txt
             model_id: "test-model".to_string(),
             api_key: "test-key".to_string(),
             base_url: Some(base_url),
+            context_window: 128_000,
+            max_output: 8_192,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1521,6 +1703,8 @@ cat test.txt
             model_id: "test-model".to_string(),
             api_key: "test-key".to_string(),
             base_url: Some(base_url),
+            context_window: 128_000,
+            max_output: 8_192,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1592,6 +1776,8 @@ cat test.txt
             model_id: "test-model".to_string(),
             api_key: "test-key".to_string(),
             base_url: Some(base_url),
+            context_window: 128_000,
+            max_output: 8_192,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1657,6 +1843,8 @@ cat test.txt
             model_id: "test-model".to_string(),
             api_key: "test-key".to_string(),
             base_url: None,
+            context_window: 128_000,
+            max_output: 8_192,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1690,6 +1878,8 @@ cat test.txt
             model_id: "test-model".to_string(),
             api_key: "test-key".to_string(),
             base_url: None,
+            context_window: 128_000,
+            max_output: 8_192,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1810,5 +2000,294 @@ Implement authentication wizard in pi-tui
         assert_eq!(calls[2].arguments["task_id"], "abc12345");
         assert_eq!(calls[2].arguments["target_branch"], "main");
     }
+
+    #[tokio::test]
+    async fn test_allowed_tools_filtering_in_agent_loop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let test_file = tmp.path().join("allowed_test.txt");
+        let test_file_str = test_file.to_str().unwrap().to_string();
+
+        // Model attempts to call write (allowed) and bash (disallowed)
+        let turn1_json = serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "id": "call-write-1",
+                            "function": {
+                                "name": "write",
+                                "arguments": serde_json::json!({
+                                    "path": test_file_str,
+                                    "content": "allowed write"
+                                }).to_string()
+                            }
+                        },
+                        {
+                            "index": 1,
+                            "id": "call-bash-1",
+                            "function": {
+                                "name": "bash",
+                                "arguments": serde_json::json!({
+                                    "command": "rm -rf /"
+                                }).to_string()
+                            }
+                        }
+                    ]
+                }
+            }]
+        });
+        let turn1_sse = format!("data: {}\n\ndata: [DONE]\n\n", serde_json::to_string(&turn1_json).unwrap());
+        let turn2_sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Completed allowed tool only.\"}}]}\n\ndata: [DONE]\n\n".to_string();
+
+        let (base_url, server_handle) =
+            start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
+
+        let model_config = ModelConfig {
+            provider: "openai".to_string(),
+            model_id: "test-model".to_string(),
+            api_key: "test-key".to_string(),
+            base_url: Some(base_url),
+            context_window: 128_000,
+            max_output: 8_192,
+        };
+
+        let mut agent_loop = AgentLoop::new(model_config)
+            .with_allowed_tools(vec!["write".to_string(), "read".to_string()]);
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = events.clone();
+
+        let res = agent_loop
+            .run_turn("Do tasks", move |evt| {
+                events_clone.lock().unwrap().push(evt);
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(res, "Completed allowed tool only.");
+        assert_eq!(fs::read_to_string(&test_file).unwrap(), "allowed write");
+
+        // Verify that bash was NEVER executed
+        let captured = events.lock().unwrap().clone();
+        let executed_tools: Vec<String> = captured
+            .iter()
+            .filter_map(|e| match e {
+                TurnEvent::ToolExecuting { tool_name, .. } => Some(tool_name.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(executed_tools, vec!["write".to_string()]);
+
+        let _ = server_handle.await;
+    }
+
+    #[tokio::test]
+    async fn test_double_compaction_cumulative_summary() {
+        let model_config = ModelConfig {
+            provider: "openai".to_string(),
+            model_id: "test-model".to_string(),
+            api_key: "test-key".to_string(),
+            base_url: None,
+            context_window: 128_000,
+            max_output: 8_192,
+        };
+
+        let mut agent_loop = AgentLoop::new(model_config);
+        agent_loop.max_context_tokens = 150; // Very small to trigger repeated compactions
+
+        // Initial turns
+        for i in 1..=6 {
+            agent_loop.session_tree.append_child(Role::User, format!("User message {} with significant context", i));
+            agent_loop.session_tree.append_child(Role::Assistant, format!("Assistant reply {} summarizing operations", i));
+        }
+
+        // First compaction
+        let _ = agent_loop.compact_history_if_needed(&mut |_| {}).await;
+        let history1 = agent_loop.session_tree.get_active_branch_history();
+        assert!(history1.iter().any(|n| n.role == Role::System && n.content.contains("Context Compaction Summary")));
+
+        // Add more turns
+        for i in 7..=12 {
+            agent_loop.session_tree.append_child(Role::User, format!("User message {} with further instructions", i));
+            agent_loop.session_tree.append_child(Role::Assistant, format!("Assistant reply {} confirming task", i));
+        }
+
+        // Second compaction
+        let mut second_compacted = false;
+        let _ = agent_loop.compact_history_if_needed(&mut |evt| {
+            if let TurnEvent::ContextCompacted { .. } = evt {
+                second_compacted = true;
+            }
+        }).await;
+
+        assert!(second_compacted);
+        let history2 = agent_loop.session_tree.get_active_branch_history();
+        assert!(history2.iter().any(|n| n.role == Role::System && n.content.contains("Context Compaction Summary")));
+    }
+
+    #[test]
+    fn test_tokenize_args_escape_and_nested() {
+        let tokens = AgentLoop::tokenize_args(r#"path\ with\ spaces "arg 2" 'arg 3'"#);
+        assert_eq!(tokens, vec!["path with spaces", "arg 2", "arg 3"]);
+    }
+
+    #[test]
+    fn test_system_prompt_engine_with_vault_hindsight_injection() {
+        let vault = TauVault::open_in_memory().unwrap();
+        vault
+            .record_counter_rule(
+                "slice_safety",
+                "&s[..len] byte slicing",
+                "floor_char_boundary",
+            )
+            .unwrap();
+
+        let engine = SystemPromptEngine {
+            base_prompt: "Pi system".to_string(),
+            agents_md: None,
+            skill_registry: SkillRegistry::default(),
+            vault,
+        };
+
+        let full = engine.build_full_prompt();
+        assert!(full.contains("[Hindsight Memory & Rules]"));
+        assert!(full.contains("[Counter-Rule] (slice_safety)"));
+        assert!(full.contains("floor_char_boundary"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_loop_reflexion_on_failed_tool() {
+        // Mock tool call that fails (e.g. read non-existent file)
+        let turn1_json = serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call-read-fail-1",
+                        "function": {
+                            "name": "read",
+                            "arguments": serde_json::json!({
+                                "path": "non_existent_file_xyz_123.rs"
+                            }).to_string()
+                        }
+                    }]
+                }
+            }]
+        });
+        let turn1_sse = format!("data: {}\n\ndata: [DONE]\n\n", serde_json::to_string(&turn1_json).unwrap());
+        let turn2_sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Understood, file was missing.\"}}]}\n\ndata: [DONE]\n\n".to_string();
+
+        let (base_url, server_handle) =
+            start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
+
+        let model_config = ModelConfig {
+            provider: "openai".to_string(),
+            model_id: "test-model".to_string(),
+            api_key: "test-key".to_string(),
+            base_url: Some(base_url),
+            context_window: 128_000,
+            max_output: 8_192,
+        };
+
+        let mut agent_loop = AgentLoop::new(model_config);
+        // Use an isolated in-memory vault for this loop test
+        let in_mem_vault = TauVault::open_in_memory().unwrap();
+        agent_loop.system_engine.vault = in_mem_vault.clone();
+
+        let res = agent_loop
+            .run_turn("Read missing file", |_| {})
+            .await
+            .unwrap();
+
+        assert_eq!(res, "Understood, file was missing.");
+
+        // Verify ReflexionEngine recorded the failure counter-rule in the vault
+        let active = in_mem_vault.list_active_memories(10).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].topic, "tool_failure:read");
+        assert!(active[0].correct_pattern.as_ref().unwrap().contains("find or ls"));
+
+        let _ = server_handle.await;
+    }
+
+    #[test]
+    fn test_agent_loop_plan_mode_methods() {
+        let model_config = ModelConfig {
+            provider: "openai".to_string(),
+            model_id: "test-model".to_string(),
+            api_key: "test-key".to_string(),
+            base_url: None,
+            context_window: 128_000,
+            max_output: 8_192,
+        };
+
+        let mut plan = ExecutionPlan::new("p1", "Add login auth");
+        let t1 = PlanTask::new("t1", "Design API", "Design tokens");
+        let t2 = PlanTask::new("t2", "Implement endpoint", "Write route")
+            .with_dependencies(vec!["t1".to_string()]);
+        plan.add_task(t1);
+        plan.add_task(t2);
+
+        let mut agent_loop = AgentLoop::new(model_config).with_execution_plan(plan);
+        assert!(agent_loop.get_execution_plan().is_some());
+        assert_eq!(agent_loop.get_execution_plan().unwrap().tasks.len(), 2);
+
+        let md = agent_loop.format_plan_markdown().unwrap();
+        assert!(md.contains("### Plan: Add login auth"));
+        assert!(md.contains("Design API"));
+        assert!(md.contains("Implement endpoint"));
+
+        if let Some(plan_mut) = agent_loop.get_execution_plan_mut() {
+            plan_mut.tasks[0].status = TaskStatus::Completed {
+                duration_ms: 100,
+                summary: "Tokens designed".to_string(),
+            };
+        }
+
+        let updated_md = agent_loop.format_plan_markdown().unwrap();
+        assert!(updated_md.contains("[✔] 1. **Design API**"));
+        assert!(updated_md.contains("[ ] 2. **Implement endpoint**"));
+    }
+
+    #[test]
+    fn test_agent_loop_crystallize_active_session() {
+        let model_config = ModelConfig {
+            provider: "openai".to_string(),
+            model_id: "test-model".to_string(),
+            api_key: "test-key".to_string(),
+            base_url: None,
+            context_window: 128_000,
+            max_output: 8_192,
+        };
+
+        let mut agent_loop = AgentLoop::new(model_config);
+        agent_loop.session_tree.append_child(Role::User, "Configure Rust release profiles".to_string());
+        agent_loop.session_tree.append_child_with_metadata(
+            Role::Assistant,
+            "Editing Cargo.toml".to_string(),
+            None,
+            None,
+            Some(serde_json::json!([
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\": \"cargo test --release\"}"
+                    }
+                }
+            ])),
+        );
+
+        let skill_path = agent_loop
+            .crystallize_active_session("Rust Release Optimizer", "Optimizes release profile flags and builds")
+            .unwrap();
+
+        assert!(skill_path.exists());
+        assert!(agent_loop.system_engine.skill_registry.get_skill("rust-release-optimizer").is_some());
+    }
 }
+
+
 

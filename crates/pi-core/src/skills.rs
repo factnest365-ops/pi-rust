@@ -25,15 +25,16 @@ impl SkillRegistry {
     pub fn discover_all(&mut self) {
         self.skills.clear();
 
-        let mut search_paths = Vec::new();
+        let mut search_paths = vec![
+            PathBuf::from(".tau/skills"),
+            PathBuf::from(".pi/skills"),
+            PathBuf::from(".agents/skills"),
+            PathBuf::from("skills"),
+        ];
 
-        // Project local paths
-        search_paths.push(PathBuf::from(".pi/skills"));
-        search_paths.push(PathBuf::from(".agents/skills"));
-        search_paths.push(PathBuf::from("skills"));
-
-        // Global ~/.pi paths
+        // Global ~/.tau and ~/.pi paths
         if let Some(home) = dirs::home_dir() {
+            search_paths.push(home.join(".tau").join("skills"));
             search_paths.push(home.join(".pi").join("agent").join("skills"));
             search_paths.push(home.join(".pi").join("skills"));
         }
@@ -87,7 +88,7 @@ impl SkillRegistry {
 
         let trimmed = content.trim_start();
         if let Some(rest) = trimmed.strip_prefix("---")
-            && let Some(end_idx) = rest.find("---")
+            && let Some(end_idx) = rest.find("\n---")
         {
             let frontmatter = &rest[..end_idx];
             let mut name = None;
@@ -129,13 +130,14 @@ impl SkillRegistry {
         }
 
         // Fallback: Use first heading as name and first line as description
-        let mut lines = content.lines();
-        let first_heading = lines
+        let first_heading = content
+            .lines()
             .find(|l| l.starts_with('#'))
             .map(|l| l.trim_start_matches('#').trim().to_string())
             .unwrap_or(folder_name);
 
-        let desc = lines
+        let desc = content
+            .lines()
             .find(|l| !l.trim().is_empty() && !l.starts_with('#'))
             .unwrap_or("Custom specialized skill")
             .trim()
@@ -201,5 +203,68 @@ description: |
         assert_eq!(name, "agent-architect");
         assert!(desc.contains("Guides architectural decomposition"));
         assert!(desc.contains("strict decoupling invariants"));
+    }
+
+    #[test]
+    fn test_parse_fallback_heading_and_body() {
+        let markdown = r#"# Git Workflow Specialist
+
+Specialized in branch management, rebasing, and atomic commits.
+
+## Steps
+1. Verify branch status.
+"#;
+        let (name, desc) = SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("skills/git-specialist"));
+        assert_eq!(name, "Git Workflow Specialist");
+        assert_eq!(desc, "Specialized in branch management, rebasing, and atomic commits.");
+    }
+
+    #[test]
+    fn test_parse_fallback_without_heading() {
+        let markdown = "Just raw markdown content without any header.";
+        let (name, desc) = SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("my-custom-skill"));
+        assert_eq!(name, "my-custom-skill");
+        assert_eq!(desc, "Just raw markdown content without any header.");
+    }
+
+    #[test]
+    fn test_skill_registry_formatting_and_lookup() {
+        let mut registry = SkillRegistry::default();
+        assert_eq!(registry.format_prompt_summary(), "");
+
+        registry.skills.push(SkillDefinition {
+            name: "Rust-Optimizer".to_string(),
+            description: "Profiles and optimizes Rust code".to_string(),
+            path: PathBuf::from("skills/rust-opt/SKILL.md"),
+            content: "# Rust Optimizer".to_string(),
+        });
+
+        let summary = registry.format_prompt_summary();
+        assert!(summary.contains("--- Available Skills ---"));
+        assert!(summary.contains("- Rust-Optimizer: Profiles and optimizes Rust code"));
+
+        assert!(registry.get_skill("rust-optimizer").is_some());
+        assert!(registry.get_skill("RUST-OPTIMIZER").is_some());
+        assert!(registry.get_skill("non-existent").is_none());
+    }
+
+    #[test]
+    fn test_scan_directory_with_tempdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: Test-Skill\ndescription: A test skill in temporary directory\n---\n# Content\n",
+        )
+        .unwrap();
+
+        let mut registry = SkillRegistry::default();
+        registry.scan_directory(tmp.path());
+
+        assert_eq!(registry.skills.len(), 1);
+        assert_eq!(registry.skills[0].name, "Test-Skill");
+        assert_eq!(registry.skills[0].description, "A test skill in temporary directory");
     }
 }

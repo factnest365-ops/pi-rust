@@ -21,7 +21,7 @@
 [![Pure Rust](https://img.shields.io/badge/Pure%20Rust-100%25-orange.svg?style=flat-square&logo=rust)]()
 [![Zero Node.js](https://img.shields.io/badge/Node.js-0%20Dependencies-brightgreen.svg?style=flat-square)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Tests: 100%](https://img.shields.io/badge/Tests-114%2F114%20Passing-success.svg?style=flat-square)]()
+[![Tests: 100%](https://img.shields.io/badge/Tests-249%2F249%20Passing-success.svg?style=flat-square)]()
 [![Clippy: 0 Warnings](https://img.shields.io/badge/Clippy-0%20Warnings-green.svg?style=flat-square)]()
 [![UNIX Manpage](https://img.shields.io/badge/Manpage-tau(1)-purple.svg?style=flat-square)](man/tau.1)
 
@@ -31,29 +31,34 @@
 
 ## ⚡ Why Tau (τ)?
 
-`tau` (also callable as `pi-rs`) is a lightning-fast, local-first autonomous AI coding agent and swarm orchestrator engineered in 100% pure safe Rust. It features a non-destructive session DAG, dual-protocol tool execution (native JSON + markdown fallback), real-time SSE streaming decoders, 35+ LLM provider integrations with zero-config local daemon discovery, context window compaction, a 7-theme Ratatui terminal cockpit, interactive diff visualizer, and a headless JSON-RPC 2.0 daemon for editor integrations.
+`tau` (also callable as `pi-rs`) is a lightning-fast, local-first autonomous AI coding agent, background daemon (`taud`), and swarm orchestrator engineered in 100% pure safe Rust. It features a non-destructive session DAG, dual-protocol tool execution (native JSON + markdown fallback), real-time SSE streaming decoders, 35+ LLM provider integrations with zero-config local daemon discovery, an embedded SQLite FTS5 + SIMD Cognitive Memory Vault, a Federated Specialist fleet (**J.A.R.V.I.S.**, **F.R.I.D.A.Y.**, **E.V.**), Full Autonomy Undo engine, The Alfred Moral Override Protocol, a Ratatui Super-TUI terminal cockpit (`/plan`, `/memory`, `/ask`, `/diff`), and a headless JSON-RPC 2.0 daemon for editor integrations.
 
 ### 📊 Feature Matrix: `tau` (Rust) vs Upstream TS `pi`
 
 | Dimension | Upstream TypeScript Pi (`pi.dev`) | `tau` / `pi-rs` (Rust) |
 | :--- | :--- | :--- |
 | **Runtime & Dependencies** | Requires Node.js (v20+), npm, 200+ node_modules | **Zero external runtimes**. Single static native binary (~12MB). |
+| **Background Daemon** | None (ephemeral CLI only) | **100% Pure Rust Native Daemon (`taud`)** with Unix socket IPC |
+| **Specialist Personas** | Single monolithic assistant | **Federated Specialist Fleet** (`J.A.R.V.I.S.`, `F.R.I.D.A.Y.`, `E.V.`) |
+| **Long-Term Memory** | Flat file notes | **SQLite FTS5 + SIMD Cosine Cognitive Vault** with automatic turn reflexion |
+| **Safety & Conscience** | Manual confirmation prompts | **The Alfred Moral Override Protocol** (Tiered non-blocking advisory) |
+| **Mutation Rollback** | Manual Git reset | **Action Snapshot Undo Engine** (Instant $<5\text{ms}$ byte-accurate rollback) |
 | **Startup Latency** | ~350ms – 1,200ms (V8 JIT initialization) | **< 3ms cold startup** |
-| **Memory Footprint** | ~120MB – 350MB RSS | **~8MB – 18MB RSS** |
+| **Memory Footprint** | ~120MB – 350MB RSS | **~8MB – 18MB RSS** (Daemon idles at $<4\text{MB}$) |
 | **Session Architecture** | Linear turn list with manual snapshots | **Graph DAG Tree** (Arbitrary rewinds, diffing, simulation & JSONL) |
 | **Tool Execution** | Node `child_process` with standard event loop | **Async Tokio Subprocess Trees** with enforced 120s timeout kills |
 | **Tool Calling Protocol** | Provider-dependent JSON schema | **Dual Tool Protocol**: Native schema + Markdown fallback for local models |
 | **Multi-Provider Support** | Frontier APIs (Anthropic, OpenAI, Gemini) | **33+ Providers** (Frontier, OpenCode, Kilo, Agnes, Ollama, LM Studio, vLLM) |
 | **MCP Integration** | Manual server configuration | **Universal MCP Auto-Discovery** (VSCode, Cursor, Claude Desktop, Windsurf) |
 | **Multi-Agent Coordination** | Subprocess worker spawns | **First Mate & Herdr Swarm Protocols** with OSC status multiplexing |
-| **Terminal Cockpit** | Ink / React-based terminal UI | **Ratatui + Crossterm TUI** with pure-Rust Mermaid diagram renderer |
+| **Terminal Cockpit** | Ink / React-based terminal UI | **Ratatui Super-TUI** (`/plan`, `/memory`, `/ask`, `/diff`, Mermaid renderer) |
 | **Editor Integration** | CLI only | **JSON-RPC 2.0 Daemon** + Native Neovim plugin (`lua/pi`) |
 
 ---
 
 ## 🏗 Workspace Architecture
 
-The workspace is strictly partitioned into 7 focused, decoupled Cargo crates under `crates/`:
+The workspace is strictly partitioned into 8 focused, decoupled Cargo crates under `crates/`:
 
 ```
                                 +-----------------------------------+
@@ -65,32 +70,39 @@ The workspace is strictly partitioned into 7 focused, decoupled Cargo crates und
          |                                        |                                        |
          v                                        v                                        v
 +----------------+                       +----------------+                       +----------------+
-|     pi-tui     |                       |    pi-core     |                       |     pi-rpc     |
-| (Ratatui & UI) |                       | (Agent Engine) |                       |  (JSON-RPC 2.0)|
-+-------+--------+                       +---+---+----+---+                       +--------+-------+
-        |                                    |   |    |                                    |
+|     pi-tui     |                       |    pi-core     |                       |   pi-daemon    |
+| (Ratatui & UI) |                       | (Agent Engine) |                       | (100% Pure Rust|
++-------+--------+                       +---+---+----+---+                       |  Daemon/taud)  |
+        |                                    |   |    |                           +--------+-------+
         +------------------+-----------------+   |    +------------------+-----------------+
-                           |                     |                       |
-                           v                     |                       v
-                  +-----------------+            |              +-----------------+
-                  |  pi-providers   |            |              |   pi-session    |
-                  | (Multi-LLM SSE) |            |              |  (DAG History & |
-                  +-----------------+            |              |  JSONL Storage) |
-                                                 |              +-----------------+
-                                                 v
-                                        +-----------------+
-                                        |    pi-tools     |
-                                        | (Native Tools & |
-                                        |  MCP Discovery) |
+                           |                     |                       |                 |
+                           v                     |                       v                 |
+                  +-----------------+            |              +-----------------+        |
+                  |  pi-providers   |            |              |   pi-session    |        |
+                  | (Multi-LLM SSE) |            |              |  (DAG History & |        |
+                  +-----------------+            |              |  JSONL Storage) |        |
+                                                 |              +-----------------+        |
+                                                 v                                         |
+                                        +-----------------+                                |
+                                        |    pi-tools     |                                |
+                                        | (Native Tools & |                                |
+                                        |  MCP Discovery) |                                |
+                                        +--------+--------+                                |
+                                                 ^                                         |
+                                                 |                                         |
+                                        +--------+--------+                                |
+                                        |     pi-rpc      |<-------------------------------+
+                                        |  (JSON-RPC 2.0) |
                                         +-----------------+
 ```
 
-- [`crates/pi-cli`](file:///Users/bhavy/pi-rust/crates/pi-cli): Command-line argument parsing, login wizard, session replay, and daemon entry point.
-- [`crates/pi-core`](file:///Users/bhavy/pi-rust/crates/pi-core): Agent turn loop, Dual Tool dispatch, system prompt engine, context compaction, and skills discovery.
+- [`crates/pi-cli`](file:///Users/bhavy/pi-rust/crates/pi-cli): Command-line argument parsing (`tau`), login wizard, session replay, and daemon controller (`--daemon-status`, `--daemon-ping`, `--undo`, `--alfred-check`).
+- [`crates/pi-daemon`](file:///Users/bhavy/pi-rust/crates/pi-daemon): 100% pure Rust background daemon (`taud`) listening over Unix Domain Socket (`~/.tau/taud.sock`) with JSON-RPC 2.0 IPC.
+- [`crates/pi-core`](file:///Users/bhavy/pi-rust/crates/pi-core): Agent turn loop, Dual Tool dispatch, Cognitive Vault (FTS5 + SIMD), Reflexion Engine, Federated Specialist Fleet (`J.A.R.V.I.S.`, `F.R.I.D.A.Y.`, `E.V.`), Plan Executor, Undo Engine, Alfred Protocol, Speculative Engine, Skills Crystallizer.
 - [`crates/pi-providers`](file:///Users/bhavy/pi-rust/crates/pi-providers): 33+ LLM provider clients, SSE streaming decoders, TokenProfiler, and hierarchical AuthResolver.
 - [`crates/pi-session`](file:///Users/bhavy/pi-rust/crates/pi-session): Session DAG tree, node ID assignment, branch diffing, simulated rewinds, and JSONL disk persistence.
 - [`crates/pi-tools`](file:///Users/bhavy/pi-rust/crates/pi-tools): Safe native tools (`read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`, `web_fetch`, `web_search`, `git`, `git_worktree`, `github`, `lsp`, `ast`, `mcp`, `subagents`, `crew`).
-- [`crates/pi-tui`](file:///Users/bhavy/pi-rust/crates/pi-tui): Ratatui terminal UI, interactive overlays (Model Picker, Provider Picker, Diff Viewer, Session Tree), 7 themes, and pure-Rust Mermaid ASCII renderer.
+- [`crates/pi-tui`](file:///Users/bhavy/pi-rust/crates/pi-tui): Ratatui terminal UI, interactive overlays (Memory Explorer `/memory`, Plan Mode `/plan`, Clarification Modal `/ask`, Diff View `/diff`, Model Picker), 7 themes, and pure-Rust Mermaid ASCII renderer.
 - [`crates/pi-rpc`](file:///Users/bhavy/pi-rust/crates/pi-rpc): Bi-directional JSON-RPC 2.0 server over stdin/stdout with ordered MPSC notification streaming.
 
 ---

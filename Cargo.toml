@@ -8,6 +8,7 @@ members = [
     "crates/pi-tui",
     "crates/pi-rpc",
     "crates/pi-cli",
+    "crates/pi-daemon",
 ]
 
 [workspace.package]
@@ -40,3 +41,4 @@ pi-session = { path = "crates/pi-session" }
 pi-providers = { path = "crates/pi-providers" }
 pi-tui = { path = "crates/pi-tui" }
 pi-rpc = { path = "crates/pi-rpc" }
+pi-daemon = { path = "crates/pi-daemon" }

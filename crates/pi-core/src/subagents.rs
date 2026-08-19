@@ -98,12 +98,7 @@ impl SubagentManager {
     }
 
     pub fn new_with_empty_model() -> Self {
-        let dummy_model = ModelConfig {
-            provider: "mock".to_string(),
-            model_id: "mock-model".to_string(),
-            base_url: None,
-            api_key: String::new(),
-        };
+        let dummy_model = ModelConfig::resolve("mock/mock-model");
         Self::new(dummy_model)
     }
 
@@ -119,6 +114,9 @@ impl SubagentManager {
         let mut child_agent_loop = AgentLoop::new(child_model);
         if let Some(ref sp) = config.system_prompt_override {
             child_agent_loop.system_engine.base_prompt = sp.clone();
+        }
+        if let Some(ref tools) = config.allowed_tools {
+            child_agent_loop.allowed_tools = Some(tools.clone());
         }
 
         let cancellation_token = CancellationToken::new();
@@ -176,6 +174,9 @@ impl SubagentManager {
         let mut child_agent_loop = AgentLoop::new(child_model);
         if let Some(ref sp) = config.system_prompt_override {
             child_agent_loop.system_engine.base_prompt = sp.clone();
+        }
+        if let Some(ref tools) = config.allowed_tools {
+            child_agent_loop.allowed_tools = Some(tools.clone());
         }
 
         let cancellation_token = CancellationToken::new();
@@ -391,5 +392,56 @@ mod tests {
         let list_res = handler.manage(&list_args).await.unwrap();
         assert!(list_res.contains("Reviewer"));
         assert!(list_res.contains("Review PR #42"));
+    }
+
+    #[tokio::test]
+    async fn test_subagent_kill_all() {
+        let manager = Arc::new(SubagentManager::new_with_empty_model());
+        for i in 1..=3 {
+            let config = SubagentConfig {
+                name: format!("Worker-{}", i),
+                model_override: None,
+                system_prompt_override: None,
+                allowed_tools: Some(vec!["read".to_string()]),
+            };
+            let _ = manager.spawn(config, "Task").await.unwrap();
+        }
+
+        let list_before = manager.list().await;
+        assert_eq!(list_before.len(), 3);
+
+        let killed_count = manager.kill_all().await;
+        assert_eq!(killed_count, 3);
+
+        for summary in manager.list().await {
+            assert!(summary.status.contains("Errored") || summary.status.contains("cancelled"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_subagent_unknown_action_and_not_found() {
+        let manager = Arc::new(SubagentManager::new_with_empty_model());
+        let handler = manager.create_tool_handler();
+
+        let unknown_action = ManageSubagentsArgs {
+            action: "explode".to_string(),
+            id: None,
+        };
+        assert!(handler.manage(&unknown_action).await.is_err());
+
+        let missing_id = ManageSubagentsArgs {
+            action: "status".to_string(),
+            id: None,
+        };
+        assert!(handler.manage(&missing_id).await.is_err());
+
+        let non_existent = ManageSubagentsArgs {
+            action: "status".to_string(),
+            id: Some("non-existent-id".to_string()),
+        };
+        assert!(handler.manage(&non_existent).await.is_err());
+
+        let kill_non_existent = manager.kill("non-existent-id").await;
+        assert!(kill_non_existent.is_err());
     }
 }

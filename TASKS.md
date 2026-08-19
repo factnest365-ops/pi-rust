@@ -1,13 +1,24 @@
 # TASKS.md — Project Task Tracker & Execution Board
 
 ## Current Status Overview
-- **Project**: `pi-rust` (`pi-rs`) — 100% Pure Rust Port of Mario Zechner's Pi Coding Agent ([pi.dev](https://pi.dev) / [`earendil-works/pi`](https://github.com/earendil-works/pi))
+- **Project**: `pi-rust` (`pi-rs` / `tau`) — 100% Pure Rust Port of Mario Zechner's Pi Coding Agent ([pi.dev](https://pi.dev) / [`earendil-works/pi`](https://github.com/earendil-works/pi))
 - **Target Parity**: Complete functional, aesthetic, protocol, and architectural parity with `@earendil-works/pi`.
-- **Compiler/Lint Status**: Zero warnings, 100% Clippy clean (`cargo clippy --workspace --all-targets -- -D warnings`), 100% test pass rate (64/64 tests passing) across all workspace crates.
+- **Compiler/Lint Status**: Zero warnings, 100% Clippy clean (`cargo clippy --workspace --all-targets -- -D warnings`), 100% test pass rate (197/197 tests passing) across all 7 workspace crates.
 
 ---
 
-## 1. Recently Completed Tasks (Sprint Hardening & Protocol Parity) ✅
+## 1. Recently Completed Tasks (Sprint Hardening, Bug Remediation & TUI Performance) ✅
+
+- [x] **Full Codebase Audit & Critical Bug Remediation (All 7 Crates)**:
+  - [x] **`pi-session` DAG Role Serialization**: Added lowercase serde deserialization and case-insensitive loading in JSONL persistence to ensure `user` and `assistant` roles are preserved rather than converting to `System`.
+  - [x] **`pi-session` DAG Node ID & Tree Reconstruction**: Upgraded to 12-hex collision-free IDs and added a full `children_ids` relationship reconstruction pass on JSONL load.
+  - [x] **`pi-tools` Subprocess Deadlock & Zombie Elimination**: Replaced sequential pipe reads in `execute_bash_async` with concurrent `tokio::join!`, and ensured `child.wait().await` follows `child.kill().await` on command timeouts.
+  - [x] **`pi-tools` String Slicing & Validation**: Fixed CRLF normalization and empty target check in `execute_edit`. Replaced lowercased UTF-8 byte slicing in `WebTool::html_to_markdown` with ASCII case-insensitive byte matching.
+  - [x] **`pi-tools` MCP & Worktree Handling**: Propagated `isError: true` application errors in `McpManager`. Added disposable `pi-task-*` branch deletion during worktree removal and `git merge --abort` on conflict detection.
+  - [x] **`pi-providers` Multi-Turn Tool Result Merging**: Fixed Anthropic Messages API consecutive `user` role bug when appending user messages following tool result JSON arrays; dynamically set Anthropic max tokens to 8192; reset SSE event state after consuming payloads.
+  - [x] **`pi-core` Context Compaction & Protocol**: Preserved older compaction summary texts during successive compactions; fixed Herdr OSC 1337 Base64 encoding (`d29ya2luZw==`, `YmxvY2tlZA==`, etc.); converted FirstMate verification subprocesses to async `tokio::process::Command`.
+  - [x] **`pi-tui` Zero-Lag Rendering & UTF-8 Safety**: Removed synchronous `std::process::Command` calls from the 25ms `draw()` closure, caching git info via non-blocking background tasks; added UTF-8 `floor_char_boundary` safety across all string slicing; fixed status bar padding calculation with Unicode character widths; added windowed pagination in autocomplete popup; added $O(N+M)$ prefix/suffix fallback in diff viewer.
+  - [x] **`pi-rpc` & `pi-cli` Protocol Fidelity**: Accepted initial `--model` in `RpcServer::run_stdin_stdout_loop`; returned standard JSON-RPC 2.0 `-32700` (Parse error) and suppressed responses for notifications; cleaned up `--print` mode stdout hygiene; guarded onboarding wizard with interactive terminal check.
 
 - [x] **OpenAI & Anthropic Native Tool Calling Protocol Compliance**:
   - [x] Extended `ChatMessage` and `SessionNode` with `tool_call_id`, `tool_name`, and structured `tool_calls`.
@@ -35,6 +46,7 @@
   - [x] Implemented substring ambiguity defense in `execute_edit` (errors when `occurrences > 1` with helpful diagnostic).
   - [x] Added `-e` flag protection to `execute_grep` to prevent flag injection on hyphen patterns.
   - [x] Fixed wildcard default fallback in `AuthResolver::save_key` to preserve custom provider namespaces in `~/.pi/config.json`.
+
 - [x] **First Mate & Herdr Swarm Coordination**:
   - [x] Implemented `HerdrProtocol` with OSC escape sequence emission (`working`, `blocked`, `done`, `idle`) and environment auto-detection (`HERDR_SESSION`, `TMUX`, `ZELLIJ`, `FIRSTMATE_HOME`).
   - [x] Implemented `FirstMateDistro` orchestrating `Ship` (worktree deliverables) and `Scout` (investigation reports) task shapes.
@@ -44,7 +56,7 @@
 
 ---
 
-## 2. Active Engineering Tasks
+## 2. Completed Architecture & Tool Integration
 
 - [x] **First-Class Neovim Lua Companion (`pi.nvim`)**:
   - [x] Implemented pure Lua plugin interfacing with `pi-rs --rpc` over `vim.fn.jobstart`.
@@ -57,4 +69,5 @@
 
 - [x] **Visual Diff Inspector in TUI**:
   - [x] Interactive terminal diff viewer overlay in `pi-tui` (`DiffView`, `DiffViewState`, `/diff` slash command, scroll & accept/reject keybindings).
+
 
