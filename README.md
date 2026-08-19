@@ -21,7 +21,7 @@
 [![Pure Rust](https://img.shields.io/badge/Pure%20Rust-100%25-orange.svg?style=flat-square&logo=rust)]()
 [![Zero Node.js](https://img.shields.io/badge/Node.js-0%20Dependencies-brightgreen.svg?style=flat-square)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Tests: 100%](https://img.shields.io/badge/Tests-249%2F249%20Passing-success.svg?style=flat-square)]()
+[![Tests: 100%](https://img.shields.io/badge/Tests-265%2F265%20Passing-success.svg?style=flat-square)]()
 [![Clippy: 0 Warnings](https://img.shields.io/badge/Clippy-0%20Warnings-green.svg?style=flat-square)]()
 [![UNIX Manpage](https://img.shields.io/badge/Manpage-tau(1)-purple.svg?style=flat-square)](man/tau.1)
 

@@ -414,6 +414,23 @@ cargo test --workspace -- --nocapture
 
 ---
 
+## 7. FIXED — Resolved Bug Evidence
+
+| ID | Resolution | Evidence / Notes |
+| :--- | :--- | :--- |
+| **BUG-01** | **Fixed** | `role: "tool"` messages now include `tool_call_id` in `pi-providers` / `pi-core`; OpenAI/DeepSeek/Groq multi-turn tool loops no longer reject with HTTP 400. |
+| **BUG-02** | **Fixed** | JSON-RPC 2.0 loop now uses in-order delivery instead of per-chunk `tokio::spawn`; notifications are flushed before the final response frame. |
+| **BUG-03** | **Fixed** | `AuthResolver::save_key` uses specific provider config keys; unknown providers write `"{norm}_api_key"` instead of clobbering `kilo_api_key`. |
+| **BUG-04** | **Fixed** | `/refresh` and `Ctrl+R` now dispatch model catalog refresh to a non-blocking background Tokio task in `pi-tui`. |
+| **BUG-05** | **Fixed** | `execute_bash` uses async `tokio::process::Command` with a 120-second timeout and child process kill on timeout. |
+| **BUG-06** | **Fixed** | MCP stdio client now performs `child.kill().await` and `child.wait().await` on timeout/error paths to prevent zombie leaks. |
+| **BUG-07** | **Fixed** | `edit` tool validates target occurrence count and errors when the substring occurs more than once. |
+| **BUG-08** | **Fixed** | `grep` tool passes `-e` before the pattern to prevent leading-hyphen option injection. |
+| **BUG-09** | **Fixed** | Fragmented `<think>` tag streaming no longer leaks raw reasoning tags into user content in `pi-tui` message handling. |
+| **BUG-10** | **Fixed** | `AgentLoop` now executes context compaction when `ContextBudget` / `TokenProfiler` flags exceed the 80% threshold. |
+
+---
+
 ## 6. Summary of Architectural Invariants to Maintain
 
 1. **Dual Tool Protocol**: Ensure every new tool in `pi-tools` is registered in structured schema (`ToolExecutor::tool_definitions`) and fallback regex parser (`AgentLoop::extract_fallback_tool_calls`).
