@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 pub mod auth;
 pub mod models;
 pub mod tokens;
+pub mod best_of_n;
 pub mod constants;
 pub use auth::{AuthCredential, AuthResolver, AuthStore};
 pub use models::{ModelCatalogLoader, ModelInfo};
@@ -337,6 +338,8 @@ pub struct ModelConfig {
     pub context_window: usize,
     #[serde(default = "default_max_output")]
     pub max_output: usize,
+    #[serde(default)]
+    pub best_of_n: Option<usize>,
 }
 
 fn default_context_window() -> usize {
@@ -505,6 +508,7 @@ impl ModelConfig {
             base_url,
             context_window,
             max_output,
+            best_of_n: None,
         }
     }
 }
@@ -1283,6 +1287,49 @@ impl ProviderClient {
 
             Ok(state.finish())
         }
+    }
+
+    /// Samples `n` candidates for the same prompt/tools context and returns all responses.
+    pub async fn best_of_n_candidates<F>(
+        config: &ModelConfig,
+        system_prompt: &str,
+        messages: &[ChatMessage],
+        tools: &[serde_json::Value],
+        mut on_chunk: F,
+    ) -> Result<Vec<ProviderResponse>>
+    where
+        F: FnMut(String) + Send,
+    {
+        let n = config.best_of_n.unwrap_or(1).max(1);
+        let mut candidates = Vec::with_capacity(n);
+        for _ in 0..n {
+            candidates.push(
+                Self::stream_messages_with_tools(config, system_prompt, messages, tools, &mut on_chunk)
+                    .await?,
+            );
+        }
+        Ok(candidates)
+    }
+
+    /// Selects the best response from candidates.
+    ///
+    /// TODO: replace this heuristic with a learned value model / reward scorer.
+    pub fn select_best_response(candidates: Vec<ProviderResponse>) -> ProviderResponse {
+        if candidates.len() == 1 {
+            return candidates.into_iter().next().unwrap();
+        }
+
+        candidates
+            .into_iter()
+            .max_by(|a, b| {
+                let score_a = a.text.chars().count() + a.tool_calls.len() * 1000usize;
+                let score_b = b.text.chars().count() + b.tool_calls.len() * 1000usize;
+                score_a.cmp(&score_b)
+            })
+            .unwrap_or_else(|| ProviderResponse {
+                text: String::new(),
+                tool_calls: Vec::new(),
+            })
     }
 }
 

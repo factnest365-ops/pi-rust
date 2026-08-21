@@ -432,7 +432,7 @@ impl AgentLoop {
                 }
             };
 
-            let provider_resp = match ProviderClient::stream_messages_with_tools(
+            let _provider_resp = match ProviderClient::stream_messages_with_tools(
                 &self.model_config,
                 &full_system_prompt,
                 &conversation_messages,
@@ -451,6 +451,43 @@ impl AgentLoop {
                         &e.to_string(),
                     );
                     return Err(e);
+                }
+            };
+
+            let provider_resp = if self.model_config.best_of_n.unwrap_or(1) > 1 {
+                let candidates = ProviderClient::best_of_n_candidates(
+                    &self.model_config,
+                    &full_system_prompt,
+                    &conversation_messages,
+                    &tool_defs,
+                    |chunk| {
+                        event_tx(TurnEvent::ModelStreaming { chunk });
+                    },
+                )
+                .await?;
+
+                ProviderClient::select_best_response(candidates)
+            } else {
+                match ProviderClient::stream_messages_with_tools(
+                    &self.model_config,
+                    &full_system_prompt,
+                    &conversation_messages,
+                    &tool_defs,
+                    |chunk| {
+                        event_tx(TurnEvent::ModelStreaming { chunk });
+                    },
+                )
+                .await
+                {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        ReflexionEngine::distill_turn_error(
+                            &self.system_engine.vault,
+                            user_input,
+                            &e.to_string(),
+                        );
+                        return Err(e);
+                    }
                 }
             };
 
@@ -1556,6 +1593,7 @@ cat test.txt
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1630,6 +1668,7 @@ cat test.txt
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1694,6 +1733,7 @@ cat test.txt
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1767,6 +1807,7 @@ cat test.txt
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1834,6 +1875,7 @@ cat test.txt
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1869,6 +1911,7 @@ cat test.txt
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2039,6 +2082,7 @@ Implement authentication wizard in pi-tui
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config)
@@ -2080,6 +2124,7 @@ Implement authentication wizard in pi-tui
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2177,6 +2222,7 @@ Implement authentication wizard in pi-tui
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2209,6 +2255,7 @@ Implement authentication wizard in pi-tui
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut plan = ExecutionPlan::new("p1", "Add login auth");
@@ -2248,6 +2295,7 @@ Implement authentication wizard in pi-tui
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2277,6 +2325,5 @@ Implement authentication wizard in pi-tui
         assert!(agent_loop.system_engine.skill_registry.get_skill("rust-release-optimizer").is_some());
     }
 }
-
 
 
