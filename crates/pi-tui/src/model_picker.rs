@@ -233,6 +233,18 @@ impl ModelPickerWidget {
                     format!("{}k ctx", m.context_window / 1_000)
                 };
 
+                let out_str = if m.max_output >= 1_000_000 {
+                    format!("{}M out", m.max_output / 1_000_000)
+                } else {
+                    format!("{}k out", m.max_output / 1_000)
+                };
+
+                let inline_spec = if m.max_output > 0 {
+                    format!("[{} · {}]", ctx_str, out_str)
+                } else {
+                    format!("[{}]", ctx_str)
+                };
+
                 let provider_tag = Span::styled(
                     format!("[{:<10}] ", m.provider),
                     Style::default().fg(p_color).add_modifier(Modifier::BOLD),
@@ -243,8 +255,8 @@ impl ModelPickerWidget {
                     Style::default().fg(palette.text).add_modifier(Modifier::BOLD),
                 );
 
-                let ctx_span = Span::styled(
-                    format!(" ({})", ctx_str),
+                let inline_spec_span = Span::styled(
+                    format!(" {}", inline_spec),
                     Style::default().fg(palette.muted),
                 );
 
@@ -273,7 +285,7 @@ impl ModelPickerWidget {
                     Span::styled(" [🔑Auth]", Style::default().fg(palette.yellow))
                 };
 
-                let mut spans = vec![active_marker, provider_tag, model_id_span, ctx_span];
+                let mut spans = vec![active_marker, provider_tag, model_id_span, inline_spec_span];
                 spans.extend(badge_spans);
                 spans.push(Span::raw(" "));
                 spans.push(auth_badge);
@@ -287,7 +299,7 @@ impl ModelPickerWidget {
                 Span::styled(" ▶ ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
                 Span::styled("[Custom    ] ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
                 Span::styled(query.trim(), Style::default().fg(palette.text).add_modifier(Modifier::BOLD)),
-                Span::styled(" (Auto-inferred limits)", Style::default().fg(palette.muted)),
+                Span::styled(" [Auto-inferred]", Style::default().fg(palette.muted)),
                 Span::styled(" [⚡Custom]", Style::default().fg(palette.cyan)),
             ];
             items.push(ListItem::new(Line::from(custom_spans)));

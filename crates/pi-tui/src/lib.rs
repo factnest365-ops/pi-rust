@@ -363,6 +363,32 @@ impl PiTuiApp {
             .split(popup_layout[1])[1]
     }
 
+    fn centered_rect_with_max(
+        preferred_percent_x: u16,
+        preferred_percent_y: u16,
+        max_width: u16,
+        max_height: u16,
+        r: Rect,
+    ) -> Rect {
+        let preferred_width = ((u32::from(r.width) * u32::from(preferred_percent_x)) / 100)
+            .min(u32::from(max_width))
+            .min(u32::from(r.width));
+        let preferred_height = ((u32::from(r.height) * u32::from(preferred_percent_y)) / 100)
+            .min(u32::from(max_height))
+            .min(u32::from(r.height));
+        let width = preferred_width as u16;
+        let height = preferred_height as u16;
+        let x_offset = (r.width / 2).saturating_sub(width / 2);
+        let y_offset = (r.height / 2).saturating_sub(height / 2);
+
+        Rect::new(
+            r.x + x_offset,
+            r.y + y_offset,
+            width,
+            height,
+        )
+    }
+
     pub fn abort_active_turn(&mut self) {
         if let Some(handle) = self.active_turn.take() {
             handle.abort();
@@ -1214,7 +1240,7 @@ impl PiTuiApp {
 
                 // Render Interactive Searchable Model Picker Dialog Overlay
                 if self.show_model_picker {
-                    let area = Self::centered_rect(88, 76, f.area());
+                    let area = Self::centered_rect_with_max(88, 76, 120, 40, f.area());
                     f.render_widget(Clear, area);
 
                     let searched = pi_providers::ModelCatalogLoader::search_models(&self.all_catalog_models, &self.model_search_query);
@@ -1263,7 +1289,7 @@ impl PiTuiApp {
 
                 // Render Interactive Searchable Provider Picker Dialog Overlay
                 if self.show_provider_picker {
-                    let area = Self::centered_rect(75, 55, f.area());
+                    let area = Self::centered_rect_with_max(75, 55, 75, 55, f.area());
                     f.render_widget(Clear, area);
 
                     let q = self.provider_search_query.to_lowercase();

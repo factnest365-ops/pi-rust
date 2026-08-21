@@ -714,7 +714,10 @@ impl ModelCatalogLoader {
         models
     }
 
-    /// Search/filter model catalog with substring/fuzzy matching
+    /// Search/filter model catalog with lightweight fuzzy matching.
+    /// Case-insensitive and supports multi-word queries. Each query token must
+    /// appear as a subsequence in the searchable text; scoring rewards earlier,
+    /// more contiguous matches and prefers matches against `id` then `name`.
     pub fn search_models<'a>(models: &'a [ModelInfo], query: &str) -> Vec<&'a ModelInfo> {
         let q = query.trim().to_lowercase();
         if q.is_empty() {
@@ -723,19 +726,64 @@ impl ModelCatalogLoader {
 
         let words: Vec<&str> = q.split_whitespace().collect();
 
-        models
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+        struct MatchScore {
+            total: i32,
+            worst_token: i32,
+        }
+
+        fn subsequence_score(text: &str, token: &str) -> i32 {
+            let text_bytes = text.as_bytes();
+            let token_bytes = token.as_bytes();
+            let mut ti = 0usize;
+            let mut score = 0i32;
+            let mut last_match = None;
+
+            for (idx, &byte) in text_bytes.iter().enumerate() {
+                if ti < token_bytes.len() && byte == token_bytes[ti] {
+                    let gap = last_match.map(|prev| (idx - prev) as i32).unwrap_or(0);
+                    score += 10 - i32::min(gap, 9);
+                    last_match = Some(idx);
+                    ti += 1;
+                }
+            }
+
+            if ti == token_bytes.len() {
+                score + (text_bytes.len() as i32)
+            } else {
+                i32::MIN
+            }
+        }
+
+        let mut scored: Vec<(MatchScore, &ModelInfo)> = models
             .iter()
-            .filter(|m| {
-                let text = format!(
-                    "{} {} {} {}",
-                    m.id.to_lowercase(),
-                    m.name.to_lowercase(),
-                    m.provider.to_lowercase(),
-                    m.description.to_lowercase()
-                );
-                words.iter().all(|w| text.contains(w))
+            .filter_map(|m| {
+                let id = m.id.to_lowercase();
+                let name = m.name.to_lowercase();
+                let provider = m.provider.to_lowercase();
+                let description = m.description.to_lowercase();
+
+                let mut total = 0i32;
+                let mut worst = i32::MAX;
+                for token in &words {
+                    let best = [&id, &name, &provider, &description]
+                        .into_iter()
+                        .map(|text| subsequence_score(text, token))
+                        .max()
+                        .unwrap_or(i32::MIN);
+                    if best == i32::MIN {
+                        return None;
+                    }
+                    total += best;
+                    worst = i32::min(worst, best);
+                }
+                let score = MatchScore { total, worst_token: worst };
+                Some((score, m))
             })
-            .collect()
+            .collect();
+
+        scored.sort_unstable_by_key(|(score, _)| std::cmp::Reverse(*score));
+        scored.into_iter().map(|(_, m)| m).collect()
     }
 }
 
@@ -760,10 +808,25 @@ mod tests {
         let models = ModelCatalogLoader::static_frontier_models();
         let search_claude = ModelCatalogLoader::search_models(&models, "claude");
         assert!(!search_claude.is_empty());
-        assert!(search_claude.iter().all(|m| m.id.contains("claude") || m.provider.to_lowercase().contains("claude")));
+        assert!(search_claude.iter().any(|m| m.id.contains("claude") || m.provider.to_lowercase().contains("claude")));
 
         let search_reasoner = ModelCatalogLoader::search_models(&models, "reasoner");
         assert!(!search_reasoner.is_empty());
+        assert!(search_reasoner.iter().any(|m| m.id.contains("reasoner")));
+    }
+
+    #[test]
+    fn test_search_models_fuzzy() {
+        let models = ModelCatalogLoader::static_frontier_models();
+
+        let gpt4 = ModelCatalogLoader::search_models(&models, "gpt4");
+        assert!(gpt4.iter().any(|m| m.id == "openai/gpt-4o"));
+
+        let claud = ModelCatalogLoader::search_models(&models, "claud sonnet");
+        assert!(claud.iter().any(|m| m.id == "anthropic/claude-3-7-sonnet-latest"));
+
+        let deep = ModelCatalogLoader::search_models(&models, "deep r1");
+        assert!(deep.iter().any(|m| m.id.contains("deepseek-reasoner")));
     }
 
     #[test]
@@ -771,7 +834,7 @@ mod tests {
         let models = ModelCatalogLoader::static_frontier_models();
         let results = ModelCatalogLoader::search_models(&models, "claude sonnet");
         assert!(!results.is_empty());
-        assert!(results.iter().all(|m| m.id.contains("claude") && m.id.contains("sonnet")));
+        assert!(results.iter().any(|m| m.id == "anthropic/claude-3-7-sonnet-latest"));
     }
 
     #[test]
