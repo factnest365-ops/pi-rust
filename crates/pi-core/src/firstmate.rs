@@ -10,6 +10,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use crate::SkillRegistry;
+use crate::TauVault;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CrewTaskShape {
@@ -64,6 +67,12 @@ pub struct FirstMateDistro {
     tasks: Arc<RwLock<HashMap<String, CrewTask>>>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct CrewDispatchMemories {
+    pub skill_registry: Option<SkillRegistry>,
+    pub vault: Option<TauVault>,
+}
+
 impl FirstMateDistro {
     pub fn new<P: AsRef<Path>>(repo_root: P) -> Self {
         Self {
@@ -80,6 +89,19 @@ impl FirstMateDistro {
         mode: CrewMergeMode,
         backend: CrewBackend,
         verify_cmd: Option<String>,
+    ) -> Result<CrewTask> {
+        self.dispatch_with_memories(shape, task, mode, backend, verify_cmd, None)
+            .await
+    }
+
+    pub async fn dispatch_with_memories(
+        &self,
+        shape: CrewTaskShape,
+        task: String,
+        mode: CrewMergeMode,
+        backend: CrewBackend,
+        verify_cmd: Option<String>,
+        memories: Option<CrewDispatchMemories>,
     ) -> Result<CrewTask> {
         let task_id = Uuid::new_v4().to_string()[..8].to_string();
         let created_at = Utc::now().to_rfc3339();
@@ -105,9 +127,28 @@ impl FirstMateDistro {
             verify_cmd,
             status: CrewTaskStatus::Working,
             outcome: None,
-            created_at,
             finished_at: None,
+            created_at,
         };
+
+        if let Some(ref memories) = memories
+            && let Some(ref registry) = memories.skill_registry {
+                let input = crate::crew_memory::CrewPrefetchInput {
+                    task_text: crew_task.task.clone(),
+                    crew_id: None,
+                    task_id: Some(crew_task.id.clone()),
+                    skill_limit: Some(crate::crew_memory::DEFAULT_CREW_SKILL_LIMIT),
+                    memory_limit: Some(5),
+                };
+                let _ = crate::crew_memory::prefetch_crew_context(
+                    memories
+                        .vault
+                        .as_ref()
+                        .unwrap_or(&crate::vault::TauVault::new()),
+                    registry,
+                    input,
+                );
+            }
 
         let mut lock = self.tasks.write().await;
         lock.insert(task_id, crew_task.clone());
