@@ -463,6 +463,7 @@ mod tests {
             mode: "local-only".to_string(),
             backend: "worktree".to_string(),
             verify_cmd: None,
+            n: Some(3),
         };
 
         let dispatch_res = handler.dispatch(&dispatch_args).await.unwrap();
