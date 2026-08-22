@@ -1182,4 +1182,42 @@ GARBAGE_LINE_NOT_JSON
         assert_eq!(loaded.nodes["node-3"].children_ids, vec!["node-4"]);
         assert_eq!(loaded.nodes["node-4"].tool_name.as_deref(), Some("read"));
     }
+
+    #[test]
+    fn test_dag_lineage_for_ghost_crews() {
+        let mut tree = SessionTree::new();
+        let _root = tree.root_id.clone();
+        let user_goal = tree.append_child(Role::User, "Ship verification improvement".to_string());
+
+        // Simulate two ghost crew branches racing from the same goal.
+        let crew_a = tree.append_child_with_metadata(
+            Role::Assistant,
+            "Crew A implementation".to_string(),
+            Some("spec-crew-crew-a".to_string()),
+            Some("speculative_race".to_string()),
+            Some(serde_json::json!([{"type":"function","function":"speculative_race","strategyId":"crew-a","reward":1.0}])),
+        );
+        tree.rewind_to(&user_goal);
+        let crew_b = tree.append_child_with_metadata(
+            Role::Assistant,
+            "Crew B implementation".to_string(),
+            Some("spec-crew-crew-b".to_string()),
+            Some("speculative_race".to_string()),
+            Some(serde_json::json!([{"type":"function","function":"speculative_race","strategyId":"crew-b","reward":0.0}])),
+        );
+
+        assert_eq!(tree.node_count(), 4);
+        assert_eq!(tree.get_children(&user_goal).len(), 2);
+        assert_eq!(tree.branch_count(), 2);
+        assert!(tree.is_ancestor_of(&user_goal, &crew_a));
+        assert!(tree.is_ancestor_of(&user_goal, &crew_b));
+        assert_eq!(tree.find_lca(&crew_a, &crew_b), Some(user_goal.clone()));
+
+        let diff = tree.diff_branches(&crew_a, &crew_b);
+        assert_eq!(diff.lca_node_id, Some(user_goal.clone()));
+        assert_eq!(diff.branch_a_divergent.len(), 1);
+        assert_eq!(diff.branch_a_divergent[0].id, crew_a);
+        assert_eq!(diff.branch_b_divergent.len(), 1);
+        assert_eq!(diff.branch_b_divergent[0].id, crew_b);
+    }
 }
