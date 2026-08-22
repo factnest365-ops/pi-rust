@@ -1149,6 +1149,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "dirs",
+ "futures-util",
  "pi-providers",
  "pi-session",
  "pi-tools",

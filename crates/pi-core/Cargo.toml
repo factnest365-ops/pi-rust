@@ -15,6 +15,7 @@ pi-providers.workspace = true
 dirs.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
 tokio-util.workspace = true
+futures-util.workspace = true
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
