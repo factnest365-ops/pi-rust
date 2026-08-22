@@ -95,7 +95,7 @@ impl QuestionModalState {
             QuestionOption {
                 id: "opt-2".to_string(),
                 label: "Non-Blocking Async Subprocess Execution".to_string(),
-                description: Some("Guarantee 120s timeout and automatic zombie process termination on abort.".to_string()),
+                description: Some(format!("Guarantee {}s timeout and automatic zombie process termination on abort.", pi_core::plan::VERIFY_TIMEOUT_SECS).to_string()),
                 selected: false,
             },
             QuestionOption {

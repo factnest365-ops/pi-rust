@@ -50,7 +50,7 @@ pub use memory_overlay::{MemoryItem, MemoryOverlayState, MemoryOverlayWidget, Me
 pub use mermaid::MermaidRenderer;
 pub use messages::{Message, MessageRenderer};
 pub use model_picker::{ModelCategoryTab, ModelPickerWidget};
-pub use plan_overlay::{PlanOverlayWidget, PlanState, PlanTaskItem, PlanTaskStatus};
+pub use plan_overlay::{PlanOverlayWidget, PlanState, task_status_badge, task_status_label};
 pub use provider_picker::ProviderPickerWidget;
 pub use question_modal::{QuestionKind, QuestionModalState, QuestionModalWidget, QuestionOption};
 pub use session_picker::SessionPicker;
@@ -272,7 +272,7 @@ impl PiTuiApp {
             show_memory_overlay: false,
             memory_overlay_state: MemoryOverlayState::new(),
             show_plan_overlay: false,
-            plan_state: PlanState::sample_plan(),
+            plan_state: PlanState::default(),
             show_question_modal: false,
             question_modal_state: None,
             expand_tools: true,

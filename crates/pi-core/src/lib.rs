@@ -105,22 +105,7 @@ impl SystemPromptEngine {
         }
     }
 
-    pub fn build_full_prompt(&self) -> String {
-        let mut full = self.base_prompt.clone();
-        if let Some(ref agents) = self.agents_md {
-            full.push_str("\n\n--- Project Instructions (AGENTS.md) ---\n");
-            full.push_str(agents);
-        }
-        full.push_str(&self.skill_registry.format_prompt_summary());
-        let hindsight = self.vault.format_hindsight_prompt("");
-        if !hindsight.is_empty() {
-            full.push_str("\n\n");
-            full.push_str(&hindsight);
-        }
-        full
-    }
-
-    pub fn build_prompt_for_turn(&self, query: &str) -> String {
+    pub fn build_prompt_with_hindsight(&self, query: &str) -> String {
         let mut full = self.base_prompt.clone();
         if let Some(ref agents) = self.agents_md {
             full.push_str("\n\n--- Project Instructions (AGENTS.md) ---\n");
@@ -133,6 +118,14 @@ impl SystemPromptEngine {
             full.push_str(&hindsight);
         }
         full
+    }
+
+    pub fn build_full_prompt(&self) -> String {
+        self.build_prompt_with_hindsight("")
+    }
+
+    pub fn build_prompt_for_turn(&self, query: &str) -> String {
+        self.build_prompt_with_hindsight(query)
     }
 }
 
@@ -198,10 +191,7 @@ impl AgentLoop {
     }
 
     pub fn format_plan_markdown(&self) -> Option<String> {
-        self.execution_plan.as_ref().map(|p| {
-            let executor = PlanExecutor::new(p.clone());
-            executor.to_markdown_checklist()
-        })
+        self.execution_plan.as_ref().map(ExecutionPlan::to_markdown_checklist)
     }
 
     pub fn crystallize_active_session(
@@ -408,9 +398,8 @@ impl AgentLoop {
 
         let mut full_system_prompt = self.system_engine.build_prompt_for_turn(user_input);
         if let Some(ref plan) = self.execution_plan {
-            let executor = PlanExecutor::new(plan.clone());
             full_system_prompt.push_str("\n\n--- Active Execution Plan ---\n");
-            full_system_prompt.push_str(&executor.to_markdown_checklist());
+            full_system_prompt.push_str(&plan.to_markdown_checklist());
         }
         let mut turn_iteration = 0;
         let mut final_response = String::new();
