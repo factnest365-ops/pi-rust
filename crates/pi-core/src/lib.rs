@@ -10,6 +10,7 @@ pub mod crystallize;
 pub mod federation;
 pub mod firstmate;
 pub mod herdr;
+pub mod mcts;
 pub mod plan;
 pub mod skills;
 pub mod speculate;
@@ -25,6 +26,7 @@ pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
 };
 pub use herdr::{HerdrAgentState, HerdrEnvironment, HerdrProtocol};
+pub use mcts::{MctsConfig, MctsNode};
 pub use pi_tools::{get_mcp_manager, McpManager, McpServerConfig, McpToolDefinition};
 pub use plan::{ExecutionPlan, PlanExecutor, PlanTask, TaskStatus};
 pub use skills::{SkillDefinition, SkillRegistry};
