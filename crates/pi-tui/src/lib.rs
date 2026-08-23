@@ -14,6 +14,7 @@ use ratatui::{
     widgets::{Block, Clear, ListState, Paragraph, Wrap},
     Terminal,
 };
+use std::env;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -155,7 +156,11 @@ impl PiTuiApp {
             && model_cfg.provider != "opencode"
             && model_cfg.provider != "openrouter"
             && model_cfg.api_key.is_empty();
-        let agent_loop = AgentLoop::new(model_cfg);
+        let agent_loop = AgentLoop::new(model_cfg.clone());
+
+        let repo_root = env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+        Arc::new(pi_core::SpeculativeEngine::new(repo_root))
+            .init_global_handler(model_cfg);
 
         let all_catalog_models = pi_providers::ModelCatalogLoader::load_cached_or_static();
 
