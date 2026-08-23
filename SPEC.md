@@ -1,11 +1,6 @@
-# SPEC.md — pi-rust Harness: Tree Search Layer
+# SPEC.md — pi-rust Harness: Tree-Search Layer
 
-> Project: `pi-rust` / `tau` — universal self-improving agent harness.
-> Objective: replace linear turn execution with verifiable tree search over tool trajectories.
-
----
-
-## 1. Crate & Search Layer Architecture
+## 1. Architecture
 
 ```mermaid
 graph TD
@@ -36,32 +31,38 @@ graph TD
         S2[MCTS Tool Prefix Tree]
         S3[Parallel Herdr + Value Model]
     end
-    B --> Search
-    C --> Search
+    B --> S1
+    C --> S1
+    D --> S1
+    E --> S1
+    F --> S1
+    G --> S1
+    H --> S1
+    S1 --> S2
+    S2 --> S3
 ```
 
-### Dependencies
+### Dependency rules
 - `pi-cli` depends on all crates.
 - `pi-core` depends on `pi-providers`, `pi-session`, `pi-tools`.
 - `pi-daemon` depends on `pi-core`, `pi-providers`, `pi-session`, `pi-tools`.
 - `pi-tui` depends on `pi-core`, `pi-providers`, `pi-session`.
 - `pi-rpc` depends on `pi-core`, `pi-providers`, `pi-session`, `pi-tools`.
-- Leaf crates (`pi-providers`, `pi-session`, `pi-tools`) remain decoupled.
+- Leaf crates (`pi-providers`, `pi-session`, `pi-tools`) must not depend on each other or on `pi-core`, `pi-tui`, `pi-rpc`, `pi-daemon`.
 
----
+## 2. Tool contract
 
-## 2. Tool Contract
+Tool registry and dispatch:
+- definitions: `crates/pi-tools/src/lib.rs:105`
+- dispatch: `crates/pi-tools/src/lib.rs:59`
 
-Tool registry lives at `crates/pi-tools/src/lib.rs:105` via `ToolExecutor::tool_definitions()`.
-Dispatch lives at `crates/pi-tools/src/lib.rs:59` via `ToolExecutor::execute()`.
-
-| Tool | Safety / Behavior |
+| Tool | Contract |
 | --- | --- |
-| `read` | 1-indexed line slicing, exact boundary checks |
+| `read` | 1-indexed line slicing with exact boundary checks |
 | `write` | atomic directory creation, overwrite allowed |
 | `edit` | single-match guard, unambiguous replacement |
 | `bash` | async tokio `Command`, 120s timeout, child kill on cancel |
-| `grep` | recursive pattern search, `-e` flag safety |
+| `grep` | recursive pattern search with `-e` flag safety |
 | `find` | recursive filename/glob search |
 | `ls` | directory listing with sizes |
 | `web_fetch` | HTML to markdown extraction |
@@ -86,9 +87,7 @@ Session causality:
 - Append `Assistant` with tool metadata before executing tools.
 - Append `Tool` results immediately after execution.
 
----
-
-## 3. Agent Loop Contract
+## 3. Agent loop contract
 
 `AgentLoop::run_turn` at `crates/pi-core/src/lib.rs:399` is the single turn entrypoint.
 
@@ -105,14 +104,12 @@ run_turn(user_input)
 ```
 
 Required invariants:
-- Do not block JSON-RPC stdout with human-readable logs.
+- Do not emit human-readable logs to stdout in JSON-RPC mode; use `eprintln!`.
 - Subprocess tools use async execution with timeout + kill.
 - All tool mutations snapshot pre-state for `UndoEngine`.
 - Alfred advises without deadlocking the agent loop.
 
----
-
-## 4. Search Layer
+## 4. Search layer
 
 ### Tier 1 — Best-of-N
 - Wrap candidate completion generation in `pi-core` and/or `pi-providers`.
@@ -121,7 +118,7 @@ Required invariants:
 - Goal: higher final-answer pass rate with minimal loop change.
 
 ### Tier 2 — MCTS over Tool Prefixes
-- Replace linear turn loop with minimal MCTS on tool-call prefixes.
+- Replace the linear turn loop with minimal MCTS on tool-call prefixes.
 - Node fields: `wins`, `visits`, `uct`, `tool_prefix`, `children`.
 - Phases: select -> expand -> simulate -> backprop.
 - Simulate by executing the chosen tool call and returning verification reward.
@@ -133,18 +130,14 @@ Required invariants:
 - Add a learned or heuristic value model for node evaluation.
 - Keep Tier 3 feature-gated until Tier 2 is stable.
 
----
-
-## 5. Memory Recall
+## 5. Memory recall
 
 Before candidate search:
 1. Query `TauVault` with the current user input.
 2. Inject top-ranked hindsight/counter-rules into the turn prompt.
 3. Use retrieved memory to bias candidate selection and tool ordering.
 
----
-
-## 6. Success Criteria
+## 6. Success criteria
 
 | Metric | Target |
 | --- | --- |
@@ -154,9 +147,7 @@ Before candidate search:
 | Correctness | MCTS must preserve session DAG causality and metadata |
 | Decoupling | leaf crates gain no orchestrator dependencies |
 
----
-
-## 7. Implementation Order
+## 7. Implementation order
 
 1. Tier 1 Best-of-N in `pi-core` and `pi-providers`.
 2. Tier 2 minimal MCTS at `AgentLoop::run_turn`.
