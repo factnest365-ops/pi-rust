@@ -150,6 +150,7 @@ pub struct AgentLoop {
     pub max_tool_iterations: usize,
     pub allowed_tools: Option<Vec<String>>,
     pub execution_plan: Option<ExecutionPlan>,
+    pub mcts_config: Option<mcts::MctsConfig>,
 }
 
 impl AgentLoop {
@@ -167,6 +168,7 @@ impl AgentLoop {
             max_tool_iterations: 5,
             allowed_tools: None,
             execution_plan: None,
+            mcts_config: None,
         }
     }
 
@@ -178,6 +180,29 @@ impl AgentLoop {
     pub fn with_execution_plan(mut self, plan: ExecutionPlan) -> Self {
         self.execution_plan = Some(plan);
         self
+    }
+
+    pub fn with_mcts(mut self, cfg: mcts::MctsConfig) -> Self {
+        self.mcts_config = Some(cfg);
+        self
+    }
+
+    /// Rank tool calls via minimal MCTS: expand root with each call as a branch,
+    /// simulate via heuristic (bash→1.0, others→0.5) and order by UCT wins.
+    pub fn mcts_rank_tool_calls(&self, calls: Vec<ToolCall>) -> Vec<ToolCall> {
+        let Some(cfg) = &self.mcts_config else { return calls; };
+        if calls.len() <= 1 { return calls; }
+        let mut root = mcts::MctsNode::new(vec![]);
+        root.expand(calls.iter().map(|c| vec![c.name.clone()]).collect());
+        for (idx, call) in calls.iter().enumerate() {
+            let seeded = if call.name == "bash" { 1.0 } else { 0.5 };
+            for _ in 0..cfg.max_rollouts.max(1) {
+                root.backprop_path(&[idx], seeded);
+            }
+        }
+        let mut scored: Vec<(usize, f64)> = root.children.iter().enumerate().map(|(i, n)| (i, n.wins)).collect();
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        scored.into_iter().map(|(i, _)| calls[i].clone()).collect()
     }
 
     pub fn set_execution_plan(&mut self, plan: ExecutionPlan) {
@@ -503,6 +528,9 @@ impl AgentLoop {
                     calls
                 }
             };
+
+            // Tier 2 MCTS: rank tool calls when mcts_config is present (opt-in)
+            let tool_calls_to_execute = self.mcts_rank_tool_calls(tool_calls_to_execute);
 
             if !tool_calls_to_execute.is_empty() {
                 let raw_tool_calls_json: serde_json::Value = serde_json::Value::Array(
@@ -2304,6 +2332,47 @@ Implement authentication wizard in pi-tui
         assert!(skill_path.exists());
         assert!(agent_loop.system_engine.skill_registry.get_skill("rust-release-optimizer").is_some());
     }
+
+    #[test]
+    fn test_mcts_rank_bash_first() {
+        let cfg = ModelConfig {
+            provider: "openai".to_string(),
+            model_id: "t".to_string(),
+            api_key: "k".to_string(),
+            base_url: None,
+            context_window: 128_000,
+            max_output: 8192,
+            best_of_n: None,
+        };
+        let agent = AgentLoop::new(cfg).with_mcts(crate::mcts::MctsConfig { max_rollouts: 2, max_depth: 2 });
+        let calls = vec![
+            ToolCall { id: "1".into(), name: "read".into(), arguments: serde_json::json!({}) },
+            ToolCall { id: "2".into(), name: "bash".into(), arguments: serde_json::json!({"command": "cargo check"}) },
+            ToolCall { id: "3".into(), name: "grep".into(), arguments: serde_json::json!({}) },
+        ];
+        let ranked = agent.mcts_rank_tool_calls(calls);
+        assert_eq!(ranked[0].name, "bash");
+        assert_eq!(ranked.len(), 3);
+    }
+
+    #[test]
+    fn test_mcts_rank_disabled_preserves_order() {
+        let cfg = ModelConfig {
+            provider: "openai".to_string(),
+            model_id: "t".to_string(),
+            api_key: "k".to_string(),
+            base_url: None,
+            context_window: 128_000,
+            max_output: 8192,
+            best_of_n: None,
+        };
+        let agent = AgentLoop::new(cfg);
+        let calls = vec![
+            ToolCall { id: "1".into(), name: "read".into(), arguments: serde_json::json!({}) },
+            ToolCall { id: "2".into(), name: "bash".into(), arguments: serde_json::json!({}) },
+        ];
+        let out = agent.mcts_rank_tool_calls(calls.clone());
+        assert_eq!(out[0].name, "read");
+        assert_eq!(out[1].name, "bash");
+    }
 }
-
-
