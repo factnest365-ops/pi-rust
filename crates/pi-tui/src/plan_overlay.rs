@@ -1,4 +1,5 @@
 use crate::style::ThemePalette;
+use pi_core::plan::{ExecutionPlan, PlanTask, TaskStatus};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -8,55 +9,10 @@ use ratatui::{
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PlanTaskStatus {
-    Pending,
-    Running { progress_pct: u8 },
-    Completed { summary: Option<String> },
-    Failed { error: String },
-}
-
-impl PlanTaskStatus {
-    pub fn badge(&self) -> (&'static str, Color) {
-        match self {
-            PlanTaskStatus::Pending => ("[ ]", Color::DarkGray),
-            PlanTaskStatus::Running { .. } => ("[◐]", Color::Yellow),
-            PlanTaskStatus::Completed { .. } => ("[✔]", Color::Green),
-            PlanTaskStatus::Failed { .. } => ("[✖]", Color::Red),
-        }
-    }
-
-    pub fn display_label(&self) -> String {
-        match self {
-            PlanTaskStatus::Pending => "Pending".to_string(),
-            PlanTaskStatus::Running { progress_pct } => format!("Running ({}%)", progress_pct),
-            PlanTaskStatus::Completed { summary } => {
-                if let Some(s) = summary {
-                    format!("Done: {}", s)
-                } else {
-                    "Completed".to_string()
-                }
-            }
-            PlanTaskStatus::Failed { error } => format!("Failed: {}", error),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlanTaskItem {
-    pub id: String,
-    pub title: String,
-    pub description: String,
-    pub status: PlanTaskStatus,
-    pub verification_cmd: Option<String>,
-    pub dependencies: Vec<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlanState {
-    pub plan_id: String,
     pub goal: String,
-    pub tasks: Vec<PlanTaskItem>,
+    pub tasks: Vec<PlanTask>,
     pub active_task_idx: Option<usize>,
     pub is_collapsed: bool,
     #[serde(skip)]
@@ -65,20 +21,19 @@ pub struct PlanState {
 
 impl Default for PlanState {
     fn default() -> Self {
-        Self::sample_plan()
+        Self::new(String::new(), Vec::new())
     }
 }
 
 impl PlanState {
-    pub fn new(plan_id: &str, goal: &str, tasks: Vec<PlanTaskItem>) -> Self {
+    pub fn new(goal: impl Into<String>, tasks: Vec<PlanTask>) -> Self {
         let mut list_state = ListState::default();
         if !tasks.is_empty() {
             list_state.select(Some(0));
         }
-        let active_task_idx = tasks.iter().position(|t| matches!(t.status, PlanTaskStatus::Running { .. }));
+        let active_task_idx = tasks.iter().position(|t| t.status.is_running());
         Self {
-            plan_id: plan_id.to_string(),
-            goal: goal.to_string(),
+            goal: goal.into(),
             tasks,
             active_task_idx,
             is_collapsed: false,
@@ -86,63 +41,26 @@ impl PlanState {
         }
     }
 
-    pub fn sample_plan() -> Self {
-        let tasks = vec![
-            PlanTaskItem {
-                id: "task-1".to_string(),
-                title: "Memory Explorer Overlay (`/memory`)".to_string(),
-                description: "Build searchable TauVault memory inspector with scope tabs, tag management, and counter-rule display.".to_string(),
-                status: PlanTaskStatus::Completed { summary: Some("Implemented memory_overlay.rs".to_string()) },
-                verification_cmd: Some("cargo test -p pi-tui -- test_memory".to_string()),
-                dependencies: Vec::new(),
-            },
-            PlanTaskItem {
-                id: "task-2".to_string(),
-                title: "Live Plan & Todo Checklist Widget (`/plan`)".to_string(),
-                description: "Implement collapsible interactive checklist showing [✔], [◐], [ ], [✖] tasks with live progress calculation.".to_string(),
-                status: PlanTaskStatus::Running { progress_pct: 75 },
-                verification_cmd: Some("cargo test -p pi-tui -- test_plan".to_string()),
-                dependencies: vec!["task-1".to_string()],
-            },
-            PlanTaskItem {
-                id: "task-3".to_string(),
-                title: "Clarification Questionnaire Modal (`/ask`)".to_string(),
-                description: "Implement interactive single-choice and multi-choice modal for agent queries and user confirmations.".to_string(),
-                status: PlanTaskStatus::Pending,
-                verification_cmd: Some("cargo test -p pi-tui -- test_question".to_string()),
-                dependencies: vec!["task-2".to_string()],
-            },
-            PlanTaskItem {
-                id: "task-4".to_string(),
-                title: "Wiring & Autocomplete in `pi-tui/src/lib.rs`".to_string(),
-                description: "Connect state fields, slash commands (/memory, /plan, /ask), and keyboard event handlers in main loop.".to_string(),
-                status: PlanTaskStatus::Pending,
-                verification_cmd: Some("cargo check -p pi-tui --all-targets".to_string()),
-                dependencies: vec!["task-1".to_string(), "task-2".to_string(), "task-3".to_string()],
-            },
-            PlanTaskItem {
-                id: "task-5".to_string(),
-                title: "Quality Verification & Zero Warnings Gate".to_string(),
-                description: "Verify all 47+ workspace unit tests pass and cargo clippy --all-targets passes with zero warnings.".to_string(),
-                status: PlanTaskStatus::Pending,
-                verification_cmd: Some("cargo clippy -p pi-tui --all-targets -- -D warnings".to_string()),
-                dependencies: vec!["task-4".to_string()],
-            },
-        ];
-
-        Self::new(
-            "plan-phase-12",
-            "Phase 12: Super-TUI Cockpit (Memory Explorer, Plan Overlay, Clarification Modal)",
-            tasks,
-        )
+    pub fn from_execution_plan(plan: ExecutionPlan) -> Self {
+        let mut list_state = ListState::default();
+        if !plan.tasks.is_empty() {
+            list_state.select(Some(0));
+        }
+        Self {
+            goal: plan.goal,
+            tasks: plan.tasks,
+            active_task_idx: plan.active_task_idx,
+            is_collapsed: false,
+            list_state,
+        }
     }
 
     pub fn completed_count(&self) -> usize {
-        self.tasks.iter().filter(|t| matches!(t.status, PlanTaskStatus::Completed { .. })).count()
+        self.tasks.iter().filter(|t| t.status.is_completed()).count()
     }
 
     pub fn failed_count(&self) -> usize {
-        self.tasks.iter().filter(|t| matches!(t.status, PlanTaskStatus::Failed { .. })).count()
+        self.tasks.iter().filter(|t| t.status.is_failed()).count()
     }
 
     pub fn progress_pct(&self) -> f32 {
@@ -153,7 +71,7 @@ impl PlanState {
         (completed as f32 / self.tasks.len() as f32) * 100.0
     }
 
-    pub fn selected_task(&self) -> Option<&PlanTaskItem> {
+    pub fn selected_task(&self) -> Option<&PlanTask> {
         let sel = self.list_state.selected()?;
         self.tasks.get(sel)
     }
@@ -185,10 +103,10 @@ impl PlanState {
             && let Some(task) = self.tasks.get_mut(sel)
         {
             task.status = match task.status {
-                PlanTaskStatus::Pending => PlanTaskStatus::Running { progress_pct: 50 },
-                PlanTaskStatus::Running { .. } => PlanTaskStatus::Completed { summary: None },
-                PlanTaskStatus::Completed { .. } => PlanTaskStatus::Failed { error: "Manual fail".to_string() },
-                PlanTaskStatus::Failed { .. } => PlanTaskStatus::Pending,
+                TaskStatus::Pending => TaskStatus::Running { progress_pct: 50, started_at: 0 },
+                TaskStatus::Running { .. } => TaskStatus::Completed { duration_ms: 0, summary: String::new() },
+                TaskStatus::Completed { .. } => TaskStatus::Failed { error: "Manual fail".to_string(), retry_count: 0 },
+                TaskStatus::Failed { .. } => TaskStatus::Pending,
             };
             self.update_active_index();
         }
@@ -198,7 +116,7 @@ impl PlanState {
         if let Some(sel) = self.list_state.selected()
             && let Some(task) = self.tasks.get_mut(sel)
         {
-            task.status = PlanTaskStatus::Completed { summary: None };
+            task.status = TaskStatus::Completed { duration_ms: 0, summary: String::new() };
             self.update_active_index();
         }
     }
@@ -208,15 +126,39 @@ impl PlanState {
     }
 
     fn update_active_index(&mut self) {
-        self.active_task_idx = self.tasks.iter().position(|t| matches!(t.status, PlanTaskStatus::Running { .. }));
+        self.active_task_idx = self.tasks.iter().position(|t| t.status.is_running());
     }
 
-    pub fn add_task(&mut self, item: PlanTaskItem) {
+    pub fn add_task(&mut self, item: PlanTask) {
         self.tasks.push(item);
         if self.list_state.selected().is_none() {
             self.list_state.select(Some(0));
         }
         self.update_active_index();
+    }
+}
+
+pub fn task_status_badge(status: &TaskStatus) -> (&'static str, Color) {
+    match status {
+        TaskStatus::Pending => ("[ ]", Color::DarkGray),
+        TaskStatus::Running { .. } => ("[◐]", Color::Yellow),
+        TaskStatus::Completed { .. } => ("[✔]", Color::Green),
+        TaskStatus::Failed { .. } => ("[✖]", Color::Red),
+    }
+}
+
+pub fn task_status_label(status: &TaskStatus) -> String {
+    match status {
+        TaskStatus::Pending => "Pending".to_string(),
+        TaskStatus::Running { progress_pct, .. } => format!("Running ({}%)", progress_pct),
+        TaskStatus::Completed { summary, .. } => {
+            if summary.is_empty() {
+                "Completed".to_string()
+            } else {
+                format!("Done: {}", summary)
+            }
+        }
+        TaskStatus::Failed { error, .. } => format!("Failed: {}", error),
     }
 }
 
@@ -252,12 +194,12 @@ impl PlanOverlayWidget {
 
         if !state.is_collapsed {
             for (idx, task) in state.tasks.iter().enumerate() {
-                let (badge_str, badge_color) = task.status.badge();
+                let (badge_str, badge_color) = task_status_badge(&task.status);
                 let is_active = Some(idx) == state.active_task_idx;
 
                 let title_style = if is_active {
                     Style::default().fg(theme.text).add_modifier(Modifier::BOLD)
-                } else if matches!(task.status, PlanTaskStatus::Completed { .. }) {
+                } else if task.status.is_completed() {
                     Style::default().fg(theme.muted)
                 } else {
                     Style::default().fg(theme.text)
@@ -358,10 +300,10 @@ impl PlanOverlayWidget {
             .iter()
             .enumerate()
             .map(|(idx, task)| {
-                let (badge_str, badge_color) = task.status.badge();
+                let (badge_str, badge_color) = task_status_badge(&task.status);
                 let is_active = Some(idx) == state.active_task_idx;
 
-                let title_style = if matches!(task.status, PlanTaskStatus::Completed { .. }) {
+                let title_style = if task.status.is_completed() {
                     Style::default().fg(theme.muted)
                 } else {
                     Style::default().fg(theme.text)
@@ -413,14 +355,14 @@ impl PlanOverlayWidget {
                 Span::styled(&selected_task.title, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
             ]));
 
-            let (badge_str, badge_color) = selected_task.status.badge();
+            let (badge_str, badge_color) = task_status_badge(&selected_task.status);
             inspector_lines.push(Line::from(vec![
                 Span::styled("Status: ", Style::default().fg(theme.muted)),
-                Span::styled(format!("{} {}", badge_str, selected_task.status.display_label()), Style::default().fg(badge_color).add_modifier(Modifier::BOLD)),
+                Span::styled(format!("{} {}", badge_str, task_status_label(&selected_task.status)), Style::default().fg(badge_color).add_modifier(Modifier::BOLD)),
                 Span::styled(format!("   ID: {}", selected_task.id), Style::default().fg(theme.muted)),
             ]));
 
-            if let Some(ref cmd) = selected_task.verification_cmd {
+            if let Some(ref cmd) = selected_task.verification_command {
                 inspector_lines.push(Line::from(vec![
                     Span::styled("Verification Gate: ", Style::default().fg(theme.magenta).add_modifier(Modifier::BOLD)),
                     Span::styled(cmd, Style::default().fg(theme.text)),
@@ -469,7 +411,21 @@ mod tests {
 
     #[test]
     fn test_plan_state_progress_calculation() {
-        let state = PlanState::sample_plan();
+        let mut plan = ExecutionPlan::new("p1", "Sample plan");
+        let mut t1 = PlanTask::new("task-1", "Memory Explorer Overlay (`/memory`)", "Build searchable TauVault memory inspector with scope tabs, tag management, and counter-rule display.");
+        t1.status = TaskStatus::Completed { duration_ms: 0, summary: String::new() };
+        let mut t2 = PlanTask::new("task-2", "Live Plan & Todo Checklist Widget (`/plan`)", "Implement collapsible interactive checklist showing [✔], [◐], [ ], [✖] tasks with live progress calculation.");
+        t2.status = TaskStatus::Running { progress_pct: 75, started_at: 0 };
+        let t3 = PlanTask::new("task-3", "Clarification Questionnaire Modal (`/ask`)", "Implement interactive single-choice and multi-choice modal for agent queries and user confirmations.");
+        let t4 = PlanTask::new("task-4", "Wiring & Autocomplete in `pi-tui/src/lib.rs`", "Connect state fields, slash commands (/memory, /plan, /ask), and keyboard event handlers in main loop.");
+        let t5 = PlanTask::new("task-5", "Quality Verification & Zero Warnings Gate", "Verify all 47+ workspace unit tests pass and cargo clippy --all-targets passes with zero warnings.");
+        plan.add_task(t1);
+        plan.add_task(t2);
+        plan.add_task(t3);
+        plan.add_task(t4);
+        plan.add_task(t5);
+
+        let state = PlanState::from_execution_plan(plan);
         assert_eq!(state.tasks.len(), 5);
         assert_eq!(state.completed_count(), 1);
         assert_eq!(state.progress_pct(), 20.0);
@@ -477,7 +433,18 @@ mod tests {
 
     #[test]
     fn test_plan_state_navigation() {
-        let mut state = PlanState::sample_plan();
+        let mut plan = ExecutionPlan::new("p1", "Nav");
+        let t1 = PlanTask::new("t1", "T1", "d1");
+        let t2 = PlanTask::new("t2", "T2", "d2");
+        let t3 = PlanTask::new("t3", "T3", "d3");
+        let t4 = PlanTask::new("t4", "T4", "d4");
+        let t5 = PlanTask::new("t5", "T5", "d5");
+        plan.add_task(t1);
+        plan.add_task(t2);
+        plan.add_task(t3);
+        plan.add_task(t4);
+        plan.add_task(t5);
+        let mut state = PlanState::from_execution_plan(plan);
         assert_eq!(state.list_state.selected(), Some(0));
 
         state.handle_navigation(false);
@@ -493,26 +460,48 @@ mod tests {
 
     #[test]
     fn test_plan_state_toggle_status() {
-        let mut state = PlanState::sample_plan();
+        let mut plan = ExecutionPlan::new("p1", "Toggle");
+        let t1 = PlanTask::new("t1", "T1", "d1");
+        let t2 = PlanTask::new("t2", "T2", "d2");
+        let t3 = PlanTask::new("t3", "T3", "d3");
+        let t4 = PlanTask::new("t4", "T4", "d4");
+        let t5 = PlanTask::new("t5", "T5", "d5");
+        plan.add_task(t1);
+        plan.add_task(t2);
+        plan.add_task(t3);
+        plan.add_task(t4);
+        plan.add_task(t5);
+
+        let mut state = PlanState::from_execution_plan(plan);
         state.list_state.select(Some(2)); // Task 3 is Pending
-        assert_eq!(state.tasks[2].status, PlanTaskStatus::Pending);
+        assert_eq!(state.tasks[2].status, TaskStatus::Pending);
 
         state.toggle_selected_task_status();
-        assert!(matches!(state.tasks[2].status, PlanTaskStatus::Running { .. }));
+        assert!(matches!(state.tasks[2].status, TaskStatus::Running { .. }));
 
         state.toggle_selected_task_status();
-        assert!(matches!(state.tasks[2].status, PlanTaskStatus::Completed { .. }));
+        assert!(matches!(state.tasks[2].status, TaskStatus::Completed { .. }));
 
         state.toggle_selected_task_status();
-        assert!(matches!(state.tasks[2].status, PlanTaskStatus::Failed { .. }));
+        assert!(matches!(state.tasks[2].status, TaskStatus::Failed { .. }));
 
         state.toggle_selected_task_status();
-        assert_eq!(state.tasks[2].status, PlanTaskStatus::Pending);
+        assert_eq!(state.tasks[2].status, TaskStatus::Pending);
     }
 
     #[test]
     fn test_plan_compact_rendering() {
-        let state = PlanState::sample_plan();
+        let mut plan = ExecutionPlan::new("p1", "Sample plan");
+        let mut t1 = PlanTask::new("task-1", "Memory Explorer Overlay (`/memory`)", "Build searchable TauVault memory inspector with scope tabs, tag management, and counter-rule display.");
+        t1.status = TaskStatus::Completed { duration_ms: 0, summary: String::new() };
+        let mut t2 = PlanTask::new("task-2", "Live Plan & Todo Checklist Widget (`/plan`)", "Implement collapsible interactive checklist showing [✔], [◐], [ ], [✖] tasks with live progress calculation.");
+        t2.status = TaskStatus::Running { progress_pct: 75, started_at: 0 };
+        let t3 = PlanTask::new("task-3", "Clarification Questionnaire Modal (`/ask`)", "Implement interactive single-choice and multi-choice modal for agent queries and user confirmations.");
+        plan.add_task(t1);
+        plan.add_task(t2);
+        plan.add_task(t3);
+
+        let state = PlanState::from_execution_plan(plan);
         let theme = ThemePalette::default();
         let compact_lines = PlanOverlayWidget::render_compact(&state, &theme);
         assert!(!compact_lines.is_empty());

@@ -123,7 +123,7 @@ impl MemoryOverlayState {
                 topic: "Subprocess Safety & Zombie Prevention".to_string(),
                 content: "Always wrap async subprocess execution in tokio::time::timeout and guarantee child.kill().await and child.wait().await are called on abort or timeout.".to_string(),
                 counter_pattern: Some("std::process::Command without timeout or unhandled child handle".to_string()),
-                correct_pattern: Some("tokio::process::Command with 120s timeout and child.kill().await on timeout".to_string()),
+                correct_pattern: Some(format!("tokio::process::Command with {}s timeout and child.kill().await on timeout", pi_core::plan::VERIFY_TIMEOUT_SECS).to_string()),
                 tags: vec!["async".to_string(), "process".to_string(), "safety".to_string()],
                 confidence: 0.98,
                 access_count: 22,

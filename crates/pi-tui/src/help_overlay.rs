@@ -245,6 +245,8 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
         category: "Dual Tool Calling & Worktree Architecture",
         key_or_cmd: "Subprocess Safety & Timeouts",
         description: "Process Tree Kill Guarantees",
+        // Details intentionally static because `HelpItem.details` is `&'static str`.
+        // The shared timeout value lives in `pi_core::plan::VERIFY_TIMEOUT_SECS`.
         details: "Async 120s execution timeout with SIGKILL cleanup to prevent zombie processes",
     },
 ];

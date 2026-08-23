@@ -6,6 +6,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{timeout, Duration};
 use uuid::Uuid;
 
+pub const VERIFY_TIMEOUT_SECS: u64 = 120;
+
 /// Execution status of an individual task in a plan.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum TaskStatus {
@@ -153,6 +155,55 @@ impl ExecutionPlan {
             task.status = TaskStatus::Pending;
         }
         self.active_task_idx = self.next_ready_task_idx();
+    }
+
+    /// Renders an interactive markdown checklist with icons: `[✔]`, `[◐]`, `[ ]`, `[✖]`.
+    pub fn to_markdown_checklist(&self) -> String {
+        let mut out = format!("### Plan: {}\n\n", self.goal);
+
+        for (idx, task) in self.tasks.iter().enumerate() {
+            let icon = task.status.status_icon();
+            let num = idx + 1;
+
+            match &task.status {
+                TaskStatus::Completed { duration_ms, .. } => {
+                    out.push_str(&format!(
+                        "- {} {}. **{}** — {} *(Completed in {}ms)*\n",
+                        icon, num, task.title, task.description, duration_ms
+                    ));
+                }
+                TaskStatus::Running { progress_pct, .. } => {
+                    out.push_str(&format!(
+                        "- {} {}. **{}** — {} *(Running: {}%)*\n",
+                        icon, num, task.title, task.description, progress_pct
+                    ));
+                }
+                TaskStatus::Failed { error, retry_count } => {
+                    let err_snippet = if error.len() > 60 {
+                        let boundary = error.floor_char_boundary(60);
+                        format!("{}...", &error[..boundary])
+                    } else {
+                        error.clone()
+                    };
+                    out.push_str(&format!(
+                        "- {} {}. **{}** — {} *(Failed: {}, retries: {})*\n",
+                        icon, num, task.title, task.description, err_snippet, retry_count
+                    ));
+                }
+                TaskStatus::Pending => {
+                    out.push_str(&format!(
+                        "- {} {}. **{}** — {}\n",
+                        icon, num, task.title, task.description
+                    ));
+                }
+            }
+        }
+
+        let (completed, total) = self.completion_stats();
+        let pct = (completed * 100).checked_div(total).unwrap_or(0);
+
+        out.push_str(&format!("\n**Progress:** {}/{} tasks completed ({}%)\n", completed, total, pct));
+        out
     }
 }
 
@@ -387,11 +438,11 @@ impl PlanExecutor {
                     .spawn()
                     .with_context(|| format!("Failed to spawn verification command: {}", cmd_str))?;
 
-                // Invariant 5: Subprocess Safety & Timeout Guarantees (120s timeout)
-                let output = match timeout(Duration::from_secs(120), child.wait_with_output()).await {
+                // Invariant 5: Subprocess Safety & Timeout Guarantees (`VERIFY_TIMEOUT_SECS` timeout)
+                let output = match timeout(Duration::from_secs(VERIFY_TIMEOUT_SECS), child.wait_with_output()).await {
                     Ok(Ok(output)) => output,
                     Ok(Err(e)) => return Err(anyhow::anyhow!("Verification execution error: {}", e)),
-                    Err(_) => return Err(anyhow::anyhow!("Verification command timed out after 120s")),
+                    Err(_) => return Err(anyhow::anyhow!(format!("Verification command timed out after {}s", VERIFY_TIMEOUT_SECS))),
                 };
                 Ok::<std::process::Output, anyhow::Error>(output)
             };
