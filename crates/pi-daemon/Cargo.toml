@@ -20,6 +20,7 @@ chrono.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tokio-util.workspace = true
 clap = { workspace = true, features = ["derive"] }
+fs2 = "0.4"
 
 [dev-dependencies]
 tempfile.workspace = true

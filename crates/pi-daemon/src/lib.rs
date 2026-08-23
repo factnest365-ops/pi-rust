@@ -10,6 +10,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::Mutex;
 
+pub mod cron;
+pub use cron::{CronContext, JobsFile};
 pub mod ipc;
 pub use ipc::{
     DaemonError, DaemonRequest, DaemonResponse, DaemonStatusInfo, DaemonTurnParams, DaemonTurnResult,
@@ -22,6 +24,7 @@ pub struct DaemonServer {
     pub undo: Arc<Mutex<UndoEngine>>,
     pub sync: Arc<StateSynchronizer>,
     pub alfred: Arc<Mutex<AlfredProtocol>>,
+    pub cron: Arc<CronContext>,
     pub started_at: Instant,
 }
 
@@ -32,6 +35,7 @@ impl DaemonServer {
         let sync_dir = StateSynchronizer::default_dir();
         let sync = Arc::new(StateSynchronizer::new(sync_dir));
         let alfred = Arc::new(Mutex::new(AlfredProtocol::new()));
+        let cron = Arc::new(CronContext::default());
 
         Self {
             socket_path,
@@ -40,6 +44,7 @@ impl DaemonServer {
             undo,
             sync,
             alfred,
+            cron,
             started_at: Instant::now(),
         }
     }
@@ -64,6 +69,7 @@ impl DaemonServer {
                 let fleet = self.fleet.lock().await;
                 let undo = self.undo.lock().await;
                 let memory_count = self.vault.count_active_memories().unwrap_or(0);
+                let jobs = self.cron.load_jobs().unwrap_or_default();
                 let info = DaemonStatusInfo {
                     uptime_secs: self.started_at.elapsed().as_secs(),
                     memory_count,
@@ -71,6 +77,7 @@ impl DaemonServer {
                     active_specialist: fleet.active_specialist,
                     specialists: fleet.list_specialists(),
                     version: env!("CARGO_PKG_VERSION").to_string(),
+                    cron_jobs_count: jobs.jobs.len(),
                 };
                 DaemonResponse::ok(req_id, serde_json::to_value(info).unwrap_or_default())
             }

@@ -60,6 +60,8 @@ pub struct DaemonStatusInfo {
     pub active_specialist: SpecialistIdentity,
     pub specialists: Vec<SpecialistInfo>,
     pub version: String,
+    #[serde(default)]
+    pub cron_jobs_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
