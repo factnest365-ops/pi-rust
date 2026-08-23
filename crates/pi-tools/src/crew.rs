@@ -16,6 +16,8 @@ pub struct CrewDispatchArgs {
     pub backend: String,
     #[serde(default)]
     pub verify_cmd: Option<String>,
+    #[serde(default)]
+    pub n: Option<usize>,
 }
 
 fn default_shape() -> String {
@@ -68,6 +70,22 @@ pub trait CrewToolHandler: Send + Sync {
         &'a self,
         args: &'a CrewMergeArgs,
     ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>>;
+
+    fn cancel<'a>(
+        &'a self,
+        _args: &'a CrewStatusArgs,
+    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
+        Box::pin(async move {
+            Err(anyhow!("Crew cancel is not supported by the registered handler"))
+        })
+    }
+
+    fn reconcile<'a>(
+        &'a self,
+        args: &'a CrewStatusArgs,
+    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
+        Box::pin(async move { self.status(args).await })
+    }
 }
 
 static CREW_HANDLER: RwLock<Option<Arc<dyn CrewToolHandler>>> = RwLock::new(None);
@@ -93,8 +111,12 @@ impl CrewTools {
             h.dispatch(&parsed).await
         } else {
             Ok(format!(
-                "Crew task [{}] dispatched: '{}' (mode={}, backend={})",
-                parsed.shape, parsed.task, parsed.mode, parsed.backend
+                "Crew task [{}] dispatched: '{}' (mode={}, backend={}, n={})",
+                parsed.shape,
+                parsed.task,
+                parsed.mode,
+                parsed.backend,
+                parsed.n.unwrap_or(1)
             ))
         }
     }
@@ -108,10 +130,28 @@ impl CrewTools {
             guard.clone()
         };
 
-        if let Some(h) = handler {
-            h.status(&parsed).await
-        } else {
-            Ok("No active crew tasks registered.".to_string())
+        match parsed.action.to_lowercase().as_str() {
+            "cancel" => {
+                if let Some(h) = handler {
+                    h.cancel(&parsed).await
+                } else {
+                    Ok("No crew handler registered for cancel".to_string())
+                }
+            }
+            "reconcile" => {
+                if let Some(h) = handler {
+                    h.reconcile(&parsed).await
+                } else {
+                    Ok("No active crew tasks registered.".to_string())
+                }
+            }
+            _ => {
+                if let Some(h) = handler {
+                    h.status(&parsed).await
+                } else {
+                    Ok("No active crew tasks registered.".to_string())
+                }
+            }
         }
     }
 
@@ -147,8 +187,10 @@ mod tests {
         ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
             Box::pin(async move {
                 Ok(format!(
-                    "Mock dispatched {} task: {}",
-                    args.shape, args.task
+                    "Mock dispatched {} task: {} (n={})",
+                    args.shape,
+                    args.task,
+                    args.n.unwrap_or(1)
                 ))
             })
         }
@@ -165,8 +207,27 @@ mod tests {
             args: &'a CrewMergeArgs,
         ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
             Box::pin(async move {
-                Ok(format!("Mock merged task {}", args.task_id))
+                Ok(format!("Mock merged task {} into {}", args.task_id, args.target_branch))
             })
+        }
+
+        fn cancel<'a>(
+            &'a self,
+            args: &'a CrewStatusArgs,
+        ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
+            Box::pin(async move {
+                Ok(format!(
+                    "Mock cancelled crew task {}",
+                    args.task_id.as_deref().unwrap_or("unknown")
+                ))
+            })
+        }
+
+        fn reconcile<'a>(
+            &'a self,
+            _args: &'a CrewStatusArgs,
+        ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
+            Box::pin(async move { Ok("Mock fleet reconciled: 0 stale tasks".to_string()) })
         }
     }
 
@@ -176,11 +237,39 @@ mod tests {
 
         let res = CrewTools::execute_dispatch_async(&serde_json::json!({
             "shape": "ship",
-            "task": "Add unit tests"
+            "task": "Add unit tests",
+            "n": 3
         }))
         .await
         .unwrap();
 
-        assert!(res.contains("Mock dispatched ship task: Add unit tests"));
+        assert!(res.contains("Mock dispatched ship task: Add unit tests (n=3)"));
+    }
+
+    #[tokio::test]
+    async fn test_crew_status_cancel_reconcile_routes() {
+        register_crew_handler(Arc::new(MockCrewHandler));
+
+        let status = CrewTools::execute_status_async(&serde_json::json!({
+            "action": "list"
+        }))
+        .await
+        .unwrap();
+        assert!(status.contains("Mock fleet"));
+
+        let cancel = CrewTools::execute_status_async(&serde_json::json!({
+            "action": "cancel",
+            "task_id": "task-1"
+        }))
+        .await
+        .unwrap();
+        assert!(cancel.contains("Mock cancelled crew task task-1"));
+
+        let reconcile = CrewTools::execute_status_async(&serde_json::json!({
+            "action": "reconcile"
+        }))
+        .await
+        .unwrap();
+        assert!(reconcile.contains("reconciled"));
     }
 }
