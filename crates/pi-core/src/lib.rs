@@ -432,28 +432,6 @@ impl AgentLoop {
                 }
             };
 
-            let _provider_resp = match ProviderClient::stream_messages_with_tools(
-                &self.model_config,
-                &full_system_prompt,
-                &conversation_messages,
-                &tool_defs,
-                |chunk| {
-                    event_tx(TurnEvent::ModelStreaming { chunk });
-                },
-            )
-            .await
-            {
-                Ok(resp) => resp,
-                Err(e) => {
-                    ReflexionEngine::distill_turn_error(
-                        &self.system_engine.vault,
-                        user_input,
-                        &e.to_string(),
-                    );
-                    return Err(e);
-                }
-            };
-
             let provider_resp = if self.model_config.best_of_n.unwrap_or(1) > 1 {
                 let candidates = ProviderClient::best_of_n_candidates(
                     &self.model_config,
