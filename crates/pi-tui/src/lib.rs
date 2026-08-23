@@ -14,6 +14,7 @@ use ratatui::{
     widgets::{Block, Clear, ListState, Paragraph, Wrap},
     Terminal,
 };
+use std::env;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -80,6 +81,7 @@ pub struct PiTuiApp {
     pub has_agents_md: bool,
     pub agent_loop: Arc<Mutex<AgentLoop>>,
     pub queued_messages: Vec<String>,
+    pub speculative_engine: Arc<pi_core::SpeculativeEngine>,
 
     // Theme Engine
     pub theme: ThemePalette,
@@ -155,7 +157,11 @@ impl PiTuiApp {
             && model_cfg.provider != "opencode"
             && model_cfg.provider != "openrouter"
             && model_cfg.api_key.is_empty();
-        let agent_loop = AgentLoop::new(model_cfg);
+        let agent_loop = AgentLoop::new(model_cfg.clone());
+
+        let repo_root = env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+        let speculative_engine = Arc::new(pi_core::SpeculativeEngine::new(repo_root));
+        speculative_engine.init_global_handler(model_cfg.clone());
 
         let all_catalog_models = pi_providers::ModelCatalogLoader::load_cached_or_static();
 
@@ -238,6 +244,7 @@ impl PiTuiApp {
             has_agents_md,
             agent_loop: Arc::new(Mutex::new(agent_loop)),
             queued_messages: Vec::new(),
+            speculative_engine,
             theme: ThemePalette::default_pi(),
             active_turn: None,
             is_agent_running: false,
@@ -298,8 +305,9 @@ impl PiTuiApp {
         let api_key_empty = new_cfg.api_key.is_empty();
         if let Ok(mut guard) = self.agent_loop.try_lock() {
             guard.max_context_tokens = new_cfg.context_window;
-            guard.model_config = new_cfg;
+            guard.model_config = new_cfg.clone();
         }
+        self.speculative_engine.init_global_handler(new_cfg);
         (provider, api_key_empty)
     }
 
