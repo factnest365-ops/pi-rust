@@ -4,6 +4,8 @@ use anyhow::Result;
 use clap::{CommandFactory, Parser};
 use clap_complete::Shell;
 
+use pi_providers::DEFAULT_MODEL;
+
 #[derive(Parser, Debug)]
 #[command(name = "tau")]
 #[command(version, about = "Tau (τ) — High-Performance Autonomous Coding Agent (2π evolution of Pi)", long_about = None)]
@@ -12,7 +14,7 @@ pub struct Cli {
     #[arg(short = 'p', long = "print")]
     pub print_query: Option<String>,
 
-    /// Model ID to use (e.g. opencode/deepseek-v4-flash-free, anthropic/claude-3-7-sonnet-latest, openai/gpt-4o)
+    /// Model ID to use (e.g. opencode/{}, anthropic/claude-3-7-sonnet-latest, openai/gpt-4o)
     #[arg(short = 'm', long = "model")]
     pub model: Option<String>,
 
@@ -204,7 +206,7 @@ pub async fn run_cli() -> Result<()> {
     let active_model = cli
         .model
         .or(default_cfg_model)
-        .unwrap_or_else(|| "opencode/deepseek-v4-flash-free".to_string());
+        .unwrap_or_else(|| DEFAULT_MODEL.to_string());
 
     if let Some(query) = cli.print_query {
         let model_cfg = pi_providers::ModelConfig::resolve(&active_model);

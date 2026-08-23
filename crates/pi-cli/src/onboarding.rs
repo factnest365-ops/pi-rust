@@ -1,5 +1,5 @@
 use anyhow::Result;
-use pi_providers::AuthResolver;
+use pi_providers::{AuthResolver, DEFAULT_MODEL, discover_local_providers};
 use serde_json::Value;
 use std::fs;
 use std::io::{self, Write};
@@ -10,7 +10,7 @@ use std::time::Duration;
 pub struct LocalDaemonInfo {
     pub name: &'static str,
     pub port: u16,
-    pub url: &'static str,
+    pub url: String,
     pub is_running: bool,
     pub models: Vec<String>,
 }
@@ -28,7 +28,7 @@ impl Default for OnboardingConfig {
     fn default() -> Self {
         Self {
             default_mode: "tui".to_string(),
-            default_model: "opencode/deepseek-v4-flash-free".to_string(),
+            default_model: DEFAULT_MODEL.to_string(),
             default_specialist: "jarvis".to_string(),
             alfred_level: "standard".to_string(),
             theme: "default".to_string(),
@@ -131,107 +131,23 @@ pub fn read_validated_choice(prompt: &str, min: usize, max: usize, default: usiz
     }
 }
 
-/// Probes local LLM daemons (Ollama, llama.cpp, LM Studio, vLLM) concurrently with short timeouts
+/// Probes local LLM daemons via the shared provider discovery helper
 pub async fn probe_local_daemons() -> Vec<LocalDaemonInfo> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_millis(600))
         .build()
         .unwrap_or_default();
-
-    let probe_ollama = async {
-        let mut d = LocalDaemonInfo {
-            name: "Ollama",
-            port: 11434,
-            url: "http://localhost:11434",
-            is_running: false,
-            models: Vec::new(),
-        };
-        if let Ok(res) = client.get("http://localhost:11434/api/tags").send().await
-            && res.status().is_success()
-            && let Ok(json) = res.json::<Value>().await
-            && let Some(arr) = json.get("models").and_then(|m| m.as_array())
-        {
-            d.is_running = true;
-            for item in arr {
-                if let Some(name) = item.get("name").and_then(|n| n.as_str()) {
-                    d.models.push(format!("ollama/{}", name));
-                }
-            }
-        }
-        d
-    };
-
-    let probe_llamacpp = async {
-        let mut d = LocalDaemonInfo {
-            name: "llama.cpp",
-            port: 8080,
-            url: "http://localhost:8080",
-            is_running: false,
-            models: Vec::new(),
-        };
-        if let Ok(res) = client.get("http://localhost:8080/v1/models").send().await
-            && res.status().is_success()
-            && let Ok(json) = res.json::<Value>().await
-            && let Some(arr) = json.get("data").and_then(|d| d.as_array())
-        {
-            d.is_running = true;
-            for item in arr {
-                if let Some(id) = item.get("id").and_then(|n| n.as_str()) {
-                    d.models.push(format!("llamacpp/{}", id));
-                }
-            }
-        }
-        d
-    };
-
-    let probe_lmstudio = async {
-        let mut d = LocalDaemonInfo {
-            name: "LM Studio",
-            port: 1234,
-            url: "http://localhost:1234",
-            is_running: false,
-            models: Vec::new(),
-        };
-        if let Ok(res) = client.get("http://localhost:1234/v1/models").send().await
-            && res.status().is_success()
-            && let Ok(json) = res.json::<Value>().await
-            && let Some(arr) = json.get("data").and_then(|d| d.as_array())
-        {
-            d.is_running = true;
-            for item in arr {
-                if let Some(id) = item.get("id").and_then(|n| n.as_str()) {
-                    d.models.push(format!("lmstudio/{}", id));
-                }
-            }
-        }
-        d
-    };
-
-    let probe_vllm = async {
-        let mut d = LocalDaemonInfo {
-            name: "vLLM",
-            port: 8000,
-            url: "http://localhost:8000",
-            is_running: false,
-            models: Vec::new(),
-        };
-        if let Ok(res) = client.get("http://localhost:8000/v1/models").send().await
-            && res.status().is_success()
-            && let Ok(json) = res.json::<Value>().await
-            && let Some(arr) = json.get("data").and_then(|d| d.as_array())
-        {
-            d.is_running = true;
-            for item in arr {
-                if let Some(id) = item.get("id").and_then(|n| n.as_str()) {
-                    d.models.push(format!("vllm/{}", id));
-                }
-            }
-        }
-        d
-    };
-
-    let (ollama, llamacpp, lmstudio, vllm) = tokio::join!(probe_ollama, probe_llamacpp, probe_lmstudio, probe_vllm);
-    vec![ollama, llamacpp, lmstudio, vllm]
+    discover_local_providers(&client)
+        .await
+        .into_iter()
+        .map(|d| LocalDaemonInfo {
+            name: d.name,
+            port: d.port,
+            url: d.url,
+            is_running: d.is_running,
+            models: d.models,
+        })
+        .collect()
 }
 
 /// Runs the 6-Stage Interactive Mode, Model & Persona Setup Wizard
@@ -284,7 +200,7 @@ pub async fn run_first_run_wizard() -> Result<()> {
 
     // ── STAGE 3: PROVIDER & MODEL SELECTION ──────────────────────────────────────
     println!("\x1b[1;34m[Stage 3/6] Default AI Model & Provider\x1b[0m");
-    println!("  1) \x1b[1mOpenCode Zen Flash\x1b[0m      \x1b[2m(opencode/deepseek-v4-flash-free)\x1b[0m \x1b[32m[Free · Zero-Config]\x1b[0m");
+    println!("  1) \x1b[1mOpenCode Zen Flash\x1b[0m      \x1b[2m({})\x1b[0m \x1b[32m[Free · Zero-Config]\x1b[0m", DEFAULT_MODEL);
     println!("  2) \x1b[1mAnthropic Claude 3.7\x1b[0m    \x1b[2m(anthropic/claude-3-7-sonnet-latest)\x1b[0m");
     println!("  3) \x1b[1mOpenAI GPT-4o\x1b[0m           \x1b[2m(openai/gpt-4o)\x1b[0m");
     println!("  4) \x1b[1mGoogle Gemini 2.5 Pro\x1b[0m   \x1b[2m(gemini/gemini-2.5-pro)\x1b[0m");
@@ -304,7 +220,7 @@ pub async fn run_first_run_wizard() -> Result<()> {
 
     match model_choice {
         1 => {
-            config.default_model = "opencode/deepseek-v4-flash-free".to_string();
+            config.default_model = DEFAULT_MODEL.to_string();
         }
         2 => {
             config.default_model = "anthropic/claude-3-7-sonnet-latest".to_string();
@@ -375,7 +291,7 @@ pub async fn run_first_run_wizard() -> Result<()> {
             configure_provider_credential(&safe_prov).await?;
         }
         _ => {
-            config.default_model = "opencode/deepseek-v4-flash-free".to_string();
+            config.default_model = DEFAULT_MODEL.to_string();
         }
     }
     println!("  \x1b[32m✓ Selected Model:\x1b[0m \x1b[1m{}\x1b[0m\n", config.default_model);
@@ -589,7 +505,7 @@ mod tests {
     fn test_onboarding_config_default() {
         let cfg = OnboardingConfig::default();
         assert_eq!(cfg.default_mode, "tui");
-        assert_eq!(cfg.default_model, "opencode/deepseek-v4-flash-free");
+    assert_eq!(cfg.default_model, DEFAULT_MODEL);
         assert_eq!(cfg.default_specialist, "jarvis");
         assert_eq!(cfg.alfred_level, "standard");
         assert_eq!(cfg.theme, "default");

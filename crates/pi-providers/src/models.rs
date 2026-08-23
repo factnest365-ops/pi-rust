@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
+use crate::{LMSTUDIO_DEFAULT_HOST, LLAMACPP_DEFAULT_HOST, OLLAMA_API_TAGS, OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH, VLLM_DEFAULT_HOST};
 
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
@@ -432,8 +433,8 @@ impl ModelCatalogLoader {
             }
         }
 
-        // 3. Query Local Ollama daemon (localhost:11434)
-        if let Ok(res) = client.get("http://localhost:11434/api/tags").send().await
+        // 3. Query Local Ollama daemon via constant
+        if let Ok(res) = client.get(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_API_TAGS)).send().await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("models").and_then(|m| m.as_array())
@@ -456,8 +457,8 @@ impl ModelCatalogLoader {
             }
         }
 
-        // 3. Query Local LM Studio daemon (localhost:1234)
-        if let Ok(res) = client.get("http://localhost:1234/v1/models").send().await
+        // 3. Query Local LM Studio daemon
+        if let Ok(res) = client.get(format!("{}{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH, "/models")).send().await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("data").and_then(|d| d.as_array())
@@ -480,8 +481,8 @@ impl ModelCatalogLoader {
             }
         }
 
-        // 4. Query Local llama.cpp daemon (localhost:8080)
-        if let Ok(res) = client.get("http://localhost:8080/v1/models").send().await
+        // 4. Query Local llama.cpp daemon
+        if let Ok(res) = client.get(format!("{}{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH, "/models")).send().await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("data").and_then(|d| d.as_array())
@@ -504,8 +505,8 @@ impl ModelCatalogLoader {
             }
         }
 
-        // 5. Query Local vLLM daemon (localhost:8000)
-        if let Ok(res) = client.get("http://localhost:8000/v1/models").send().await
+        // 5. Query Local vLLM daemon
+        if let Ok(res) = client.get(format!("{}{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH, "/models")).send().await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("data").and_then(|d| d.as_array())
