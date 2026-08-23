@@ -130,13 +130,7 @@ impl CrewDispatchCore {
     }
 
     fn clamp_n(n: usize) -> usize {
-        if n < 3 {
-            3
-        } else if n > 5 {
-            5
-        } else {
-            n
-        }
+        n.clamp(3, 5)
     }
 }
 
@@ -227,7 +221,8 @@ impl CrewToolHandlerBridge {
         let backend = args.backend.to_lowercase();
         let task = args.task.to_lowercase();
 
-        if let Some(n) = args.n { return n.min(5).max(3); } if mode == "full" {
+        if let Some(n) = args.n { return n.clamp(3, 5); }
+        if mode == "full" {
             return 5;
         }
         if backend == "herdr" && task.contains("grep") {
