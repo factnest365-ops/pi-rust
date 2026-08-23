@@ -1,4 +1,4 @@
-use pi_providers::AuthResolver;
+use pi_providers::{AuthResolver, LLAMACPP_DEFAULT_ENDPOINT, LMSTUDIO_DEFAULT_ENDPOINT, OLLAMA_DEFAULT_ENDPOINT, VLLM_DEFAULT_ENDPOINT};
 use ratatui::layout::Alignment;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -34,10 +34,10 @@ pub const ALL_PROVIDERS: &[ProviderEntry] = &[
     ProviderEntry { id: "opencode", name: "OpenCode Zen Gateway", endpoint: "https://opencode.ai/zen/v1", is_local: false },
     ProviderEntry { id: "kilo", name: "Kilo Gateway", endpoint: "https://api.kilo.ai/v1", is_local: false },
     ProviderEntry { id: "agnes", name: "Agnes Orchestrator", endpoint: "https://api.agnes.ai/v1", is_local: false },
-    ProviderEntry { id: "ollama", name: "Ollama (Local :11434)", endpoint: "http://localhost:11434/v1", is_local: true },
-    ProviderEntry { id: "lmstudio", name: "LM Studio (Local :1234)", endpoint: "http://localhost:1234/v1", is_local: true },
-    ProviderEntry { id: "llamacpp", name: "llama.cpp (Local :8080)", endpoint: "http://localhost:8080/v1", is_local: true },
-    ProviderEntry { id: "vllm", name: "vLLM (Local :8000)", endpoint: "http://localhost:8000/v1", is_local: true },
+    ProviderEntry { id: "ollama", name: "Ollama (Local :11434)", endpoint: OLLAMA_DEFAULT_ENDPOINT, is_local: true },
+    ProviderEntry { id: "lmstudio", name: "LM Studio (Local :1234)", endpoint: LMSTUDIO_DEFAULT_ENDPOINT, is_local: true },
+    ProviderEntry { id: "llamacpp", name: "llama.cpp (Local :8080)", endpoint: LLAMACPP_DEFAULT_ENDPOINT, is_local: true },
+    ProviderEntry { id: "vllm", name: "vLLM (Local :8000)", endpoint: VLLM_DEFAULT_ENDPOINT, is_local: true },
 ];
 
 pub struct ProviderPickerWidget;

@@ -9,9 +9,117 @@ use std::sync::OnceLock;
 pub mod auth;
 pub mod models;
 pub mod tokens;
+pub mod constants;
 pub use auth::{AuthCredential, AuthResolver, AuthStore};
 pub use models::{ModelCatalogLoader, ModelInfo};
 pub use tokens::{ContextBudget, TokenProfiler};
+pub use constants::{DEFAULT_MODEL, LLAMACPP_DEFAULT_ENDPOINT, LLAMACPP_DEFAULT_HOST, LMSTUDIO_DEFAULT_ENDPOINT, LMSTUDIO_DEFAULT_HOST, OLLAMA_API_TAGS, OLLAMA_DEFAULT_ENDPOINT, OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH, VLLM_DEFAULT_ENDPOINT, VLLM_DEFAULT_HOST};
+
+#[derive(Debug, Clone)]
+pub struct LocalDaemonInfo {
+    pub name: &'static str,
+    pub port: u16,
+    pub url: String,
+    pub is_running: bool,
+    pub models: Vec<String>,
+}
+
+pub async fn discover_local_providers(client: &reqwest::Client) -> Vec<LocalDaemonInfo> {
+    let probe_ollama = async {
+        let mut d = LocalDaemonInfo {
+            name: "Ollama",
+            port: 11434,
+            url: format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_API_TAGS),
+            is_running: false,
+            models: Vec::new(),
+        };
+        if let Ok(res) = client.get(&d.url).send().await
+            && res.status().is_success()
+            && let Ok(json) = res.json::<serde_json::Value>().await
+            && let Some(arr) = json.get("models").and_then(|m| m.as_array())
+        {
+            d.is_running = true;
+            for item in arr {
+                if let Some(name) = item.get("name").and_then(|n| n.as_str()) {
+                    d.models.push(format!("ollama/{}", name));
+                }
+            }
+        }
+        d
+    };
+
+    let probe_llamacpp = async {
+        let mut d = LocalDaemonInfo {
+            name: "llama.cpp",
+            port: 8080,
+            url: format!("{}{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH, "/models"),
+            is_running: false,
+            models: Vec::new(),
+        };
+        if let Ok(res) = client.get(&d.url).send().await
+            && res.status().is_success()
+            && let Ok(json) = res.json::<serde_json::Value>().await
+            && let Some(arr) = json.get("data").and_then(|d| d.as_array())
+        {
+            d.is_running = true;
+            for item in arr {
+                if let Some(id) = item.get("id").and_then(|n| n.as_str()) {
+                    d.models.push(format!("llamacpp/{}", id));
+                }
+            }
+        }
+        d
+    };
+
+    let probe_lmstudio = async {
+        let mut d = LocalDaemonInfo {
+            name: "LM Studio",
+            port: 1234,
+            url: format!("{}{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH, "/models"),
+            is_running: false,
+            models: Vec::new(),
+        };
+        if let Ok(res) = client.get(&d.url).send().await
+            && res.status().is_success()
+            && let Ok(json) = res.json::<serde_json::Value>().await
+            && let Some(arr) = json.get("data").and_then(|d| d.as_array())
+        {
+            d.is_running = true;
+            for item in arr {
+                if let Some(id) = item.get("id").and_then(|n| n.as_str()) {
+                    d.models.push(format!("lmstudio/{}", id));
+                }
+            }
+        }
+        d
+    };
+
+    let probe_vllm = async {
+        let mut d = LocalDaemonInfo {
+            name: "vLLM",
+            port: 8000,
+            url: format!("{}{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH, "/models"),
+            is_running: false,
+            models: Vec::new(),
+        };
+        if let Ok(res) = client.get(&d.url).send().await
+            && res.status().is_success()
+            && let Ok(json) = res.json::<serde_json::Value>().await
+            && let Some(arr) = json.get("data").and_then(|d| d.as_array())
+        {
+            d.is_running = true;
+            for item in arr {
+                if let Some(id) = item.get("id").and_then(|n| n.as_str()) {
+                    d.models.push(format!("vllm/{}", id));
+                }
+            }
+        }
+        d
+    };
+
+    let (ollama, llamacpp, lmstudio, vllm) = tokio::join!(probe_ollama, probe_llamacpp, probe_lmstudio, probe_vllm);
+    vec![ollama, llamacpp, lmstudio, vllm]
+}
 
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
@@ -199,72 +307,10 @@ impl ModelCatalog {
         // Refresh models from default gateways and local daemons
         let mut list = Self::default_models();
         let client = get_http_client();
-
-        // Scan local Ollama daemon
-        if let Ok(res) = client
-            .get("http://localhost:11434/api/tags")
-            .timeout(std::time::Duration::from_millis(500))
-            .send()
-            .await
-            && res.status().is_success()
-            && let Ok(json) = res.json::<serde_json::Value>().await
-            && let Some(models) = json.get("models").and_then(|m| m.as_array())
-        {
-            for m in models {
-                if let Some(name) = m.get("name").and_then(|n| n.as_str()) {
-                    list.push(format!("ollama/{}", name));
-                }
-            }
-        }
-
-        // Scan local llama.cpp daemon
-        if let Ok(res) = client
-            .get("http://localhost:8080/v1/models")
-            .timeout(std::time::Duration::from_millis(500))
-            .send()
-            .await
-            && res.status().is_success()
-            && let Ok(json) = res.json::<serde_json::Value>().await
-            && let Some(data) = json.get("data").and_then(|d| d.as_array())
-        {
-            for m in data {
-                if let Some(id) = m.get("id").and_then(|n| n.as_str()) {
-                    list.push(format!("llamacpp/{}", id));
-                }
-            }
-        }
-
-        // Scan local LM Studio daemon
-        if let Ok(res) = client
-            .get("http://localhost:1234/v1/models")
-            .timeout(std::time::Duration::from_millis(500))
-            .send()
-            .await
-            && res.status().is_success()
-            && let Ok(json) = res.json::<serde_json::Value>().await
-            && let Some(data) = json.get("data").and_then(|d| d.as_array())
-        {
-            for m in data {
-                if let Some(id) = m.get("id").and_then(|n| n.as_str()) {
-                    list.push(format!("lmstudio/{}", id));
-                }
-            }
-        }
-
-        // Scan local vLLM daemon
-        if let Ok(res) = client
-            .get("http://localhost:8000/v1/models")
-            .timeout(std::time::Duration::from_millis(500))
-            .send()
-            .await
-            && res.status().is_success()
-            && let Ok(json) = res.json::<serde_json::Value>().await
-            && let Some(data) = json.get("data").and_then(|d| d.as_array())
-        {
-            for m in data {
-                if let Some(id) = m.get("id").and_then(|n| n.as_str()) {
-                    list.push(format!("vllm/{}", id));
-                }
+        let daemons = discover_local_providers(client).await;
+        for daemon in daemons {
+            if daemon.is_running {
+                list.extend(daemon.models);
             }
         }
 
@@ -402,51 +448,51 @@ impl ModelConfig {
             .or_else(|| Self::lookup_models_json_base_url(norm_provider));
 
         let (api_key, default_base_url) = match norm_provider {
-            "opencode" => (resolved_key, "https://opencode.ai/zen/v1"),
-            "agnes" => (resolved_key, "https://api.agnes.ai/v1"),
-            "kilo" => (resolved_key, "https://api.kilo.ai/api/gateway"),
+            "opencode" => (resolved_key, "https://opencode.ai/zen/v1".to_string()),
+            "agnes" => (resolved_key, "https://api.agnes.ai/v1".to_string()),
+            "kilo" => (resolved_key, "https://api.kilo.ai/api/gateway".to_string()),
             "ollama" => (
                 if resolved_key.is_empty() { "ollama".to_string() } else { resolved_key },
-                "http://localhost:11434/v1",
+                format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH),
             ),
             "llamacpp" => (
                 if resolved_key.is_empty() { "llamacpp".to_string() } else { resolved_key },
-                "http://localhost:8080/v1",
+                format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH),
             ),
             "lmstudio" => (
                 if resolved_key.is_empty() { "lmstudio".to_string() } else { resolved_key },
-                "http://localhost:1234/v1",
+                format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH),
             ),
             "vllm" => (
                 if resolved_key.is_empty() { "vllm".to_string() } else { resolved_key },
-                "http://localhost:8000/v1",
+                format!("{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH),
             ),
-            "anthropic" => (resolved_key, "https://api.anthropic.com/v1"),
-            "openai" => (resolved_key, "https://api.openai.com/v1"),
-            "gemini" => (resolved_key, "https://generativelanguage.googleapis.com/v1beta/openai"),
-            "openrouter" => (resolved_key, "https://openrouter.ai/api/v1"),
-            "deepseek" => (resolved_key, "https://api.deepseek.com/v1"),
-            "groq" => (resolved_key, "https://api.groq.com/openai/v1"),
-            "cerebras" => (resolved_key, "https://api.cerebras.ai/v1"),
-            "mistral" => (resolved_key, "https://api.mistral.ai/v1"),
-            "xai" => (resolved_key, "https://api.x.ai/v1"),
-            "together" => (resolved_key, "https://api.together.xyz/v1"),
-            "fireworks" => (resolved_key, "https://api.fireworks.ai/inference/v1"),
-            "perplexity" => (resolved_key, "https://api.perplexity.ai"),
-            "copilot" => (resolved_key, "https://api.githubcopilot.com"),
-            "qwen" => (resolved_key, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
-            "xiaomi" => (resolved_key, "https://api.mimo.xiaomi.com/v1"),
-            "moonshot" => (resolved_key, "https://api.moonshot.cn/v1"),
-            "huggingface" => (resolved_key, "https://api-inference.huggingface.co/v1"),
-            "azure" => (resolved_key, "https://models.inference.ai.azure.com"),
-            "nvidia" => (resolved_key, "https://integrate.api.nvidia.com/v1"),
-            "bedrock" => (resolved_key, "https://bedrock-runtime.us-east-1.amazonaws.com"),
-            "cloudflare" => (resolved_key, "https://gateway.ai.cloudflare.com/v1"),
-            "vercel" => (resolved_key, "https://ai-gateway.vercel.sh/v1"),
-            "zai" => (resolved_key, "https://api.zai.cn/v1"),
-            "minimax" => (resolved_key, "https://api.minimax.chat/v1"),
-            "baseten" => (resolved_key, "https://bridge.baseten.co/v1"),
-            _ => (resolved_key, "https://api.kilo.ai/v1"),
+            "anthropic" => (resolved_key, "https://api.anthropic.com/v1".to_string()),
+            "openai" => (resolved_key, "https://api.openai.com/v1".to_string()),
+            "gemini" => (resolved_key, "https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
+            "openrouter" => (resolved_key, "https://openrouter.ai/api/v1".to_string()),
+            "deepseek" => (resolved_key, "https://api.deepseek.com/v1".to_string()),
+            "groq" => (resolved_key, "https://api.groq.com/openai/v1".to_string()),
+            "cerebras" => (resolved_key, "https://api.cerebras.ai/v1".to_string()),
+            "mistral" => (resolved_key, "https://api.mistral.ai/v1".to_string()),
+            "xai" => (resolved_key, "https://api.x.ai/v1".to_string()),
+            "together" => (resolved_key, "https://api.together.xyz/v1".to_string()),
+            "fireworks" => (resolved_key, "https://api.fireworks.ai/inference/v1".to_string()),
+            "perplexity" => (resolved_key, "https://api.perplexity.ai".to_string()),
+            "copilot" => (resolved_key, "https://api.githubcopilot.com".to_string()),
+            "qwen" => (resolved_key, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1".to_string()),
+            "xiaomi" => (resolved_key, "https://api.mimo.xiaomi.com/v1".to_string()),
+            "moonshot" => (resolved_key, "https://api.moonshot.cn/v1".to_string()),
+            "huggingface" => (resolved_key, "https://api-inference.huggingface.co/v1".to_string()),
+            "azure" => (resolved_key, "https://models.inference.ai.azure.com".to_string()),
+            "nvidia" => (resolved_key, "https://integrate.api.nvidia.com/v1".to_string()),
+            "bedrock" => (resolved_key, "https://bedrock-runtime.us-east-1.amazonaws.com".to_string()),
+            "cloudflare" => (resolved_key, "https://gateway.ai.cloudflare.com/v1".to_string()),
+            "vercel" => (resolved_key, "https://ai-gateway.vercel.sh/v1".to_string()),
+            "zai" => (resolved_key, "https://api.zai.cn/v1".to_string()),
+            "minimax" => (resolved_key, "https://api.minimax.chat/v1".to_string()),
+            "baseten" => (resolved_key, "https://bridge.baseten.co/v1".to_string()),
+            _ => (resolved_key, "https://api.kilo.ai/v1".to_string()),
         };
 
         let base_url = custom_base_url.or_else(|| Some(default_base_url.to_string()));
@@ -1305,40 +1351,40 @@ mod tests {
         assert_eq!(ollama.provider, "ollama");
         assert_eq!(ollama.model_id, "llama3");
         assert_eq!(ollama.api_key, "ollama");
-        assert_eq!(ollama.base_url.as_deref(), Some("http://localhost:11434/v1"));
+        assert_eq!(ollama.base_url.as_deref(), Some(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
 
         let llamacpp = ModelConfig::resolve("llamacpp/llama-3.2-3b");
         assert_eq!(llamacpp.provider, "llamacpp");
         assert_eq!(llamacpp.model_id, "llama-3.2-3b");
         assert_eq!(llamacpp.api_key, "llamacpp");
-        assert_eq!(llamacpp.base_url.as_deref(), Some("http://localhost:8080/v1"));
+        assert_eq!(llamacpp.base_url.as_deref(), Some(format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
 
         let lmstudio = ModelConfig::resolve("lmstudio/mistral-7b");
         assert_eq!(lmstudio.provider, "lmstudio");
         assert_eq!(lmstudio.model_id, "mistral-7b");
         assert_eq!(lmstudio.api_key, "lmstudio");
-        assert_eq!(lmstudio.base_url.as_deref(), Some("http://localhost:1234/v1"));
+        assert_eq!(lmstudio.base_url.as_deref(), Some(format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
 
         let vllm = ModelConfig::resolve("vllm/qwen-2.5");
         assert_eq!(vllm.provider, "vllm");
         assert_eq!(vllm.api_key, "vllm");
-        assert_eq!(vllm.base_url.as_deref(), Some("http://localhost:8000/v1"));
+        assert_eq!(vllm.base_url.as_deref(), Some(format!("{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
 
         // Fallbacks without slash
         let ollama_fallback = ModelConfig::resolve("local-ollama-llama3");
         assert_eq!(ollama_fallback.provider, "ollama");
         assert_eq!(ollama_fallback.api_key, "ollama");
-        assert_eq!(ollama_fallback.base_url.as_deref(), Some("http://localhost:11434/v1"));
+        assert_eq!(ollama_fallback.base_url.as_deref(), Some(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
 
         let llamacpp_fallback = ModelConfig::resolve("llamacpp-qwen");
         assert_eq!(llamacpp_fallback.provider, "llamacpp");
         assert_eq!(llamacpp_fallback.api_key, "llamacpp");
-        assert_eq!(llamacpp_fallback.base_url.as_deref(), Some("http://localhost:8080/v1"));
+        assert_eq!(llamacpp_fallback.base_url.as_deref(), Some(format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
 
         let lmstudio_fallback = ModelConfig::resolve("lmstudio-hermes");
         assert_eq!(lmstudio_fallback.provider, "lmstudio");
         assert_eq!(lmstudio_fallback.api_key, "lmstudio");
-        assert_eq!(lmstudio_fallback.base_url.as_deref(), Some("http://localhost:1234/v1"));
+        assert_eq!(lmstudio_fallback.base_url.as_deref(), Some(format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
     }
 
     #[test]
