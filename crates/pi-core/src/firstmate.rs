@@ -154,11 +154,11 @@ impl FirstMateDistro {
             let mut cmd = tokio::process::Command::new("sh");
             cmd.arg("-c").arg(cmd_str).current_dir(wt);
             let mut child = cmd.spawn().map_err(|e| anyhow!("Failed to spawn verification command '{}': {}", cmd_str, e))?;
-            let status = tokio::time::timeout(std::time::Duration::from_secs(120), child.wait())
+            let status = tokio::time::timeout(std::time::Duration::from_secs(crate::plan::VERIFY_TIMEOUT_SECS), child.wait())
                 .await
                 .map_err(|_| {
                     let _ = child.start_kill();
-                    anyhow!("Verification command '{}' timed out after 120 seconds", cmd_str)
+                    anyhow!("Verification command '{}' timed out after {} seconds", cmd_str, crate::plan::VERIFY_TIMEOUT_SECS)
                 })?
                 .map_err(|e| anyhow!("Verification command execution failed: {}", e))?;
 

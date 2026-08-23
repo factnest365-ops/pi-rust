@@ -1,3 +1,4 @@
+use crate::plan::VERIFY_TIMEOUT_SECS;
 use anyhow::{anyhow, Result};
 use pi_providers::ModelConfig;
 use pi_tools::git::{
@@ -393,7 +394,7 @@ impl SpeculativeEngine {
         command.args(&args).current_dir(&worktree_path);
         command.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
 
-        let res = tokio::time::timeout(std::time::Duration::from_secs(120), async {
+        let res = tokio::time::timeout(std::time::Duration::from_secs(VERIFY_TIMEOUT_SECS), async {
             let child = command.spawn()?;
             let output = child.wait_with_output().await?;
             Ok::<_, std::io::Error>(output)
@@ -422,7 +423,7 @@ impl SpeculativeEngine {
             },
             Err(_) => VerificationResult {
                 passed: false,
-                output: format!("Verification command '{}' timed out after 120s", cmd_bin),
+                output: format!("Verification command '{}' timed out after {}s", cmd_bin, VERIFY_TIMEOUT_SECS),
             },
         }
     }

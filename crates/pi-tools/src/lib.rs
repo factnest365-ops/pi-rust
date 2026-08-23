@@ -555,6 +555,7 @@ impl ToolExecutor {
         }
 
         let mut child = cmd.spawn()?;
+        // Keep bash timeout aligned with pi_core::plan::VERIFY_TIMEOUT_SECS (120s)
         let timeout_dur = std::time::Duration::from_secs(120);
 
         let stdout_pipe = child.stdout.take();

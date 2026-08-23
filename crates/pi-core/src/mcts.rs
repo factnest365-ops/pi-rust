@@ -26,7 +26,11 @@ impl MctsNode {
     pub fn select_best_child(&self) -> Option<usize> {
         if self.children.is_empty() { return None; }
         let pv = self.visits.max(1);
-        self.children.iter().enumerate().max_by(|(_, a), (_, b)| a.uct(pv).partial_cmp(&b.uct(pv)).unwrap()).map(|(i, _)| i)
+        self.children
+            .iter()
+            .enumerate()
+            .max_by(|(_, a), (_, b)| a.uct(pv).total_cmp(&b.uct(pv)))
+            .map(|(i, _)| i)
     }
 
     pub fn expand(&mut self, candidates: Vec<Vec<String>>) {
