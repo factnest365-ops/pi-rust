@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 
 pub mod alfred;
+pub mod crew_memory;
 pub mod crystallize;
 pub mod federation;
 pub mod firstmate;
@@ -20,6 +21,10 @@ pub mod vault;
 
 pub use alfred::{AlfredAdvisory, AlfredProtocol, EscalationLevel, ValueStatement};
 pub use crystallize::SkillCrystallizer;
+pub use crew_memory::{
+    CrewCrystallizationInput, CrewCrystallizationRecord, CrewPrefetchInput, CrewPrefetchResult,
+    CrewProvenance, CrewSkillLedgerEntry, DEFAULT_CREW_SKILL_LIMIT, score_skills_for_task,
+};
 pub use federation::{FederatedFleet, SpecialistIdentity, SpecialistInfo};
 pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
@@ -2277,6 +2282,5 @@ Implement authentication wizard in pi-tui
         assert!(agent_loop.system_engine.skill_registry.get_skill("rust-release-optimizer").is_some());
     }
 }
-
 
 
