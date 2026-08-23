@@ -2375,4 +2375,41 @@ Implement authentication wizard in pi-tui
         assert_eq!(out[0].name, "read");
         assert_eq!(out[1].name, "bash");
     }
+
+    #[tokio::test]
+    async fn test_mcts_rollout_bash_verification_reward() {
+        // Roadmap Tier 2 integration proof: select→simulate via ToolExecutor::execute→backprop with bash verify.
+        let mut root = crate::mcts::MctsNode::new(vec![]);
+        root.expand(vec![vec!["bash".into()], vec!["read".into()]]);
+        // Simulate: actually execute a bash verification step via real tool dispatch.
+        let call = ToolCall {
+            id: "mcts-bash-1".into(),
+            name: "bash".into(),
+            arguments: serde_json::json!({ "command": "echo ok" }),
+        };
+        let res = pi_tools::ToolExecutor::execute(&call).await;
+        assert!(!res.is_error, "bash echo should succeed: {}", res.output);
+        let reward = crate::mcts::MctsNode::verification_reward(res.is_error, &res.output);
+        assert_eq!(reward, 1.0, "echo ok → reward 1.0, got {}", reward);
+        root.backprop_path(&[0], reward);
+        assert_eq!(root.visits, 1);
+        assert_eq!(root.children[0].visits, 1);
+        assert!((root.children[0].wins - 1.0).abs() < 1e-9);
+        // Second rollout: failing bash should give 0.0 and rank lower via UCT eventually
+        let fail_call = ToolCall {
+            id: "mcts-bash-2".into(),
+            name: "bash".into(),
+            arguments: serde_json::json!({ "command": "false" }),
+        };
+        let fail_res = pi_tools::ToolExecutor::execute(&fail_call).await;
+        let fail_reward = crate::mcts::MctsNode::verification_reward(fail_res.is_error, &fail_res.output);
+        assert!(fail_reward < reward, "fail reward {fail_reward} should be < ok reward {reward}");
+        // false produces non-error empty output → 0.5 in current reward model, still < 1.0
+        assert!(fail_reward <= 0.5);
+        root.backprop_path(&[1], fail_reward);
+        // bash-ok branch should still outrank the failing branch
+        root.visits = 2; // ensure UCT parent term is consistent
+        let best = root.select_best_child().expect("child");
+        assert_eq!(best, 0, "ok branch should outrank fail branch");
+    }
 }

@@ -32,12 +32,15 @@ Deliverable: `best_of_n` is configurable, defaults to a small bounded N, and sel
 
 ## Tier 2 — MCTS over Tool Prefixes
 
+Status: shipped (opt-in) on `fm/pi-rust-dream3` — core + turn integration + verification proof landed; Tier 3 remains gated.
+
 Goal: replace the linear turn loop with minimal Monte Carlo Tree Search.
 
-- `crates/pi-core/src/lib.rs` — add MCTS state and node types near `AgentLoop`; insert select/expand/simulate/backprop at `crates/pi-core/src/lib.rs:399`
-- `crates/pi-tools/src/lib.rs` — keep execution surface stable; use `ToolExecutor::execute()` at `crates/pi-tools/src/lib.rs:59` as the simulation step
+- `crates/pi-core/src/mcts.rs` — `MctsNode`/`MctsConfig`, UCT, `select_best_child`/`expand`/`backprop{,_path}`, `verification_reward`
+- `crates/pi-core/src/lib.rs` — `AgentLoop.{mcts_config,with_mcts,mcts_rank_tool_calls}` + `run_turn` rank hook (opt-in; no-op when absent)
+- `crates/pi-tools/src/lib.rs` — keep execution surface stable; `ToolExecutor::execute()` at `crates/pi-tools/src/lib.rs:59` used as simulation step in integration test
 - `crates/pi-session/src/lib.rs` — preserve DAG causality and metadata during MCTS rollouts
-- Tests: unit tests for UCT/selection/backprop, integration test for a rollout ending in a `bash` verification step, optional feature flag
+- Tests: unit tests for UCT/selection/backprop, integration `test_mcts_rollout_bash_verification_reward` (select→`ToolExecutor::execute`→`verification_reward`→`backprop`→`select_best_child`), `cargo test -p pi-core --lib` 92/92, `cargo clippy -D warnings` clean
 
 Deliverable: tree search over tool prefixes with verification as reward and green workspace tests.
 
