@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::skills::{SkillDefinition, SkillRegistry};
+use crate::vault::TauVault;
 
 /// Engine for distilling and crystallizing multi-step problem-solving trajectories into reusable skills (`SKILL.md`).
 pub struct SkillCrystallizer;
@@ -329,7 +330,117 @@ impl SkillCrystallizer {
         Ok((path, content))
     }
 
-    /// Manually creates a `SKILL.md` from explicit steps and commands.
+    /// Synthesizes, writes to disk with version history, and registers a skill using a `TauVault` for versioning and outcomes.
+    pub fn crystallize_and_register_with_vault(
+        registry: &mut SkillRegistry,
+        vault: &TauVault,
+        trajectory: &[&SessionNode],
+        skill_name: &str,
+        description: &str,
+        base_dir: &Path,
+    ) -> Result<(PathBuf, String)> {
+        let content = Self::crystallize_from_ref_trajectory(trajectory, skill_name, description)?;
+        let saved = Self::save_skill_with_versioning(vault, skill_name, &content, base_dir)?;
+        Self::register_skill(registry, skill_name, description, &content, saved.path.clone());
+        Ok((saved.path, saved.content))
+    }
+
+    /// Records a skill execution outcome through the vault.
+    pub fn record_skill_outcome(
+        vault: &TauVault,
+        skill_name: &str,
+        trigger_context: &str,
+        outcome: &str,
+        notes: Option<&str>,
+    ) -> Result<i64> {
+        vault.record_skill_outcome(skill_name, trigger_context, outcome, notes)
+    }
+
+    /// Restores a prior skill version into the skills directory and records the rollback as a new version.
+    pub fn rollback_skill(
+        vault: &TauVault,
+        skill_name: &str,
+        to_version: i64,
+        base_dir: &Path,
+    ) -> Result<PathBuf> {
+        let sanitized = Self::sanitize_skill_name(skill_name);
+        let skill_dir = base_dir.join(&sanitized);
+        let file_path = skill_dir.join("SKILL.md");
+        let restored = vault
+            .get_skill_version(&sanitized, to_version)?
+            .ok_or_else(|| anyhow::anyhow!("Missing skill version {to_version} for {skill_name}"))?;
+        let final_content = Self::apply_success_rate_frontmatter(&restored, vault, &sanitized)?;
+        fs::create_dir_all(&skill_dir)
+            .with_context(|| format!("Failed to create skill directory: {skill_dir:?}"))?;
+        fs::write(&file_path, &final_content)
+            .with_context(|| format!("Failed to write skill file: {file_path:?}"))?;
+        vault.record_skill_version(&sanitized, &final_content)?;
+        Ok(file_path)
+    }
+
+    /// Saves skill markdown with prior-version snapshotting into `TauVault`.
+    pub fn save_skill_with_versioning(
+        vault: &TauVault,
+        skill_name: &str,
+        new_content: &str,
+        base_dir: &Path,
+    ) -> Result<SavedSkill> {
+        let sanitized = Self::sanitize_skill_name(skill_name);
+        let skill_dir = base_dir.join(&sanitized);
+        let file_path = skill_dir.join("SKILL.md");
+
+        if let Ok(existing) = fs::read_to_string(&file_path) {
+            vault.record_skill_version(&sanitized, &existing)?;
+        }
+
+        let final_content = Self::apply_success_rate_frontmatter(new_content, vault, &sanitized)?;
+        fs::create_dir_all(&skill_dir)
+            .with_context(|| format!("Failed to create skill directory: {skill_dir:?}"))?;
+        fs::write(&file_path, &final_content)
+            .with_context(|| format!("Failed to write skill file: {file_path:?}"))?;
+
+        vault.record_skill_version(&sanitized, &final_content)?;
+        Ok(SavedSkill { path: file_path, content: final_content })
+    }
+
+    fn apply_success_rate_frontmatter(
+        content: &str,
+        vault: &TauVault,
+        skill_name: &str,
+    ) -> Result<String> {
+        let rate = vault.skill_success_rate(skill_name)?;
+        let Some(rate) = rate else { return Ok(content.to_string()); };
+
+        let trimmed = content.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("---") {
+            if let Some(end_idx) = rest.find("\n---") {
+                let front = &rest[..end_idx];
+                let body = &rest[end_idx + 4..];
+                let mut out = String::from("---\n");
+                for line in front.lines() {
+                    if line.trim_start().starts_with("success_rate:") {
+                        continue;
+                    }
+                    out.push_str(line);
+                    out.push('\n');
+                }
+                out.push_str(&format!("success_rate: {:.2}\n", rate));
+                out.push_str("---\n");
+                out.push_str(body);
+                return Ok(out);
+            }
+        }
+        Ok(content.to_string())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SavedSkill {
+    pub path: PathBuf,
+    pub content: String,
+}
+
+impl SkillCrystallizer {
     pub fn distill_manual(
         name: &str,
         description: &str,
@@ -515,6 +626,65 @@ mod tests {
         assert_eq!(registry.skills.len(), 1);
         assert_eq!(registry.skills[0].name, "sql-query-tuner");
         assert!(registry.get_skill("sql-query-tuner").is_some());
+    }
+
+    #[test]
+    fn test_save_with_versioning() {
+        let vault = TauVault::open_in_memory().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let first = SkillCrystallizer::crystallize_from_trajectory(
+            &[SessionNode {
+                id: "u1".to_string(),
+                parent_id: None,
+                children_ids: Vec::new(),
+                role: Role::User,
+                content: "First".to_string(),
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                tool_call_id: None,
+                tool_name: None,
+                tool_calls: None,
+            }],
+            "Versioned Skill",
+            "Tracks versions",
+        ).unwrap();
+
+        let saved = SkillCrystallizer::save_skill_with_versioning(&vault, "Versioned Skill", &first, tmp.path()).unwrap();
+        assert!(saved.path.ends_with("versioned-skill/SKILL.md"));
+        assert_eq!(vault.list_skill_versions("versioned-skill").unwrap().len(), 1);
+
+        let second = SkillCrystallizer::distill_manual(
+            "Versioned Skill",
+            "Tracks versions",
+            &["Updated".to_string()],
+            &Vec::<String>::new(),
+        );
+        let saved2 = SkillCrystallizer::save_skill_with_versioning(&vault, "Versioned Skill", &second, tmp.path()).unwrap();
+        assert_eq!(vault.list_skill_versions("versioned-skill").unwrap().len(), 3);
+        assert_eq!(saved2.path, saved.path);
+    }
+
+    #[test]
+    fn test_rollback_restores_exact_content() {
+        let vault = TauVault::open_in_memory().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+
+        SkillCrystallizer::save_skill_with_versioning(&vault, "Rollback Skill", "v1-content", tmp.path()).unwrap();
+        SkillCrystallizer::save_skill_with_versioning(&vault, "Rollback Skill", "v2-content", tmp.path()).unwrap();
+        assert_eq!(vault.list_skill_versions("rollback-skill").unwrap().len(), 3);
+
+        SkillCrystallizer::rollback_skill(&vault, "Rollback Skill", 1, tmp.path()).unwrap();
+        let versions = vault.list_skill_versions("rollback-skill").unwrap();
+        assert_eq!(versions.len(), 4);
+        assert_eq!(versions[3].content, "v1-content");
+    }
+
+    #[test]
+    fn test_record_skill_outcome_updates_success_rate() {
+        let vault = TauVault::open_in_memory().unwrap();
+        SkillCrystallizer::record_skill_outcome(&vault, "rate", "ctx", "success", None).unwrap();
+        SkillCrystallizer::record_skill_outcome(&vault, "rate", "ctx", "failure", None).unwrap();
+        let rate = vault.skill_success_rate("rate").unwrap().unwrap();
+        assert!((rate - 0.5).abs() < 1e-9);
     }
 
     #[test]
