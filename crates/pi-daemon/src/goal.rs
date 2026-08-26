@@ -74,17 +74,17 @@ struct VerifyAnswer {
 fn parse_verify(raw: &str) -> VerifyAnswer {
     let trimmed = raw.trim();
     let json_start = trimmed.find('{');
-    if let Some(start) = json_start {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&trimmed[start..]) {
-            return VerifyAnswer {
-                complete: v.get("complete").and_then(|c| c.as_bool()).unwrap_or(false),
-                reason: v
-                    .get("reason")
-                    .and_then(|r| r.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-            };
-        }
+    if let Some(start) = json_start
+        && let Ok(v) = serde_json::from_str::<serde_json::Value>(&trimmed[start..])
+    {
+        return VerifyAnswer {
+            complete: v.get("complete").and_then(|c| c.as_bool()).unwrap_or(false),
+            reason: v
+                .get("reason")
+                .and_then(|r| r.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        };
     }
     // Fallback heuristic: explicit "complete": true anywhere in the text.
     let lower = trimmed.to_lowercase();
@@ -134,12 +134,11 @@ impl GoalRunner {
         let mut jobs = Vec::new();
         for entry in std::fs::read_dir(&self.goals_dir)?.flatten() {
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                if let Ok(text) = std::fs::read_to_string(&path) {
-                    if let Ok(job) = serde_json::from_str::<GoalJob>(&text) {
-                        jobs.push(job);
-                    }
-                }
+            if path.extension().and_then(|e| e.to_str()) == Some("json")
+                && let Ok(text) = std::fs::read_to_string(&path)
+                && let Ok(job) = serde_json::from_str::<GoalJob>(&text)
+            {
+                jobs.push(job);
             }
         }
         jobs.sort_by(|a, b| a.created_at.cmp(&b.created_at));
@@ -147,7 +146,13 @@ impl GoalRunner {
     }
 
     /// Create and persist a new pending goal.
-    pub fn create(&self, goal: &str, max_turns: u32, max_total_tokens: u64, verify_prompt: &str) -> Result<GoalJob> {
+    pub fn create(
+        &self,
+        goal: &str,
+        max_turns: u32,
+        max_total_tokens: u64,
+        verify_prompt: &str,
+    ) -> Result<GoalJob> {
         let mut job = GoalJob::new(goal, max_turns, max_total_tokens, verify_prompt);
         job.status = GoalStatus::Pending;
         self.save(&job)?;
@@ -155,12 +160,19 @@ impl GoalRunner {
     }
 
     /// Run the autonomy loop for one goal until success, failure, or budget halt.
-    pub async fn run(&self, mut job: GoalJob, worker: std::sync::Arc<dyn GoalWorker>) -> Result<GoalJob> {
+    pub async fn run(
+        &self,
+        mut job: GoalJob,
+        worker: std::sync::Arc<dyn GoalWorker>,
+    ) -> Result<GoalJob> {
         let mut turns: u32 = 0;
         let mut tokens_used: u64 = 0;
         let mut unverified_streak: u32 = 0;
 
-        job.status = GoalStatus::Running { turns: 0, tokens_used: 0 };
+        job.status = GoalStatus::Running {
+            turns: 0,
+            tokens_used: 0,
+        };
         self.save(&job)?;
 
         loop {
@@ -185,7 +197,9 @@ impl GoalRunner {
             let (_work_output, work_tokens) = match worker.work_turn(&progress).await {
                 Ok(r) => r,
                 Err(e) => {
-                    job.status = GoalStatus::Failed { reason: e.to_string() };
+                    job.status = GoalStatus::Failed {
+                        reason: e.to_string(),
+                    };
                     job.updated_at = Utc::now().to_rfc3339();
                     self.save(&job)?;
                     return Ok(job);
@@ -195,14 +209,19 @@ impl GoalRunner {
             tokens_used += work_tokens;
 
             // Verification gate after each work turn.
-            let verify_input = format!("{}\n\nWork transcript summary:\n{}", job.verify_prompt, _work_output);
+            let verify_input = format!(
+                "{}\n\nWork transcript summary:\n{}",
+                job.verify_prompt, _work_output
+            );
             let verdict = match worker.work_turn(&verify_input).await {
                 Ok((raw, vt)) => {
                     tokens_used += vt;
                     parse_verify(&raw)
                 }
                 Err(e) => {
-                    job.status = GoalStatus::Failed { reason: e.to_string() };
+                    job.status = GoalStatus::Failed {
+                        reason: e.to_string(),
+                    };
                     job.updated_at = Utc::now().to_rfc3339();
                     self.save(&job)?;
                     return Ok(job);
@@ -276,9 +295,7 @@ mod tests {
         let job = runner
             .create("Do the thing", 10, 100_000, "Is it complete?")
             .unwrap();
-        let w = worker(vec![
-            ("{\"complete\": true, \"reason\": \"done\"}", 50),
-        ]);
+        let w = worker(vec![("{\"complete\": true, \"reason\": \"done\"}", 50)]);
         let result = runner.run(job, w).await.unwrap();
         assert_eq!(result.status, GoalStatus::Succeeded);
         // Persistence round-trip.
@@ -300,7 +317,9 @@ mod tests {
     async fn test_turn_limit_halts_unverified() {
         let tmp = tempfile::tempdir().unwrap();
         let runner = GoalRunner::new(tmp.path()).unwrap();
-        let job = runner.create("Never finishes", 2, 1_000_000, "Done?").unwrap();
+        let job = runner
+            .create("Never finishes", 2, 1_000_000, "Done?")
+            .unwrap();
         let w = worker(vec![
             ("{\"complete\": false}", 10),
             ("{\"complete\": false}", 10),

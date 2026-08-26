@@ -89,7 +89,6 @@ impl HookRegistry {
 
     pub async fn fire(&self, point: HookPoint, tool_name: Option<&str>, summary: Option<&str>) {
         let owned = OwnedContext {
-            point,
             tool_name: tool_name.map(str::to_string),
             summary: summary.map(str::to_string),
             payload: serde_json::Value::Null,
