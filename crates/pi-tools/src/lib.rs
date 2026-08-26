@@ -8,6 +8,7 @@ pub mod ast;
 pub mod crew;
 pub mod git;
 pub mod github;
+pub mod hooks;
 pub mod lsp;
 pub mod mcp;
 pub mod plugins;
@@ -15,6 +16,7 @@ pub mod speculate;
 pub mod subagents;
 pub mod web;
 
+pub use hooks::{global_hook_registry, set_global_hook_registry, Hook, HookRegistry, LifecycleEvent};
 pub use ast::AstTool;
 pub use crew::{
     register_crew_handler, CrewDispatchArgs, CrewMergeArgs, CrewStatusArgs, CrewToolHandler,
@@ -57,6 +59,18 @@ pub struct ToolExecutor;
 
 impl ToolExecutor {
     pub async fn execute(call: &ToolCall) -> ToolResult {
+        let hooks = global_hook_registry();
+        if let Some(ref registry) = hooks {
+            let args_json = serde_json::to_string(&call.arguments).unwrap_or_default();
+            registry
+                .emit(&LifecycleEvent::ToolCallStarted {
+                    name: call.name.clone(),
+                    args_json,
+                })
+                .await;
+        }
+
+        let started = std::time::Instant::now();
         let res = match call.name.as_str() {
             "read" => Self::execute_read(&call.arguments),
             "write" => Self::execute_write(&call.arguments),
@@ -87,6 +101,19 @@ impl ToolExecutor {
                 }
             }
         };
+
+        let duration_ms = started.elapsed().as_millis() as u64;
+
+        if let Some(registry) = hooks {
+            let is_error = res.is_err();
+            registry
+                .emit(&LifecycleEvent::ToolCallFinished {
+                    name: call.name.clone(),
+                    is_error,
+                    duration_ms,
+                })
+                .await;
+        }
 
         match res {
             Ok(output) => ToolResult {

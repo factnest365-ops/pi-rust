@@ -41,6 +41,7 @@ pub use subagents::{
 pub use sync::StateSynchronizer;
 pub use undo::{ActionSnapshot, ActionSnapshotKind, UndoEngine};
 pub use vault::{MemoryEntry, ReflexionEngine, TauVault};
+pub use pi_tools::{set_global_hook_registry, Hook, HookRegistry, LifecycleEvent};
 
 pub const DEFAULT_PI_SYSTEM_PROMPT: &str = r#"You are Pi, a minimal, fast, and capable AI coding agent.
 Your primary goal is to help the user write, debug, refactor, and maintain code cleanly.
@@ -427,6 +428,10 @@ impl AgentLoop {
         self.session_tree
             .append_child(Role::User, user_input.to_string());
 
+        let _ = self.emit_hook_event(LifecycleEvent::TurnStarted {
+            prompt: user_input.to_string(),
+        }).await;
+
         let _ = self.compact_history_if_needed(&mut event_tx).await;
 
         let mut full_system_prompt = self.system_engine.build_prompt_for_turn(user_input);
@@ -603,9 +608,19 @@ impl AgentLoop {
             &self.model_config.model_id,
         );
         event_tx(TurnEvent::TurnCompleted { total_tokens });
+        let _ = self.emit_hook_event(LifecycleEvent::TurnFinished {
+            ok: final_response.is_empty(),
+        }).await;
         HerdrProtocol::emit_state(HerdrAgentState::Done);
         HerdrProtocol::emit_state(HerdrAgentState::Idle);
         Ok(final_response)
+    }
+
+    async fn emit_hook_event(&self, event: LifecycleEvent) {
+        let registry = pi_tools::global_hook_registry();
+        if let Some(registry) = registry {
+            registry.emit(&event).await;
+        }
     }
 
     pub fn tokenize_args(input: &str) -> Vec<String> {
