@@ -21,6 +21,25 @@ pub struct MemoryEntry {
     pub confidence: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SkillVersion {
+    pub id: i64,
+    pub skill_name: String,
+    pub version: i64,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SkillOutcome {
+    pub id: i64,
+    pub skill_name: String,
+    pub trigger_context: String,
+    pub outcome: String,
+    pub notes: Option<String>,
+    pub recorded_at: String,
+}
+
 #[derive(Clone)]
 pub struct TauVault {
     conn: Arc<Mutex<rusqlite::Connection>>,
@@ -163,6 +182,28 @@ impl TauVault {
                 INSERT INTO memories_fts(rowid, topic, content, counter_pattern, correct_pattern)
                 VALUES (new.rowid, new.topic, new.content, new.counter_pattern, new.correct_pattern);
             END;
+
+            CREATE TABLE IF NOT EXISTS skill_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                skill_name TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_skill_versions_name ON skill_versions(skill_name);
+            CREATE INDEX IF NOT EXISTS idx_skill_versions_name_version ON skill_versions(skill_name, version);
+
+            CREATE TABLE IF NOT EXISTS skill_outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                skill_name TEXT NOT NULL,
+                trigger_context TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK(outcome IN ('success','failure')),
+                notes TEXT,
+                recorded_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_skill_outcomes_name ON skill_outcomes(skill_name);
             "#,
         )?;
         Ok(())
@@ -574,6 +615,113 @@ impl TauVault {
         let rows = conn.execute("DELETE FROM memories WHERE id = ?", rusqlite::params![id])?;
         Ok(rows > 0)
     }
+
+    /// Records a new skill version and returns its 1-based version number.
+    pub fn record_skill_version(&self, skill_name: &str, content: &str) -> Result<i64> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("SQLite lock error: {e}"))?;
+
+        let next_version: i64 = conn.query_row(
+            "SELECT COALESCE(MAX(version), 0) + 1 FROM skill_versions WHERE skill_name = ?",
+            rusqlite::params![skill_name],
+            |row| row.get(0),
+        )?;
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO skill_versions (skill_name, version, content, created_at) VALUES (?, ?, ?, ?)",
+            rusqlite::params![skill_name, next_version, content, now],
+        )?;
+        Ok(next_version)
+    }
+
+    /// Lists all stored versions for a skill, ordered ascending.
+    pub fn list_skill_versions(&self, skill_name: &str) -> Result<Vec<SkillVersion>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("SQLite lock error: {e}"))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, skill_name, version, content, created_at FROM skill_versions WHERE skill_name = ? ORDER BY version ASC",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![skill_name], |row| {
+            Ok(SkillVersion {
+                id: row.get(0)?,
+                skill_name: row.get(1)?,
+                version: row.get(2)?,
+                content: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+        let mut versions = Vec::new();
+        for row in rows.flatten() {
+            versions.push(row);
+        }
+        Ok(versions)
+    }
+
+    /// Returns the content for a specific skill version, if it exists.
+    pub fn get_skill_version(&self, skill_name: &str, version: i64) -> Result<Option<String>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("SQLite lock error: {e}"))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT content FROM skill_versions WHERE skill_name = ? AND version = ?",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![skill_name, version])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Records an outcome event for a skill execution.
+    pub fn record_skill_outcome(
+        &self,
+        skill_name: &str,
+        trigger_context: &str,
+        outcome: &str,
+        notes: Option<&str>,
+    ) -> Result<i64> {
+        let normalized = outcome.trim().to_lowercase();
+        let outcome = if normalized == "success" || normalized == "failure" {
+            normalized.as_str()
+        } else {
+            return Err(anyhow::anyhow!("Invalid skill outcome: {outcome}"));
+        };
+
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("SQLite lock error: {e}"))?;
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO skill_outcomes (skill_name, trigger_context, outcome, notes, recorded_at) VALUES (?, ?, ?, ?, ?)",
+            rusqlite::params![skill_name, trigger_context, outcome, notes, now],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// Computes the success rate for a skill across recorded outcomes.
+    pub fn skill_success_rate(&self, skill_name: &str) -> Result<Option<f64>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("SQLite lock error: {e}"))?;
+
+        let rate: Option<f64> = conn.query_row(
+            "SELECT CAST(SUM(outcome = 'success') AS REAL) / COUNT(*) FROM skill_outcomes WHERE skill_name = ?",
+            rusqlite::params![skill_name],
+            |row| row.get(0),
+        )?;
+        Ok(rate)
+    }
+
+    // endregion
 }
 
 /// Continuous Reflexion Engine for turning tool failures, compiler diagnostics,
@@ -1030,5 +1178,32 @@ mod tests {
 
         let search_after_delete = vault.search_hybrid("temporary rule", 5).unwrap();
         assert!(search_after_delete.is_empty());
+    }
+
+    #[test]
+    fn test_skill_versioning_and_outcomes() {
+        let vault = TauVault::open_in_memory().unwrap();
+        assert!(vault.list_skill_versions("deploy").unwrap().is_empty());
+        assert_eq!(vault.skill_success_rate("deploy").unwrap(), None);
+
+        let v1 = vault.record_skill_version("deploy", "v1").unwrap();
+        assert_eq!(v1, 1);
+        let v2 = vault.record_skill_version("deploy", "v2").unwrap();
+        assert_eq!(v2, 2);
+
+        let versions = vault.list_skill_versions("deploy").unwrap();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].version, 1);
+        assert_eq!(versions[0].content, "v1");
+        assert_eq!(versions[1].content, "v2");
+        assert_eq!(vault.get_skill_version("deploy", 1).unwrap(), Some("v1".to_string()));
+        assert_eq!(vault.get_skill_version("deploy", 9).unwrap(), None);
+
+        vault.record_skill_outcome("deploy", "k8s", "success", None).unwrap();
+        vault.record_skill_outcome("deploy", "argo", "failure", Some("manual rollback")).unwrap();
+        vault.record_skill_outcome("deploy", "ship", "SUCCESS", None).unwrap();
+
+        let rate = vault.skill_success_rate("deploy").unwrap();
+        assert!((rate.unwrap() - 2.0 / 3.0).abs() < 1e-9);
     }
 }

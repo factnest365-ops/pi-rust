@@ -4,6 +4,7 @@ use pi_session::{Role, SessionTree};
 use pi_tools::{ToolCall, ToolExecutor, ToolResult};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 
 pub mod alfred;
 pub mod ckg;
@@ -220,11 +221,16 @@ impl AgentLoop {
         description: &str,
     ) -> Result<std::path::PathBuf> {
         let history = self.session_tree.get_active_branch_history();
-        let (path, _) = SkillCrystallizer::crystallize_and_register_refs(
+        let base_dir = dirs::home_dir()
+            .map(|h| h.join(".tau").join("skills"))
+            .unwrap_or_else(|| PathBuf::from(".tau/skills"));
+        let (path, _) = SkillCrystallizer::crystallize_and_register_with_vault(
             &mut self.system_engine.skill_registry,
+            &self.system_engine.vault,
             &history,
             skill_name,
             description,
+            &base_dir,
         )?;
         Ok(path)
     }
