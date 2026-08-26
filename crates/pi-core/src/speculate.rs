@@ -1,8 +1,6 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use pi_providers::ModelConfig;
-use pi_tools::git::{
-    git_merge_branch_in_dir, git_worktree_create_at, git_worktree_remove_path,
-};
+use pi_tools::git::{git_merge_branch_in_dir, git_worktree_create_at, git_worktree_remove_path};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -198,12 +196,32 @@ impl SpeculativeEngine {
         let branch_b_name = format!("tau-{}", &strat_b.id);
 
         // Clean up prior worktrees if any exist
-        let _ = git_worktree_remove_path(&worktree_a_path, Some(&branch_a_name), true, Some(&self.repo_root));
-        let _ = git_worktree_remove_path(&worktree_b_path, Some(&branch_b_name), true, Some(&self.repo_root));
+        let _ = git_worktree_remove_path(
+            &worktree_a_path,
+            Some(&branch_a_name),
+            true,
+            Some(&self.repo_root),
+        );
+        let _ = git_worktree_remove_path(
+            &worktree_b_path,
+            Some(&branch_b_name),
+            true,
+            Some(&self.repo_root),
+        );
 
         // 3. Fork Phase: Create Ephemeral Git Worktrees
-        git_worktree_create_at(&self.base_branch, &branch_a_name, &worktree_a_path, Some(&self.repo_root))?;
-        git_worktree_create_at(&self.base_branch, &branch_b_name, &worktree_b_path, Some(&self.repo_root))?;
+        git_worktree_create_at(
+            &self.base_branch,
+            &branch_a_name,
+            &worktree_a_path,
+            Some(&self.repo_root),
+        )?;
+        git_worktree_create_at(
+            &self.base_branch,
+            &branch_b_name,
+            &worktree_b_path,
+            Some(&self.repo_root),
+        )?;
 
         let runner_arc = Arc::new(runner);
 
@@ -272,8 +290,16 @@ impl SpeculativeEngine {
         let passed_a = res_a.is_ok() && ver_a.passed;
         let passed_b = res_b.is_ok() && ver_b.passed;
 
-        let err_a = res_a.as_ref().err().map(|e| e.to_string()).unwrap_or_else(|| ver_a.output.clone());
-        let err_b = res_b.as_ref().err().map(|e| e.to_string()).unwrap_or_else(|| ver_b.output.clone());
+        let err_a = res_a
+            .as_ref()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| ver_a.output.clone());
+        let err_b = res_b
+            .as_ref()
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| ver_b.output.clone());
 
         let branch_res_a = SpeculativeBranchResult {
             strategy_id: strat_a.id.clone(),
@@ -308,16 +334,18 @@ impl SpeculativeEngine {
 
         // 6. Arbitration Phase: Winner Arbitration & Auto-Merge
         let decision = if passed_a && !passed_b && has_changes_a {
-            let merge_out = git_merge_branch_in_dir(&branch_a_name, &self.target_branch, Some(&self.repo_root))
-                .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
+            let merge_out =
+                git_merge_branch_in_dir(&branch_a_name, &self.target_branch, Some(&self.repo_root))
+                    .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
             ArbitrationDecision::AutoMerged {
                 winner_id: strat_a.id.clone(),
                 branch_name: branch_a_name.clone(),
                 merge_output: merge_out,
             }
         } else if passed_b && !passed_a && has_changes_b {
-            let merge_out = git_merge_branch_in_dir(&branch_b_name, &self.target_branch, Some(&self.repo_root))
-                .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
+            let merge_out =
+                git_merge_branch_in_dir(&branch_b_name, &self.target_branch, Some(&self.repo_root))
+                    .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
             ArbitrationDecision::AutoMerged {
                 winner_id: strat_b.id.clone(),
                 branch_name: branch_b_name.clone(),
@@ -355,15 +383,21 @@ impl SpeculativeEngine {
         };
 
         // 7. Teardown Phase: Cleanup Disposable Ghost Worktrees
-        let _ = git_worktree_remove_path(&worktree_a_path, Some(&branch_a_name), true, Some(&self.repo_root));
-        let _ = git_worktree_remove_path(&worktree_b_path, Some(&branch_b_name), true, Some(&self.repo_root));
-
-        let summary = Self::generate_summary_markdown(
-            goal,
-            &branch_res_a,
-            &branch_res_b,
-            &decision,
+        let _ = git_worktree_remove_path(
+            &worktree_a_path,
+            Some(&branch_a_name),
+            true,
+            Some(&self.repo_root),
         );
+        let _ = git_worktree_remove_path(
+            &worktree_b_path,
+            Some(&branch_b_name),
+            true,
+            Some(&self.repo_root),
+        );
+
+        let summary =
+            Self::generate_summary_markdown(goal, &branch_res_a, &branch_res_b, &decision);
 
         Ok(SpeculativeRaceResult {
             goal: goal.to_string(),
@@ -373,25 +407,47 @@ impl SpeculativeEngine {
         })
     }
 
-    async fn verify_workspace(worktree_path: PathBuf, verify_cmd: Option<String>) -> VerificationResult {
+    async fn verify_workspace(
+        worktree_path: PathBuf,
+        verify_cmd: Option<String>,
+    ) -> VerificationResult {
         let (cmd_bin, args) = if let Some(ref cmd_str) = verify_cmd {
             let parts: Vec<String> = cmd_str.split_whitespace().map(|s| s.to_string()).collect();
             if parts.is_empty() {
-                ("cargo".to_string(), vec!["check".to_string(), "--workspace".to_string(), "--all-targets".to_string()])
+                (
+                    "cargo".to_string(),
+                    vec![
+                        "check".to_string(),
+                        "--workspace".to_string(),
+                        "--all-targets".to_string(),
+                    ],
+                )
             } else {
                 (parts[0].clone(), parts[1..].to_vec())
             }
         } else if worktree_path.join("Cargo.toml").exists() {
-            ("cargo".to_string(), vec!["check".to_string(), "--workspace".to_string(), "--all-targets".to_string()])
+            (
+                "cargo".to_string(),
+                vec![
+                    "check".to_string(),
+                    "--workspace".to_string(),
+                    "--all-targets".to_string(),
+                ],
+            )
         } else if worktree_path.join("package.json").exists() {
             ("npm".to_string(), vec!["test".to_string()])
         } else {
-            ("git".to_string(), vec!["status".to_string(), "--short".to_string()])
+            (
+                "git".to_string(),
+                vec!["status".to_string(), "--short".to_string()],
+            )
         };
 
         let mut command = tokio::process::Command::new(&cmd_bin);
         command.args(&args).current_dir(&worktree_path);
-        command.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+        command
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
         let res = tokio::time::timeout(std::time::Duration::from_secs(120), async {
             let child = command.spawn()?;
@@ -480,7 +536,10 @@ impl SpeculativeEngine {
         res_b: &SpeculativeBranchResult,
         decision: &ArbitrationDecision,
     ) -> String {
-        let mut s = format!("### 🔮 Speculative Execution Race Report\n\n**Goal**: {}\n\n", goal);
+        let mut s = format!(
+            "### 🔮 Speculative Execution Race Report\n\n**Goal**: {}\n\n",
+            goal
+        );
         s.push_str("| Metric | Approach A | Approach B |\n");
         s.push_str("| :--- | :--- | :--- |\n");
         s.push_str(&format!(
@@ -489,8 +548,16 @@ impl SpeculativeEngine {
         ));
         s.push_str(&format!(
             "| **Status** | {} | {} |\n",
-            if res_a.verification_passed { "✅ Passed" } else { "❌ Failed" },
-            if res_b.verification_passed { "✅ Passed" } else { "❌ Failed" }
+            if res_a.verification_passed {
+                "✅ Passed"
+            } else {
+                "❌ Failed"
+            },
+            if res_b.verification_passed {
+                "✅ Passed"
+            } else {
+                "❌ Failed"
+            }
         ));
         s.push_str(&format!(
             "| **Duration** | {}ms | {}ms |\n",
@@ -502,13 +569,21 @@ impl SpeculativeEngine {
         ));
 
         match decision {
-            ArbitrationDecision::AutoMerged { winner_id, branch_name, merge_output } => {
+            ArbitrationDecision::AutoMerged {
+                winner_id,
+                branch_name,
+                merge_output,
+            } => {
                 s.push_str(&format!(
                     "🏆 **Decision**: Automatically merged winning branch `{}` (`{}`) into target.\n\n```\n{}\n```\n",
                     winner_id, branch_name, merge_output.trim()
                 ));
             }
-            ArbitrationDecision::BothPassedSplitDiff { recommended_winner, diff_a, diff_b } => {
+            ArbitrationDecision::BothPassedSplitDiff {
+                recommended_winner,
+                diff_a,
+                diff_b,
+            } => {
                 let rec_str = recommended_winner.as_deref().unwrap_or("None");
                 s.push_str(&format!(
                     "⚖️ **Decision**: Both approaches succeeded verification! (Recommended: `{}`). Split-diff available for selection.\n\n",
@@ -530,14 +605,19 @@ impl SpeculativeEngine {
                 ));
             }
             ArbitrationDecision::NoChanges => {
-                s.push_str("ℹ️ **Decision**: No code modifications were generated by either branch.\n");
+                s.push_str(
+                    "ℹ️ **Decision**: No code modifications were generated by either branch.\n",
+                );
             }
         }
 
         s
     }
 
-    pub fn create_tool_handler(self: &Arc<Self>, model_cfg: ModelConfig) -> Arc<dyn pi_tools::SpeculateToolHandler> {
+    pub fn create_tool_handler(
+        self: &Arc<Self>,
+        model_cfg: ModelConfig,
+    ) -> Arc<dyn pi_tools::SpeculateToolHandler> {
         Arc::new(SpeculativeToolBridge {
             engine: self.clone(),
             model_cfg,
@@ -566,12 +646,18 @@ impl pi_tools::SpeculateToolHandler for SpeculativeToolBridge {
                 strategies = Some(vec![
                     SpeculativeStrategy {
                         id: "spec-a".to_string(),
-                        name: args.strategy_a.clone().unwrap_or_else(|| "Approach A".to_string()),
+                        name: args
+                            .strategy_a
+                            .clone()
+                            .unwrap_or_else(|| "Approach A".to_string()),
                         prompt_directive: args.strategy_a.clone().unwrap_or_default(),
                     },
                     SpeculativeStrategy {
                         id: "spec-b".to_string(),
-                        name: args.strategy_b.clone().unwrap_or_else(|| "Approach B".to_string()),
+                        name: args
+                            .strategy_b
+                            .clone()
+                            .unwrap_or_else(|| "Approach B".to_string()),
                         prompt_directive: args.strategy_b.clone().unwrap_or_default(),
                     },
                 ]);
@@ -603,17 +689,45 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo = tmp.path().to_path_buf();
 
-        let _ = Command::new("git").arg("init").current_dir(&repo).output().unwrap();
-        let _ = Command::new("git").args(["config", "user.name", "Test User"]).current_dir(&repo).output().unwrap();
-        let _ = Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(&repo).output().unwrap();
+        let _ = Command::new("git")
+            .arg("init")
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
 
         fs::write(repo.join("README.md"), "# Speculative Repo\n").unwrap();
-        fs::write(repo.join("Cargo.toml"), "[package]\nname = \"spec-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+        fs::write(
+            repo.join("Cargo.toml"),
+            "[package]\nname = \"spec-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
         fs::create_dir_all(repo.join("src")).unwrap();
-        fs::write(repo.join("src/lib.rs"), "pub fn add(a: i32, b: i32) -> i32 { a + b }\n").unwrap();
+        fs::write(
+            repo.join("src/lib.rs"),
+            "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+        )
+        .unwrap();
 
-        let _ = Command::new("git").args(["add", "."]).current_dir(&repo).output().unwrap();
-        let _ = Command::new("git").args(["commit", "-m", "Initial commit"]).current_dir(&repo).output().unwrap();
+        let _ = Command::new("git")
+            .args(["add", "."])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
+        let _ = Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(&repo)
+            .output()
+            .unwrap();
 
         (tmp, repo)
     }
@@ -621,8 +735,7 @@ mod tests {
     #[tokio::test]
     async fn test_speculative_race_auto_merge_single_winner() {
         let (_tmp, repo) = setup_test_git_repo();
-        let engine = SpeculativeEngine::new(&repo)
-            .with_verification_cmd("git status");
+        let engine = SpeculativeEngine::new(&repo).with_verification_cmd("git status");
 
         let model_cfg = ModelConfig::resolve("mock/model");
 
@@ -669,8 +782,7 @@ mod tests {
     #[tokio::test]
     async fn test_speculative_race_both_passed_split_diff() {
         let (_tmp, repo) = setup_test_git_repo();
-        let engine = SpeculativeEngine::new(&repo)
-            .with_verification_cmd("git status");
+        let engine = SpeculativeEngine::new(&repo).with_verification_cmd("git status");
 
         let model_cfg = ModelConfig::resolve("mock/model");
 
@@ -699,7 +811,11 @@ mod tests {
             .unwrap();
 
         match res.decision {
-            ArbitrationDecision::BothPassedSplitDiff { recommended_winner, diff_a, diff_b } => {
+            ArbitrationDecision::BothPassedSplitDiff {
+                recommended_winner,
+                diff_a,
+                diff_b,
+            } => {
                 assert_eq!(recommended_winner, Some("spec-a".to_string())); // spec-a is more concise
                 assert!(!diff_a.is_empty());
                 assert!(!diff_b.is_empty());
@@ -707,7 +823,10 @@ mod tests {
             other => panic!("Expected BothPassedSplitDiff, got {:?}", other),
         }
 
-        assert!(res.summary.contains("Both approaches succeeded verification!"));
+        assert!(
+            res.summary
+                .contains("Both approaches succeeded verification!")
+        );
 
         // Worktrees cleaned up
         assert!(!repo.join(".tau/worktrees/spec-a").exists());
@@ -717,22 +836,22 @@ mod tests {
     #[tokio::test]
     async fn test_speculative_race_both_failed() {
         let (_tmp, repo) = setup_test_git_repo();
-        let engine = SpeculativeEngine::new(&repo)
-            .with_verification_cmd("git status");
+        let engine = SpeculativeEngine::new(&repo).with_verification_cmd("git status");
 
         let model_cfg = ModelConfig::resolve("mock/model");
 
-        let res = engine
-            .run_speculative_race_with_runner(
-                "Impossible task",
-                &model_cfg,
-                None,
-                |_wt_path, _strat, _goal, _cfg| async move {
-                    Err(anyhow!("Synthesizer timeout error"))
-                },
-            )
-            .await
-            .unwrap();
+        let res =
+            engine
+                .run_speculative_race_with_runner(
+                    "Impossible task",
+                    &model_cfg,
+                    None,
+                    |_wt_path, _strat, _goal, _cfg| async move {
+                        Err(anyhow!("Synthesizer timeout error"))
+                    },
+                )
+                .await
+                .unwrap();
 
         match res.decision {
             ArbitrationDecision::BothFailed { error } => {
@@ -741,7 +860,10 @@ mod tests {
             other => panic!("Expected BothFailed, got {:?}", other),
         }
 
-        assert!(res.summary.contains("Both speculative approaches failed verification"));
+        assert!(
+            res.summary
+                .contains("Both speculative approaches failed verification")
+        );
     }
 
     #[test]

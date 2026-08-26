@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -48,10 +48,7 @@ impl StateSynchronizer {
             // Write initial gitignore
             let gitignore_path = self.tau_dir.join(".gitignore");
             if !gitignore_path.exists() {
-                fs::write(
-                    &gitignore_path,
-                    "*.sock\n*.tmp\nworktrees/\n*.lock\n",
-                )?;
+                fs::write(&gitignore_path, "*.sock\n*.tmp\nworktrees/\n*.lock\n")?;
             }
 
             // Configure local git identity if needed
@@ -72,7 +69,11 @@ impl StateSynchronizer {
                 .output();
 
             let _ = Command::new("git")
-                .args(["commit", "-m", "chore: initialize Tau cognitive mind repository"])
+                .args([
+                    "commit",
+                    "-m",
+                    "chore: initialize Tau cognitive mind repository",
+                ])
                 .current_dir(&self.tau_dir)
                 .output();
         }
@@ -160,10 +161,16 @@ mod tests {
         // 2. Add a skill file
         let skill_dir = tmp.path().join("skills/rust-perf");
         fs::create_dir_all(&skill_dir).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), "# Rust Performance\nUse zero-copy SIMD.\n").unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "# Rust Performance\nUse zero-copy SIMD.\n",
+        )
+        .unwrap();
 
         // 3. Commit mutation
-        let res = sync.commit_state_change("feat(skill): crystallize rust-perf", None).unwrap();
+        let res = sync
+            .commit_state_change("feat(skill): crystallize rust-perf", None)
+            .unwrap();
         assert!(res.contains("State committed"));
 
         // 4. Check log

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::Utc;
 use pi_tools::git::{
     git_worktree_create_in_dir, git_worktree_merge_in_dir, git_worktree_remove_in_dir,
@@ -141,7 +141,9 @@ impl FirstMateDistro {
                 .ok_or_else(|| anyhow!("Crew task not found: {}", task_id))?;
 
             if task.shape != CrewTaskShape::Ship {
-                return Err(anyhow!("Cannot merge Scout task (no worktree code changes)"));
+                return Err(anyhow!(
+                    "Cannot merge Scout task (no worktree code changes)"
+                ));
             }
             (task.worktree_path.clone(), task.verify_cmd.clone())
         };
@@ -153,12 +155,17 @@ impl FirstMateDistro {
         {
             let mut cmd = tokio::process::Command::new("sh");
             cmd.arg("-c").arg(cmd_str).current_dir(wt);
-            let mut child = cmd.spawn().map_err(|e| anyhow!("Failed to spawn verification command '{}': {}", cmd_str, e))?;
+            let mut child = cmd.spawn().map_err(|e| {
+                anyhow!("Failed to spawn verification command '{}': {}", cmd_str, e)
+            })?;
             let status = tokio::time::timeout(std::time::Duration::from_secs(120), child.wait())
                 .await
                 .map_err(|_| {
                     let _ = child.start_kill();
-                    anyhow!("Verification command '{}' timed out after 120 seconds", cmd_str)
+                    anyhow!(
+                        "Verification command '{}' timed out after 120 seconds",
+                        cmd_str
+                    )
                 })?
                 .map_err(|e| anyhow!("Verification command execution failed: {}", e))?;
 
@@ -172,7 +179,8 @@ impl FirstMateDistro {
         }
 
         // 2. Perform git worktree merge in repo_root
-        let merge_output = git_worktree_merge_in_dir(task_id, target_branch, Some(&self.repo_root))?;
+        let merge_output =
+            git_worktree_merge_in_dir(task_id, target_branch, Some(&self.repo_root))?;
 
         // 3. Clean up the disposable worktree in repo_root
         let _ = git_worktree_remove_in_dir(task_id, false, Some(&self.repo_root));
@@ -220,7 +228,10 @@ impl FirstMateDistro {
         let lock = self.tasks.read().await;
         let mut active_ids = Vec::new();
         for (id, task) in lock.iter() {
-            if matches!(task.status, CrewTaskStatus::Working | CrewTaskStatus::Blocked(_)) {
+            if matches!(
+                task.status,
+                CrewTaskStatus::Working | CrewTaskStatus::Blocked(_)
+            ) {
                 active_ids.push(format!("{}: [{:?}] {}", id, task.shape, task.task));
             }
         }
@@ -334,12 +345,32 @@ mod tests {
     use tempfile::tempdir;
 
     fn setup_git_repo(dir: &Path) {
-        Command::new("git").args(["init"]).current_dir(dir).output().unwrap();
-        Command::new("git").args(["config", "user.name", "Pi FirstMate"]).current_dir(dir).output().unwrap();
-        Command::new("git").args(["config", "user.email", "firstmate@pi.dev"]).current_dir(dir).output().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.name", "Pi FirstMate"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["config", "user.email", "firstmate@pi.dev"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
         std::fs::write(dir.join("README.md"), "# Test Repo\n").unwrap();
-        Command::new("git").args(["add", "README.md"]).current_dir(dir).output().unwrap();
-        Command::new("git").args(["commit", "-m", "Initial commit"]).current_dir(dir).output().unwrap();
+        Command::new("git")
+            .args(["add", "README.md"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["commit", "-m", "Initial commit"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
     }
 
     #[tokio::test]
@@ -397,8 +428,16 @@ mod tests {
         // Simulate worker making changes in the worktree
         if let Some(ref wt) = task.worktree_path {
             std::fs::write(wt.join("FEATURE.md"), "# Feature Done\n").unwrap();
-            Command::new("git").args(["add", "FEATURE.md"]).current_dir(wt).output().unwrap();
-            Command::new("git").args(["commit", "-m", "Add feature"]).current_dir(wt).output().unwrap();
+            Command::new("git")
+                .args(["add", "FEATURE.md"])
+                .current_dir(wt)
+                .output()
+                .unwrap();
+            Command::new("git")
+                .args(["commit", "-m", "Add feature"])
+                .current_dir(wt)
+                .output()
+                .unwrap();
         }
 
         // Merge worktree change back to current branch
@@ -425,7 +464,12 @@ mod tests {
 
         let merge_res = distro.merge_ship_task(&task.id, "HEAD", None).await;
         assert!(merge_res.is_err());
-        assert!(merge_res.unwrap_err().to_string().contains("Aborting merge"));
+        assert!(
+            merge_res
+                .unwrap_err()
+                .to_string()
+                .contains("Aborting merge")
+        );
     }
 
     #[tokio::test]
@@ -446,7 +490,12 @@ mod tests {
 
         let merge_res = distro.merge_ship_task(&task.id, "HEAD", None).await;
         assert!(merge_res.is_err());
-        assert!(merge_res.unwrap_err().to_string().contains("Cannot merge Scout task"));
+        assert!(
+            merge_res
+                .unwrap_err()
+                .to_string()
+                .contains("Cannot merge Scout task")
+        );
     }
 
     #[tokio::test]

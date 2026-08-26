@@ -90,7 +90,12 @@ impl AlfredProtocol {
         ]
     }
 
-    pub fn add_custom_value(&mut self, id: &str, principle: &str, prohibited_patterns: Vec<String>) {
+    pub fn add_custom_value(
+        &mut self,
+        id: &str,
+        principle: &str,
+        prohibited_patterns: Vec<String>,
+    ) {
         self.values.push(ValueStatement {
             id: id.to_string(),
             principle: principle.to_string(),
@@ -144,7 +149,10 @@ impl AlfredProtocol {
                         principle_id: val.id.clone(),
                         principle_text: val.principle.clone(),
                         advisory_message: message,
-                        historical_context: Some(format!("Prior value intersections: {}", prior_count)),
+                        historical_context: Some(format!(
+                            "Prior value intersections: {}",
+                            prior_count
+                        )),
                     });
                 }
             }
@@ -163,22 +171,33 @@ mod tests {
         let mut alfred = AlfredProtocol::new();
 
         // 1. First trigger -> Observation
-        let adv1 = alfred.evaluate_action("Please git push -f origin main", "").unwrap();
+        let adv1 = alfred
+            .evaluate_action("Please git push -f origin main", "")
+            .unwrap();
         assert_eq!(adv1.level, EscalationLevel::Observation);
         assert!(adv1.advisory_message.contains("I must note"));
 
         // 2. Second trigger -> Advisory
-        let adv2 = alfred.evaluate_action("Do it anyway, force push to main now", "").unwrap();
+        let adv2 = alfred
+            .evaluate_action("Do it anyway, force push to main now", "")
+            .unwrap();
         assert_eq!(adv2.level, EscalationLevel::Advisory);
 
         // 3. Third trigger -> Urgent
-        let adv3 = alfred.evaluate_action("Override checks and git push -f origin main", "").unwrap();
+        let adv3 = alfred
+            .evaluate_action("Override checks and git push -f origin main", "")
+            .unwrap();
         assert_eq!(adv3.level, EscalationLevel::Urgent);
 
         // 4. Fourth trigger -> Last Stand
-        let adv4 = alfred.evaluate_action("Force push to main immediately", "").unwrap();
+        let adv4 = alfred
+            .evaluate_action("Force push to main immediately", "")
+            .unwrap();
         assert_eq!(adv4.level, EscalationLevel::LastStand);
-        assert!(adv4.advisory_message.contains("cannot in good conscience remain silent"));
+        assert!(
+            adv4.advisory_message
+                .contains("cannot in good conscience remain silent")
+        );
     }
 
     #[test]

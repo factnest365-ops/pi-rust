@@ -1,9 +1,9 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 use uuid::Uuid;
 
 pub const VERIFY_TIMEOUT_SECS: u64 = 120;
@@ -56,7 +56,11 @@ pub struct PlanTask {
 }
 
 impl PlanTask {
-    pub fn new(id: impl Into<String>, title: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             title: title.into(),
@@ -202,7 +206,10 @@ impl ExecutionPlan {
         let (completed, total) = self.completion_stats();
         let pct = (completed * 100).checked_div(total).unwrap_or(0);
 
-        out.push_str(&format!("\n**Progress:** {}/{} tasks completed ({}%)\n", completed, total, pct));
+        out.push_str(&format!(
+            "\n**Progress:** {}/{} tasks completed ({}%)\n",
+            completed, total, pct
+        ));
         out
     }
 }
@@ -311,7 +318,10 @@ impl PlanExecutor {
             let t1 = PlanTask::new(
                 "task-1",
                 "Specification & Architecture",
-                format!("Define interface boundaries and plan changes for: {}", goal.trim()),
+                format!(
+                    "Define interface boundaries and plan changes for: {}",
+                    goal.trim()
+                ),
             );
 
             let t2 = PlanTask::new(
@@ -384,7 +394,9 @@ impl PlanExecutor {
     /// and marks task Completed on success or Failed on verification failure.
     pub async fn execute_next_task(&mut self) -> Result<Option<PlanTask>> {
         let task_idx = match self.plan.active_task_idx {
-            Some(idx) if idx < self.plan.tasks.len() && self.plan.tasks[idx].status.is_pending() => {
+            Some(idx)
+                if idx < self.plan.tasks.len() && self.plan.tasks[idx].status.is_pending() =>
+            {
                 idx
             }
             _ => match self.plan.next_ready_task_idx() {
@@ -434,15 +446,27 @@ impl PlanExecutor {
                 cmd.stderr(Stdio::piped());
                 cmd.kill_on_drop(true);
 
-                let child = cmd
-                    .spawn()
-                    .with_context(|| format!("Failed to spawn verification command: {}", cmd_str))?;
+                let child = cmd.spawn().with_context(|| {
+                    format!("Failed to spawn verification command: {}", cmd_str)
+                })?;
 
                 // Invariant 5: Subprocess Safety & Timeout Guarantees (`VERIFY_TIMEOUT_SECS` timeout)
-                let output = match timeout(Duration::from_secs(VERIFY_TIMEOUT_SECS), child.wait_with_output()).await {
+                let output = match timeout(
+                    Duration::from_secs(VERIFY_TIMEOUT_SECS),
+                    child.wait_with_output(),
+                )
+                .await
+                {
                     Ok(Ok(output)) => output,
-                    Ok(Err(e)) => return Err(anyhow::anyhow!("Verification execution error: {}", e)),
-                    Err(_) => return Err(anyhow::anyhow!(format!("Verification command timed out after {}s", VERIFY_TIMEOUT_SECS))),
+                    Ok(Err(e)) => {
+                        return Err(anyhow::anyhow!("Verification execution error: {}", e));
+                    }
+                    Err(_) => {
+                        return Err(anyhow::anyhow!(format!(
+                            "Verification command timed out after {}s",
+                            VERIFY_TIMEOUT_SECS
+                        )));
+                    }
                 };
                 Ok::<std::process::Output, anyhow::Error>(output)
             };
@@ -477,7 +501,11 @@ impl PlanExecutor {
                         let error = format!(
                             "Verification failed with exit code {}: {}",
                             code,
-                            if snippet.is_empty() { "Command returned non-zero status" } else { snippet }
+                            if snippet.is_empty() {
+                                "Command returned non-zero status"
+                            } else {
+                                snippet
+                            }
                         );
 
                         self.plan.tasks[task_idx].status = TaskStatus::Failed {
@@ -541,7 +569,11 @@ impl PlanExecutor {
     /// Generates diagnostic self-healing prompt if a task failed verification.
     pub fn generate_repair_prompt(&self, task_id: &str) -> Option<String> {
         let task = self.plan.get_task(task_id)?;
-        if let TaskStatus::Failed { ref error, retry_count } = task.status {
+        if let TaskStatus::Failed {
+            ref error,
+            retry_count,
+        } = task.status
+        {
             Some(format!(
                 "[Task Verification Failure Detected]\n\
                  Task ID: {}\n\
@@ -610,7 +642,10 @@ impl PlanExecutor {
         let (completed, total) = self.plan.completion_stats();
         let pct = (completed * 100).checked_div(total).unwrap_or(0);
 
-        out.push_str(&format!("\n**Progress:** {}/{} tasks completed ({}%)\n", completed, total, pct));
+        out.push_str(&format!(
+            "\n**Progress:** {}/{} tasks completed ({}%)\n",
+            completed, total, pct
+        ));
         out
     }
 }
@@ -657,8 +692,8 @@ mod tests {
     #[test]
     fn test_plan_task_dependencies_and_readiness() {
         let t1 = PlanTask::new("t1", "Task 1", "First step");
-        let t2 = PlanTask::new("t2", "Task 2", "Second step")
-            .with_dependencies(vec!["t1".to_string()]);
+        let t2 =
+            PlanTask::new("t2", "Task 2", "Second step").with_dependencies(vec!["t1".to_string()]);
 
         let completed = vec![];
         assert!(t1.is_ready(&completed));
@@ -708,12 +743,18 @@ mod tests {
         assert_eq!(plan.tasks.len(), 3);
         assert_eq!(plan.tasks[0].id, "task-1");
         assert_eq!(plan.tasks[0].title, "Design parser");
-        assert_eq!(plan.tasks[0].verification_command, Some("cargo check".to_string()));
+        assert_eq!(
+            plan.tasks[0].verification_command,
+            Some("cargo check".to_string())
+        );
 
         assert_eq!(plan.tasks[1].id, "task-2");
         assert_eq!(plan.tasks[1].title, "Implement AST");
         assert_eq!(plan.tasks[1].dependencies, vec!["task-1".to_string()]);
-        assert_eq!(plan.tasks[1].verification_command, Some("cargo test".to_string()));
+        assert_eq!(
+            plan.tasks[1].verification_command,
+            Some("cargo test".to_string())
+        );
 
         assert_eq!(plan.tasks[2].id, "task-3");
         assert_eq!(plan.tasks[2].title, "Add benchmark suite");
@@ -730,9 +771,15 @@ mod tests {
         let plan = PlanExecutor::decompose_goal(goal, None);
         assert_eq!(plan.tasks.len(), 2);
         assert_eq!(plan.tasks[0].title, "Initialize repository");
-        assert_eq!(plan.tasks[0].verification_command, Some("git status".to_string()));
+        assert_eq!(
+            plan.tasks[0].verification_command,
+            Some("git status".to_string())
+        );
         assert_eq!(plan.tasks[1].title, "Setup CI pipeline");
-        assert_eq!(plan.tasks[1].verification_command, Some("cargo test".to_string()));
+        assert_eq!(
+            plan.tasks[1].verification_command,
+            Some("cargo test".to_string())
+        );
     }
 
     #[test]
@@ -744,9 +791,15 @@ mod tests {
         assert_eq!(plan.tasks[0].title, "Specification & Architecture");
         assert_eq!(plan.tasks[1].id, "task-2");
         assert_eq!(plan.tasks[2].id, "task-3");
-        assert_eq!(plan.tasks[2].verification_command, Some("cargo test".to_string()));
+        assert_eq!(
+            plan.tasks[2].verification_command,
+            Some("cargo test".to_string())
+        );
         assert_eq!(plan.tasks[3].id, "task-4");
-        assert_eq!(plan.tasks[3].verification_command, Some("cargo check".to_string()));
+        assert_eq!(
+            plan.tasks[3].verification_command,
+            Some("cargo check".to_string())
+        );
     }
 
     #[test]
@@ -781,15 +834,20 @@ mod tests {
         assert!(md.contains("[✔] 1. **Init Repo** — Create folders *(Completed in 125ms)*"));
         assert!(md.contains("[◐] 2. **Write Code** — Implement logic *(Running: 50%)*"));
         assert!(md.contains("[ ] 3. **Verification** — Run tests"));
-        assert!(md.contains("[✖] 4. **Deploy** — Release version *(Failed: Connection refused, retries: 1)*"));
+        assert!(md.contains(
+            "[✖] 4. **Deploy** — Release version *(Failed: Connection refused, retries: 1)*"
+        ));
         assert!(md.contains("**Progress:** 1/4 tasks completed (25%)"));
     }
 
     #[tokio::test]
     async fn test_execute_next_task_with_success_and_failure() {
         let mut plan = ExecutionPlan::new("p_test", "Async verification test");
-        let t1 = PlanTask::new("t1", "Echo Test", "Run simple echo").with_verification("echo 'tau test pass'");
-        let t2 = PlanTask::new("t2", "Failing Command", "Run false").with_dependencies(vec!["t1".to_string()]).with_verification("false");
+        let t1 = PlanTask::new("t1", "Echo Test", "Run simple echo")
+            .with_verification("echo 'tau test pass'");
+        let t2 = PlanTask::new("t2", "Failing Command", "Run false")
+            .with_dependencies(vec!["t1".to_string()])
+            .with_verification("false");
         plan.add_task(t1);
         plan.add_task(t2);
 
@@ -812,7 +870,11 @@ mod tests {
         // Test repair prompt generation
         let repair_prompt = executor.generate_repair_prompt("t2");
         assert!(repair_prompt.is_some());
-        assert!(repair_prompt.unwrap().contains("[Task Verification Failure Detected]"));
+        assert!(
+            repair_prompt
+                .unwrap()
+                .contains("[Task Verification Failure Detected]")
+        );
 
         // Retry recovery
         let can_retry = executor.retry_or_repair("t2").unwrap();

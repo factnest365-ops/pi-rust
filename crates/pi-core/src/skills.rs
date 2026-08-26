@@ -61,7 +61,8 @@ impl SkillRegistry {
                 continue;
             };
 
-            if skill_file.exists() && skill_file.is_file()
+            if skill_file.exists()
+                && skill_file.is_file()
                 && let Ok(content) = fs::read_to_string(&skill_file)
             {
                 let (name, description) = Self::parse_frontmatter_or_fallback(&content, &path);
@@ -111,7 +112,10 @@ impl SkillRegistry {
                         description = Some(d.to_string());
                     }
                 } else if in_multiline_desc {
-                    if line.starts_with("  ") || line.starts_with('\t') || (!line_trimmed.is_empty() && !line_trimmed.contains(':')) {
+                    if line.starts_with("  ")
+                        || line.starts_with('\t')
+                        || (!line_trimmed.is_empty() && !line_trimmed.contains(':'))
+                    {
                         desc_lines.push(line_trimmed);
                     } else {
                         in_multiline_desc = false;
@@ -162,7 +166,9 @@ impl SkillRegistry {
     }
 
     pub fn get_skill(&self, name: &str) -> Option<&SkillDefinition> {
-        self.skills.iter().find(|s| s.name.eq_ignore_ascii_case(name))
+        self.skills
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case(name))
     }
 }
 
@@ -180,7 +186,8 @@ description: Senior code reviewer that evaluates changes across five dimensions.
 # Instructions
 Review code carefully.
 "#;
-        let (name, desc) = SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("dummy"));
+        let (name, desc) =
+            SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("dummy"));
         assert_eq!(name, "code-reviewer");
         assert_eq!(
             desc,
@@ -199,7 +206,8 @@ description: |
 
 # Architecture Plan
 "#;
-        let (name, desc) = SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("dummy"));
+        let (name, desc) =
+            SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("dummy"));
         assert_eq!(name, "agent-architect");
         assert!(desc.contains("Guides architectural decomposition"));
         assert!(desc.contains("strict decoupling invariants"));
@@ -214,15 +222,22 @@ Specialized in branch management, rebasing, and atomic commits.
 ## Steps
 1. Verify branch status.
 "#;
-        let (name, desc) = SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("skills/git-specialist"));
+        let (name, desc) = SkillRegistry::parse_frontmatter_or_fallback(
+            markdown,
+            Path::new("skills/git-specialist"),
+        );
         assert_eq!(name, "Git Workflow Specialist");
-        assert_eq!(desc, "Specialized in branch management, rebasing, and atomic commits.");
+        assert_eq!(
+            desc,
+            "Specialized in branch management, rebasing, and atomic commits."
+        );
     }
 
     #[test]
     fn test_parse_fallback_without_heading() {
         let markdown = "Just raw markdown content without any header.";
-        let (name, desc) = SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("my-custom-skill"));
+        let (name, desc) =
+            SkillRegistry::parse_frontmatter_or_fallback(markdown, Path::new("my-custom-skill"));
         assert_eq!(name, "my-custom-skill");
         assert_eq!(desc, "Just raw markdown content without any header.");
     }
@@ -265,6 +280,9 @@ Specialized in branch management, rebasing, and atomic commits.
 
         assert_eq!(registry.skills.len(), 1);
         assert_eq!(registry.skills[0].name, "Test-Skill");
-        assert_eq!(registry.skills[0].description, "A test skill in temporary directory");
+        assert_eq!(
+            registry.skills[0].description,
+            "A test skill in temporary directory"
+        );
     }
 }

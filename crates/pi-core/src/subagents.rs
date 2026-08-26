@@ -1,5 +1,5 @@
 use crate::AgentLoop;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::Utc;
 use pi_providers::ModelConfig;
 use pi_tools::{InvokeSubagentArgs, ManageSubagentsArgs, SubagentToolHandler};

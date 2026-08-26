@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -90,7 +90,10 @@ impl UndoEngine {
             .ok_or_else(|| anyhow!("Action snapshot with ID '{}' not found", action_id))?;
 
         if snapshot.is_undone {
-            return Ok(format!("Action '{}' has already been rolled back.", snapshot.description));
+            return Ok(format!(
+                "Action '{}' has already been rolled back.",
+                snapshot.description
+            ));
         }
 
         let mut diff_preview = String::new();
@@ -143,13 +146,19 @@ impl UndoEngine {
             .ok_or_else(|| anyhow!("Action snapshot with ID '{}' not found", action_id))?;
 
         if snapshot.is_undone {
-            return Ok(format!("Action '{}' is already rolled back.", snapshot.description));
+            return Ok(format!(
+                "Action '{}' is already rolled back.",
+                snapshot.description
+            ));
         }
 
         Self::apply_rollback(snapshot)?;
         snapshot.is_undone = true;
 
-        Ok(format!("Successfully rolled back: {}", snapshot.description))
+        Ok(format!(
+            "Successfully rolled back: {}",
+            snapshot.description
+        ))
     }
 
     /// Undoes the last `n` active actions in reverse chronological order.
@@ -267,7 +276,10 @@ mod tests {
             Some("pub fn modified() {}"),
         );
 
-        assert_eq!(fs::read_to_string(&file_path).unwrap(), "pub fn modified() {}");
+        assert_eq!(
+            fs::read_to_string(&file_path).unwrap(),
+            "pub fn modified() {}"
+        );
 
         // Preview diff
         let preview = engine.preview_undo(&id).unwrap();
@@ -276,7 +288,10 @@ mod tests {
 
         // Rollback
         engine.undo_by_id(&id).unwrap();
-        assert_eq!(fs::read_to_string(&file_path).unwrap(), "pub fn original() {}");
+        assert_eq!(
+            fs::read_to_string(&file_path).unwrap(),
+            "pub fn original() {}"
+        );
     }
 
     #[test]
@@ -288,10 +303,22 @@ mod tests {
         let mut engine = UndoEngine::new();
 
         fs::write(&f1, "1").unwrap();
-        engine.record_action("Write f1", ActionSnapshotKind::FileWrite, Some(&f1), None, Some("1"));
+        engine.record_action(
+            "Write f1",
+            ActionSnapshotKind::FileWrite,
+            Some(&f1),
+            None,
+            Some("1"),
+        );
 
         fs::write(&f2, "2").unwrap();
-        engine.record_action("Write f2", ActionSnapshotKind::FileWrite, Some(&f2), None, Some("2"));
+        engine.record_action(
+            "Write f2",
+            ActionSnapshotKind::FileWrite,
+            Some(&f2),
+            None,
+            Some("2"),
+        );
 
         assert_eq!(engine.reversible_count(), 2);
 

@@ -70,8 +70,11 @@ impl SkillCrystallizer {
                 .trim_matches(|c: char| !c.is_alphanumeric())
                 .to_ascii_lowercase();
             if clean.len() >= 4
-                && !["with", "this", "that", "from", "when", "your", "into", "then", "have", "some", "more"]
-                    .contains(&clean.as_str())
+                && ![
+                    "with", "this", "that", "from", "when", "your", "into", "then", "have", "some",
+                    "more",
+                ]
+                .contains(&clean.as_str())
                 && !triggers.contains(&clean)
             {
                 triggers.push(clean);
@@ -135,35 +138,49 @@ impl SkillCrystallizer {
 
                             match tool_name {
                                 "bash" => {
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(args_str)
-                                        && let Some(cmd) = parsed.get("command").and_then(|c| c.as_str())
+                                    if let Ok(parsed) =
+                                        serde_json::from_str::<serde_json::Value>(args_str)
+                                        && let Some(cmd) =
+                                            parsed.get("command").and_then(|c| c.as_str())
                                     {
                                         let trimmed_cmd = cmd.trim();
-                                        if !trimmed_cmd.is_empty() && !commands_used.contains(&trimmed_cmd.to_string()) {
+                                        if !trimmed_cmd.is_empty()
+                                            && !commands_used.contains(&trimmed_cmd.to_string())
+                                        {
                                             commands_used.push(trimmed_cmd.to_string());
-                                            procedure_steps.push(format!("Run command: `{}`", trimmed_cmd));
+                                            procedure_steps
+                                                .push(format!("Run command: `{}`", trimmed_cmd));
                                         }
                                     }
                                 }
                                 "write" | "edit" => {
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(args_str)
-                                        && let Some(path) = parsed.get("path").and_then(|p| p.as_str())
+                                    if let Ok(parsed) =
+                                        serde_json::from_str::<serde_json::Value>(args_str)
+                                        && let Some(path) =
+                                            parsed.get("path").and_then(|p| p.as_str())
                                     {
-                                        procedure_steps.push(format!("Apply modifications to `{}`", path));
+                                        procedure_steps
+                                            .push(format!("Apply modifications to `{}`", path));
                                     }
                                 }
                                 "grep" | "find" | "ls" => {
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(args_str)
-                                        && let Some(pattern) = parsed.get("pattern").and_then(|p| p.as_str())
+                                    if let Ok(parsed) =
+                                        serde_json::from_str::<serde_json::Value>(args_str)
+                                        && let Some(pattern) =
+                                            parsed.get("pattern").and_then(|p| p.as_str())
                                     {
-                                        procedure_steps.push(format!("Search workspace for `{}`", pattern));
+                                        procedure_steps
+                                            .push(format!("Search workspace for `{}`", pattern));
                                     }
                                 }
                                 "git" => {
-                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(args_str)
-                                        && let Some(action) = parsed.get("action").and_then(|a| a.as_str())
+                                    if let Ok(parsed) =
+                                        serde_json::from_str::<serde_json::Value>(args_str)
+                                        && let Some(action) =
+                                            parsed.get("action").and_then(|a| a.as_str())
                                     {
-                                        procedure_steps.push(format!("Execute git action: `{}`", action));
+                                        procedure_steps
+                                            .push(format!("Execute git action: `{}`", action));
                                     }
                                 }
                                 _ => {}
@@ -186,7 +203,8 @@ impl SkillCrystallizer {
         }
 
         if commands_used.is_empty() {
-            commands_used.push("# Example verification commands\ncargo check\ncargo test".to_string());
+            commands_used
+                .push("# Example verification commands\ncargo check\ncargo test".to_string());
         }
 
         let triggers_json = serde_json::to_string(&triggers).unwrap_or_else(|_| "[]".to_string());
@@ -285,11 +303,9 @@ impl SkillCrystallizer {
         path: PathBuf,
     ) {
         let sanitized = Self::sanitize_skill_name(skill_name);
-        if let Some(existing) = registry
-            .skills
-            .iter_mut()
-            .find(|s| s.name.eq_ignore_ascii_case(&sanitized) || s.name.eq_ignore_ascii_case(skill_name))
-        {
+        if let Some(existing) = registry.skills.iter_mut().find(|s| {
+            s.name.eq_ignore_ascii_case(&sanitized) || s.name.eq_ignore_ascii_case(skill_name)
+        }) {
             existing.description = description.to_string();
             existing.content = content.to_string();
             existing.path = path;
@@ -464,11 +480,17 @@ mod tests {
         .unwrap();
 
         assert!(skill_md.starts_with("---\nname: rust-ci-automator\n"));
-        assert!(skill_md.contains("description: Sets up GitHub Actions CI with clippy and test coverage"));
+        assert!(
+            skill_md
+                .contains("description: Sets up GitHub Actions CI with clippy and test coverage")
+        );
         assert!(skill_md.contains("# Rust Ci Automator"));
         assert!(skill_md.contains("## Purpose"));
         assert!(skill_md.contains("## Step-by-Step Procedure"));
-        assert!(skill_md.contains("Run command: `cargo clippy --workspace --all-targets -- -D warnings`"));
+        assert!(
+            skill_md
+                .contains("Run command: `cargo clippy --workspace --all-targets -- -D warnings`")
+        );
         assert!(skill_md.contains("Apply modifications to `.github/workflows/ci.yml`"));
         assert!(skill_md.contains("## Code / Command Templates"));
         assert!(skill_md.contains("cargo clippy --workspace --all-targets -- -D warnings"));
@@ -479,19 +501,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut registry = SkillRegistry::default();
 
-        let trajectory = vec![
-            SessionNode {
-                id: "u1".to_string(),
-                parent_id: None,
-                children_ids: Vec::new(),
-                role: Role::User,
-                content: "Optimize query speed".to_string(),
-                timestamp: chrono::Utc::now().to_rfc3339(),
-                tool_call_id: None,
-                tool_name: None,
-                tool_calls: None,
-            },
-        ];
+        let trajectory = vec![SessionNode {
+            id: "u1".to_string(),
+            parent_id: None,
+            children_ids: Vec::new(),
+            role: Role::User,
+            content: "Optimize query speed".to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            tool_call_id: None,
+            tool_name: None,
+            tool_calls: None,
+        }];
 
         let content = SkillCrystallizer::crystallize_from_trajectory(
             &trajectory,
@@ -500,7 +520,9 @@ mod tests {
         )
         .unwrap();
 
-        let path = SkillCrystallizer::save_skill_to_custom_dir(tmp.path(), "SQL Query Tuner", &content).unwrap();
+        let path =
+            SkillCrystallizer::save_skill_to_custom_dir(tmp.path(), "SQL Query Tuner", &content)
+                .unwrap();
         assert!(path.exists());
         assert!(path.ends_with("sql-query-tuner/SKILL.md"));
 
@@ -523,7 +545,10 @@ mod tests {
             "Step 1: Check git status".to_string(),
             "Step 2: Rebase on main".to_string(),
         ];
-        let commands = vec!["git status".to_string(), "git rebase origin/main".to_string()];
+        let commands = vec![
+            "git status".to_string(),
+            "git rebase origin/main".to_string(),
+        ];
 
         let md = SkillCrystallizer::distill_manual(
             "Git Rebase Flow",

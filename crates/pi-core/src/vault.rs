@@ -272,14 +272,7 @@ impl TauVault {
                 embedding, valid_since, valid_until, access_count, confidence
             ) VALUES (?, 'workspace', ?, ?, ?, NULL, NULL, ?, ?, NULL, 0, 1.0)
             "#,
-            rusqlite::params![
-                new_id,
-                current_ws,
-                old_topic,
-                new_content,
-                emb_bytes,
-                now,
-            ],
+            rusqlite::params![new_id, current_ws, old_topic, new_content, emb_bytes, now,],
         )?;
 
         Ok(updated)
@@ -481,7 +474,10 @@ impl TauVault {
                     ));
                 }
                 _ => {
-                    out.push_str(&format!("- [{}] ({}): {}\n", mem.scope, mem.topic, mem.content));
+                    out.push_str(&format!(
+                        "- [{}] ({}): {}\n",
+                        mem.scope, mem.topic, mem.content
+                    ));
                 }
             }
         }
@@ -580,7 +576,8 @@ impl ReflexionEngine {
             "bash" => {
                 if error_output.contains("error[E") || error_output.contains("cargo check") {
                     "compiler_failure:rust"
-                } else if error_output.contains("SyntaxError") || error_output.contains("TypeError") {
+                } else if error_output.contains("SyntaxError") || error_output.contains("TypeError")
+                {
                     "script_failure"
                 } else {
                     "tool_failure:bash"
@@ -592,9 +589,15 @@ impl ReflexionEngine {
         };
 
         let bad_pattern = if let Some(cmd) = arguments.get("command").and_then(|v| v.as_str()) {
-            format!("Command failed: {}", cmd.chars().take(80).collect::<String>())
+            format!(
+                "Command failed: {}",
+                cmd.chars().take(80).collect::<String>()
+            )
         } else if let Some(target) = arguments.get("target").and_then(|v| v.as_str()) {
-            format!("Edit target failed: {}", target.chars().take(60).collect::<String>())
+            format!(
+                "Edit target failed: {}",
+                target.chars().take(60).collect::<String>()
+            )
         } else if let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
             format!("Path operation failed: {}", path)
         } else {
@@ -612,7 +615,8 @@ impl ReflexionEngine {
                 .to_string()
         } else if error_output.contains("No such file or directory") {
             "Verify file existence with find or ls before reading or modifying".to_string()
-        } else if error_output.contains("floor_char_boundary") || error_output.contains("byte index")
+        } else if error_output.contains("floor_char_boundary")
+            || error_output.contains("byte index")
         {
             "Never slice UTF-8 strings by raw byte indices; always use floor_char_boundary"
                 .to_string()
@@ -693,7 +697,11 @@ pub fn compute_text_embedding(text: &str) -> Vec<f32> {
                 std::hash::Hash::hash(&trigram, &mut tri_hasher);
                 let tri_h = std::hash::Hasher::finish(&tri_hasher) as usize;
                 let tri_idx = tri_h % EMBEDDING_DIM;
-                let tri_sign = if (tri_h >> 8) & 1 == 0 { 0.5f32 } else { -0.5f32 };
+                let tri_sign = if (tri_h >> 8) & 1 == 0 {
+                    0.5f32
+                } else {
+                    -0.5f32
+                };
                 vec[tri_idx] += tri_sign;
             }
         }
@@ -725,11 +733,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         norm_b += b[i] * b[i];
     }
     let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom > 1e-8 {
-        dot / denom
-    } else {
-        0.0
-    }
+    if denom > 1e-8 { dot / denom } else { 0.0 }
 }
 
 /// Serializes float slice into little-endian bytes.
@@ -886,7 +890,9 @@ mod tests {
             )
             .unwrap();
 
-        let res = vault.search_hybrid("edit tool occurrences match", 5).unwrap();
+        let res = vault
+            .search_hybrid("edit tool occurrences match", 5)
+            .unwrap();
         assert!(!res.is_empty());
         assert_eq!(res[0].topic, "edit_disambiguation");
     }
@@ -940,7 +946,9 @@ mod tests {
         let prompt = vault.format_hindsight_prompt("unicode slicing byte index");
         assert!(prompt.contains("[Hindsight Memory & Rules]"));
         assert!(prompt.contains("[Counter-Rule] (unicode_slicing)"));
-        assert!(prompt.contains("Avoid Raw byte indexing &s[..len] -> Instead Use floor_char_boundary"));
+        assert!(
+            prompt.contains("Avoid Raw byte indexing &s[..len] -> Instead Use floor_char_boundary")
+        );
         assert!(prompt.contains("[End Hindsight Memory]"));
     }
 
@@ -961,11 +969,13 @@ mod tests {
         let active = vault.list_active_memories(5).unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].topic, "tool_failure:edit");
-        assert!(active[0]
-            .correct_pattern
-            .as_ref()
-            .unwrap()
-            .contains("wider target context"));
+        assert!(
+            active[0]
+                .correct_pattern
+                .as_ref()
+                .unwrap()
+                .contains("wider target context")
+        );
 
         // Simulate turn error
         let turn_rule_id = ReflexionEngine::distill_turn_error(

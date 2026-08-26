@@ -149,9 +149,21 @@ mod tests {
         let specialists = SpecialistIdentity::all();
         assert_eq!(specialists.len(), 3);
 
-        assert!(SpecialistIdentity::Jarvis.persona_system_prompt().contains("J.A.R.V.I.S."));
-        assert!(SpecialistIdentity::Friday.persona_system_prompt().contains("F.R.I.D.A.Y."));
-        assert!(SpecialistIdentity::Ev.persona_system_prompt().contains("E.V."));
+        assert!(
+            SpecialistIdentity::Jarvis
+                .persona_system_prompt()
+                .contains("J.A.R.V.I.S.")
+        );
+        assert!(
+            SpecialistIdentity::Friday
+                .persona_system_prompt()
+                .contains("F.R.I.D.A.Y.")
+        );
+        assert!(
+            SpecialistIdentity::Ev
+                .persona_system_prompt()
+                .contains("E.V.")
+        );
     }
 
     #[test]
@@ -160,15 +172,20 @@ mod tests {
         let fleet = FederatedFleet::new(vault);
 
         assert_eq!(
-            fleet.route_goal_to_specialist("Perform a security audit of our authentication endpoints"),
+            fleet.route_goal_to_specialist(
+                "Perform a security audit of our authentication endpoints"
+            ),
             SpecialistIdentity::Friday
         );
         assert_eq!(
-            fleet.route_goal_to_specialist("I've been working 14 hours and feeling burnout, check my schedule"),
+            fleet.route_goal_to_specialist(
+                "I've been working 14 hours and feeling burnout, check my schedule"
+            ),
             SpecialistIdentity::Ev
         );
         assert_eq!(
-            fleet.route_goal_to_specialist("Refactor the parser with zero-allocation SIMD routines"),
+            fleet
+                .route_goal_to_specialist("Refactor the parser with zero-allocation SIMD routines"),
             SpecialistIdentity::Jarvis
         );
     }
@@ -176,14 +193,17 @@ mod tests {
     #[test]
     fn test_build_specialist_prompt_with_hindsight() {
         let vault = Arc::new(TauVault::open_in_memory().unwrap());
-        vault.record_counter_rule(
-            "sql_injection",
-            "String formatting in queries",
-            "Use parameterized params![] in rusqlite",
-        ).unwrap();
+        vault
+            .record_counter_rule(
+                "sql_injection",
+                "String formatting in queries",
+                "Use parameterized params![] in rusqlite",
+            )
+            .unwrap();
 
         let fleet = FederatedFleet::new(vault);
-        let prompt = fleet.build_specialist_prompt(SpecialistIdentity::Jarvis, "sql query construction");
+        let prompt =
+            fleet.build_specialist_prompt(SpecialistIdentity::Jarvis, "sql query construction");
 
         assert!(prompt.contains("J.A.R.V.I.S."));
         assert!(prompt.contains("[Hindsight Memory & Rules]"));
