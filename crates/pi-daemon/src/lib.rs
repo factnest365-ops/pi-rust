@@ -11,7 +11,9 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::Mutex;
 
 pub mod cron;
+pub mod goal;
 pub use cron::{CronContext, JobsFile};
+pub use goal::{GoalJob, GoalRunner, GoalStatus, GoalWorker};
 pub mod ipc;
 pub use ipc::{
     DaemonError, DaemonRequest, DaemonResponse, DaemonStatusInfo, DaemonTurnParams, DaemonTurnResult,

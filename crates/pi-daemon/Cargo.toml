@@ -21,6 +21,8 @@ tokio = { workspace = true, features = ["full"] }
 tokio-util.workspace = true
 clap = { workspace = true, features = ["derive"] }
 fs2 = "0.4"
+async-trait = "0.1"
+parking_lot = "0.12"
 
 [dev-dependencies]
 tempfile.workspace = true
