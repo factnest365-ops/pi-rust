@@ -442,13 +442,13 @@ fn extract_rust(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     let lines: Vec<usize> = text.lines().map(|l| l.len()).collect();
     let mut line_starts = vec![0usize];
     for len in lines {
-        let next = *line_starts.last().unwrap() + len + 1;
+        let next = *line_starts.last().unwrap_or(&0) + len + 1;
         line_starts.push(next);
     }
 
     for cap in struct_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -460,8 +460,8 @@ fn extract_rust(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     }
 
     for cap in enum_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -473,8 +473,8 @@ fn extract_rust(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     }
 
     for cap in trait_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -488,8 +488,8 @@ fn extract_rust(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     for cap in impl_re.captures_iter(text) {
         let target = cap[1].trim();
         let ty = cap[2].trim();
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         let kind = if target.is_empty() {
             SymbolKind::Struct
         } else {
@@ -512,8 +512,8 @@ fn extract_rust(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
 
     for cap in fn_re.captures_iter(text) {
         let name = cap[1].trim();
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: name.to_string(),
@@ -544,13 +544,13 @@ fn extract_python(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     let lines: Vec<usize> = text.lines().map(|l| l.len()).collect();
     let mut line_starts = vec![0usize];
     for len in lines {
-        let next = *line_starts.last().unwrap() + len + 1;
+        let next = *line_starts.last().unwrap_or(&0) + len + 1;
         line_starts.push(next);
     }
 
     for cap in class_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -562,8 +562,8 @@ fn extract_python(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     }
 
     for cap in def_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -575,8 +575,8 @@ fn extract_python(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     }
 
     for cap in import_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -588,8 +588,8 @@ fn extract_python(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     }
 
     for cap in from_import_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -623,13 +623,13 @@ fn extract_ts_js(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     let lines: Vec<usize> = text.lines().map(|l| l.len()).collect();
     let mut line_starts = vec![0usize];
     for len in lines {
-        let next = *line_starts.last().unwrap() + len + 1;
+        let next = *line_starts.last().unwrap_or(&0) + len + 1;
         line_starts.push(next);
     }
 
     for cap in class_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -641,8 +641,8 @@ fn extract_ts_js(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     }
 
     for cap in fn_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -654,8 +654,8 @@ fn extract_ts_js(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     }
 
     for cap in arrow_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),
@@ -667,8 +667,8 @@ fn extract_ts_js(path: &Path, text: &str) -> anyhow::Result<Vec<Symbol>> {
     }
 
     for cap in import_re.captures_iter(text) {
-        let start = line_for_offset(&line_starts, cap.get(0).unwrap().start());
-        let end = line_for_offset(&line_starts, cap.get(0).unwrap().end());
+        let start = line_for_offset(&line_starts, cap.get(0).map(|m| m.start()).unwrap_or(0));
+        let end = line_for_offset(&line_starts, cap.get(0).map(|m| m.end()).unwrap_or(0));
         symbols.push(Symbol {
             id: next_id(),
             name: cap[1].trim().to_string(),

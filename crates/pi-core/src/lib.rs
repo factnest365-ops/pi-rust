@@ -709,7 +709,10 @@ impl AgentLoop {
                 });
             }
         } else if trimmed_tag == "write" || trimmed_tag.starts_with("write ") {
-            let rest = trimmed_tag.strip_prefix("write").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("write")
+                .map(str::trim)
+                .unwrap_or("");
             let tokens = Self::tokenize_args(rest);
             let path = tokens.first().cloned().unwrap_or_default();
             if !path.is_empty() {
@@ -751,7 +754,10 @@ impl AgentLoop {
                 }
             }
         } else if trimmed_tag == "edit" || trimmed_tag.starts_with("edit ") {
-            let rest = trimmed_tag.strip_prefix("edit").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("edit")
+                .map(str::trim)
+                .unwrap_or("");
             let tokens = Self::tokenize_args(rest);
             let path = tokens.first().cloned().unwrap_or_default();
 
@@ -807,7 +813,10 @@ impl AgentLoop {
                 });
             }
         } else if trimmed_tag == "read" || trimmed_tag.starts_with("read ") {
-            let rest = trimmed_tag.strip_prefix("read").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("read")
+                .map(str::trim)
+                .unwrap_or("");
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("path").is_some()
@@ -860,7 +869,10 @@ impl AgentLoop {
                 }
             }
         } else if trimmed_tag == "grep" || trimmed_tag.starts_with("grep ") {
-            let rest = trimmed_tag.strip_prefix("grep").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("grep")
+                .map(str::trim)
+                .unwrap_or("");
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("pattern").is_some()
             {
@@ -901,7 +913,10 @@ impl AgentLoop {
                 }
             }
         } else if trimmed_tag == "find" || trimmed_tag.starts_with("find ") {
-            let rest = trimmed_tag.strip_prefix("find").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("find")
+                .map(str::trim)
+                .unwrap_or("");
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("pattern").is_some()
             {
@@ -944,8 +959,8 @@ impl AgentLoop {
         } else if trimmed_tag == "ls" || trimmed_tag.starts_with("ls ") {
             let rest = trimmed_tag
                 .strip_prefix("ls")
-                .unwrap()
-                .trim()
+                .map(str::trim)
+                .unwrap_or("")
                 .trim_matches('"')
                 .trim_matches('\'');
             let path = if rest.is_empty() { "." } else { rest };
@@ -962,7 +977,7 @@ impl AgentLoop {
             let rest = if let Some(r) = trimmed_tag.strip_prefix("web_fetch") {
                 r.trim()
             } else {
-                trimmed_tag.strip_prefix("web").unwrap().trim()
+                trimmed_tag.strip_prefix("web").map(str::trim).unwrap_or("")
             };
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
@@ -1001,7 +1016,10 @@ impl AgentLoop {
             let rest = if let Some(r) = trimmed_tag.strip_prefix("web_search") {
                 r.trim()
             } else {
-                trimmed_tag.strip_prefix("search").unwrap().trim()
+                trimmed_tag
+                    .strip_prefix("search")
+                    .map(str::trim)
+                    .unwrap_or("")
             };
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
@@ -1041,7 +1059,7 @@ impl AgentLoop {
             } else if let Some(r) = trimmed_tag.strip_prefix("git_") {
                 r.trim()
             } else {
-                trimmed_tag.strip_prefix("git").unwrap().trim()
+                trimmed_tag.strip_prefix("git").map(str::trim).unwrap_or("")
             };
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
@@ -1123,7 +1141,10 @@ impl AgentLoop {
                 arguments: args,
             });
         } else if trimmed_tag == "github" || trimmed_tag.starts_with("github ") {
-            let rest = trimmed_tag.strip_prefix("github").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("github")
+                .map(str::trim)
+                .unwrap_or("");
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("action").is_some()
@@ -1147,7 +1168,7 @@ impl AgentLoop {
                 arguments: serde_json::json!({ "action": action }),
             });
         } else if trimmed_tag == "lsp" || trimmed_tag.starts_with("lsp ") {
-            let rest = trimmed_tag.strip_prefix("lsp").unwrap().trim();
+            let rest = trimmed_tag.strip_prefix("lsp").map(str::trim).unwrap_or("");
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("action").is_some()
@@ -1182,7 +1203,7 @@ impl AgentLoop {
             let rest = if let Some(r) = trimmed_tag.strip_prefix("ast_slice") {
                 r.trim()
             } else {
-                trimmed_tag.strip_prefix("ast").unwrap().trim()
+                trimmed_tag.strip_prefix("ast").map(str::trim).unwrap_or("")
             };
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
@@ -1217,7 +1238,10 @@ impl AgentLoop {
             let rest = if let Some(r) = trimmed_tag.strip_prefix("invoke_subagent") {
                 r.trim()
             } else {
-                trimmed_tag.strip_prefix("subagent").unwrap().trim()
+                trimmed_tag
+                    .strip_prefix("subagent")
+                    .map(str::trim)
+                    .unwrap_or("")
             };
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
@@ -1254,7 +1278,10 @@ impl AgentLoop {
             });
         } else if trimmed_tag == "manage_subagents" || trimmed_tag.starts_with("manage_subagents ")
         {
-            let rest = trimmed_tag.strip_prefix("manage_subagents").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("manage_subagents")
+                .map(str::trim)
+                .unwrap_or("");
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("action").is_some()
@@ -1281,7 +1308,10 @@ impl AgentLoop {
                 arguments: args,
             });
         } else if trimmed_tag == "crew_dispatch" || trimmed_tag.starts_with("crew_dispatch ") {
-            let rest = trimmed_tag.strip_prefix("crew_dispatch").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("crew_dispatch")
+                .map(str::trim)
+                .unwrap_or("");
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("task").is_some()
@@ -1312,7 +1342,10 @@ impl AgentLoop {
                 }),
             });
         } else if trimmed_tag == "crew_status" || trimmed_tag.starts_with("crew_status ") {
-            let rest = trimmed_tag.strip_prefix("crew_status").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("crew_status")
+                .map(str::trim)
+                .unwrap_or("");
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim()) {
                 return Some(ToolCall {
@@ -1337,7 +1370,10 @@ impl AgentLoop {
                 arguments: args,
             });
         } else if trimmed_tag == "crew_merge" || trimmed_tag.starts_with("crew_merge ") {
-            let rest = trimmed_tag.strip_prefix("crew_merge").unwrap().trim();
+            let rest = trimmed_tag
+                .strip_prefix("crew_merge")
+                .map(str::trim)
+                .unwrap_or("");
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("task_id").is_some()

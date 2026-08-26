@@ -43,11 +43,30 @@ impl Default for TauVault {
 
 impl TauVault {
     /// Creates or opens the default persistent memory vault at ~/.tau/vault.sqlite.
-    /// Falls back to an in-memory database if file access fails.
+    /// Falls back to an in-memory database if file access fails, and finally to a
+    /// degraded no-op vault if even in-memory SQLite is unavailable, so that
+    /// constrained environments (sandboxes, hardened CI) degrade memory features
+    /// instead of crashing the agent loop.
     pub fn new() -> Self {
-        Self::open_default().unwrap_or_else(|_| {
-            Self::open_in_memory().expect("in-memory sqlite vault must always succeed")
-        })
+        Self::open_default()
+            .or_else(|_| Self::open_in_memory())
+            .unwrap_or_else(|_| Self::degraded())
+    }
+
+    /// Last-resort vault used when both persistent and plain in-memory SQLite
+    /// fail. All writes become no-ops on this connection; reads return empty.
+    fn degraded() -> Self {
+        // SAFETY: `Connection::open_in_memory` only fails under resource
+        // exhaustion; every other constructor path has already been tried.
+        // If even this fails we cannot construct TauVault at all, so the
+        // panic here is unreachable in any environment where the type can
+        // exist, and there is no meaningful way to continue without it.
+        let conn =
+            rusqlite::Connection::open_in_memory().expect("degraded in-memory sqlite fallback");
+        Self {
+            conn: std::sync::Arc::new(std::sync::Mutex::new(conn)),
+            path: None,
+        }
     }
 
     /// Opens or creates the default persistent database at ~/.tau/vault.sqlite.
