@@ -157,13 +157,13 @@
 - [x] **Interactive Split-Diff Review Fallback**:
   - Displays a side-by-side split diff in `pi-tui` showing metrics and lines changed for instant developer selection.
 
-### Phase 14: Code Knowledge Graph (CKG) & Context Slicing Topology 🔮
+### Phase 14: Code Knowledge Graph (CKG) & Context Slicing Topology ✅
 *Structure-aware code intelligence that reduces context token waste by up to 90%.*
-- [ ] **Pure Rust AST Call & Import Topology**:
+- [x] **Pure Rust AST Call & Import Topology**:
   - In-memory CodeGraph indexing function definitions, trait implementations, struct hierarchies, and cross-file references.
-- [ ] **Topological Dependency Context Slicer**:
+- [x] **Topological Dependency Context Slicer**:
   - Extracts only the exact upstream and downstream symbol dependencies needed for the active task, eliminating full-file prompt bloat.
-- [ ] **Co-Edit Cluster Predictor**:
+- [x] **Co-Edit Cluster Predictor**:
   - Analyzes Git history to identify files that frequently change together, proactively suggesting related edits.
 
 ### Phase 15: 100% Pure Rust Daemon (`taud`) & JARVIS Architecture ✅
