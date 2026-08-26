@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use pi_core::{
     AlfredProtocol, FederatedFleet, SpecialistIdentity, StateSynchronizer, TauVault, UndoEngine,
 };
@@ -14,7 +14,8 @@ pub mod cron;
 pub use cron::{CronContext, JobsFile};
 pub mod ipc;
 pub use ipc::{
-    DaemonError, DaemonRequest, DaemonResponse, DaemonStatusInfo, DaemonTurnParams, DaemonTurnResult,
+    DaemonError, DaemonRequest, DaemonResponse, DaemonStatusInfo, DaemonTurnParams,
+    DaemonTurnResult,
 };
 
 pub struct DaemonServer {
@@ -142,11 +143,22 @@ impl DaemonServer {
             }
             "tau/memory/add" => {
                 if let Some(params) = req.params {
-                    let scope = params.get("scope").and_then(|s| s.as_str()).unwrap_or("user");
-                    let topic = params.get("topic").and_then(|s| s.as_str()).unwrap_or("general");
+                    let scope = params
+                        .get("scope")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("user");
+                    let topic = params
+                        .get("topic")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("general");
                     let content = params.get("content").and_then(|s| s.as_str()).unwrap_or("");
-                    match self.vault.record_memory(scope, topic, content, None, None, None) {
-                        Ok(id) => DaemonResponse::ok(req_id, serde_json::json!({ "memory_id": id })),
+                    match self
+                        .vault
+                        .record_memory(scope, topic, content, None, None, None)
+                    {
+                        Ok(id) => {
+                            DaemonResponse::ok(req_id, serde_json::json!({ "memory_id": id }))
+                        }
                         Err(e) => DaemonResponse::error(req_id, -32002, e.to_string()),
                     }
                 } else {
@@ -168,9 +180,10 @@ impl DaemonServer {
                     .unwrap_or(5) as usize;
 
                 match self.vault.search_hybrid(query, limit) {
-                    Ok(entries) => {
-                        DaemonResponse::ok(req_id, serde_json::to_value(entries).unwrap_or_default())
-                    }
+                    Ok(entries) => DaemonResponse::ok(
+                        req_id,
+                        serde_json::to_value(entries).unwrap_or_default(),
+                    ),
                     Err(e) => DaemonResponse::error(req_id, -32003, e.to_string()),
                 }
             }
@@ -179,7 +192,10 @@ impl DaemonServer {
     }
 
     /// Runs the Unix domain socket server loop until a shutdown signal is received.
-    pub async fn run_server(self: Arc<Self>, mut shutdown_rx: tokio::sync::broadcast::Receiver<()>) -> Result<()> {
+    pub async fn run_server(
+        self: Arc<Self>,
+        mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+    ) -> Result<()> {
         if let Some(parent) = self.socket_path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -226,7 +242,8 @@ impl DaemonServer {
             let request: DaemonRequest = match serde_json::from_str(trimmed) {
                 Ok(r) => r,
                 Err(e) => {
-                    let err_resp = DaemonResponse::error(None, -32700, format!("Parse error: {}", e));
+                    let err_resp =
+                        DaemonResponse::error(None, -32700, format!("Parse error: {}", e));
                     let serialized = serde_json::to_string(&err_resp)?;
                     writer.write_all(serialized.as_bytes()).await?;
                     writer.write_all(b"\n").await?;
@@ -356,7 +373,10 @@ mod tests {
         assert_eq!(status.specialists.len(), 3);
 
         // 3. Switch Specialist to Friday
-        client.switch_specialist(SpecialistIdentity::Friday).await.unwrap();
+        client
+            .switch_specialist(SpecialistIdentity::Friday)
+            .await
+            .unwrap();
         let status_after = client.status().await.unwrap();
         assert_eq!(status_after.active_specialist, SpecialistIdentity::Friday);
 

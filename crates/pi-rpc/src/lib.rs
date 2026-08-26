@@ -77,7 +77,8 @@ impl RpcServer {
                     result: None,
                     error: Some(RpcError {
                         code: -32700,
-                        message: "Parse error: Invalid JSON was received by the server.".to_string(),
+                        message: "Parse error: Invalid JSON was received by the server."
+                            .to_string(),
                         data: None,
                     }),
                 }));
@@ -93,7 +94,8 @@ impl RpcServer {
                     result: None,
                     error: Some(RpcError {
                         code: -32600,
-                        message: "Invalid Request: Top-level payload must be a JSON object.".to_string(),
+                        message: "Invalid Request: Top-level payload must be a JSON object."
+                            .to_string(),
                         data: None,
                     }),
                 }));
@@ -127,7 +129,8 @@ impl RpcServer {
                     result: None,
                     error: Some(RpcError {
                         code: -32600,
-                        message: "Invalid Request: 'method' must be a non-empty string.".to_string(),
+                        message: "Invalid Request: 'method' must be a non-empty string."
+                            .to_string(),
                         data: None,
                     }),
                 }));
@@ -151,17 +154,15 @@ impl RpcServer {
         let id = req.id.unwrap_or(Value::Null);
 
         match req.method.as_str() {
-            "pi/ping" => {
-                RpcResponse {
-                    jsonrpc: "2.0".to_string(),
-                    id,
-                    result: Some(serde_json::json!({
-                        "status": "ok",
-                        "version": env!("CARGO_PKG_VERSION")
-                    })),
-                    error: None,
-                }
-            }
+            "pi/ping" => RpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id,
+                result: Some(serde_json::json!({
+                    "status": "ok",
+                    "version": env!("CARGO_PKG_VERSION")
+                })),
+                error: None,
+            },
             "pi/model/get" => {
                 let guard = self.agent_loop.lock().await;
                 RpcResponse {
@@ -209,7 +210,11 @@ impl RpcServer {
                 }
             }
             "pi/models" => {
-                let force_refresh = req.params.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
+                let force_refresh = req
+                    .params
+                    .get("force")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let models = ModelCatalog::get_models(force_refresh).await;
                 RpcResponse {
                     jsonrpc: "2.0".to_string(),
@@ -228,7 +233,11 @@ impl RpcServer {
                 }
             }
             "pi/tools/execute" => {
-                let name = req.params.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let name = req
+                    .params
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if name.trim().is_empty() {
                     return RpcResponse {
                         jsonrpc: "2.0".to_string(),
@@ -241,8 +250,17 @@ impl RpcServer {
                         }),
                     };
                 }
-                let args = req.params.get("arguments").cloned().unwrap_or(serde_json::json!({}));
-                let call_id = req.params.get("id").and_then(|v| v.as_str()).unwrap_or("rpc_call").to_string();
+                let args = req
+                    .params
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
+                let call_id = req
+                    .params
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("rpc_call")
+                    .to_string();
 
                 let call = ToolCall {
                     id: call_id,
@@ -304,7 +322,9 @@ impl RpcServer {
                 RpcResponse {
                     jsonrpc: "2.0".to_string(),
                     id,
-                    result: Some(serde_json::json!({ "servers": servers, "tool_count": mgr.cached_tools.len() })),
+                    result: Some(
+                        serde_json::json!({ "servers": servers, "tool_count": mgr.cached_tools.len() }),
+                    ),
                     error: None,
                 }
             }
@@ -323,7 +343,11 @@ impl RpcServer {
                 }
             }
             "pi/session/rewind" => {
-                let target_id = req.params.get("node_id").and_then(|v| v.as_str()).unwrap_or("");
+                let target_id = req
+                    .params
+                    .get("node_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if target_id.trim().is_empty() {
                     return RpcResponse {
                         jsonrpc: "2.0".to_string(),
@@ -351,7 +375,9 @@ impl RpcServer {
             }
             "pi/session/fork" => {
                 let mut guard = self.agent_loop.lock().await;
-                let branch_node_id = guard.session_tree.append_child(pi_session::Role::System, "Forked branch point".to_string());
+                let branch_node_id = guard
+                    .session_tree
+                    .append_child(pi_session::Role::System, "Forked branch point".to_string());
                 RpcResponse {
                     jsonrpc: "2.0".to_string(),
                     id,
@@ -394,8 +420,16 @@ impl RpcServer {
                 }
             }
             "pi/session/diff" => {
-                let node_a = req.params.get("node_a").and_then(|v| v.as_str()).unwrap_or("");
-                let node_b = req.params.get("node_b").and_then(|v| v.as_str()).unwrap_or("");
+                let node_a = req
+                    .params
+                    .get("node_a")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let node_b = req
+                    .params
+                    .get("node_b")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 let guard = self.agent_loop.lock().await;
                 let diff = guard.session_tree.diff_branches(node_a, node_b);
                 RpcResponse {
@@ -421,7 +455,9 @@ impl RpcServer {
                         result: None,
                         error: Some(RpcError {
                             code: -32602,
-                            message: "Invalid params: 'target_node_id' or 'node_id' cannot be empty".to_string(),
+                            message:
+                                "Invalid params: 'target_node_id' or 'node_id' cannot be empty"
+                                    .to_string(),
                             data: None,
                         }),
                     };
@@ -439,7 +475,11 @@ impl RpcServer {
                 }
             }
             "pi/prompt" => {
-                let prompt = req.params.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+                let prompt = req
+                    .params
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if prompt.trim().is_empty() {
                     return RpcResponse {
                         jsonrpc: "2.0".to_string(),
@@ -577,13 +617,15 @@ impl RpcServer {
                         let server_clone = Arc::clone(&server);
                         let stdout_clone = Arc::clone(&stdout_lock);
 
-                        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RpcNotification>();
+                        let (tx, mut rx) =
+                            tokio::sync::mpsc::unbounded_channel::<RpcNotification>();
 
                         let writer_handle = tokio::spawn(async move {
                             let mut out = stdout_clone.lock().await;
                             while let Some(notif) = rx.recv().await {
                                 if let Ok(notif_json) = serde_json::to_string(&notif) {
-                                    let _ = out.write_all(format!("{}\n", notif_json).as_bytes()).await;
+                                    let _ =
+                                        out.write_all(format!("{}\n", notif_json).as_bytes()).await;
                                     let _ = out.flush().await;
                                 }
                             }
@@ -598,9 +640,7 @@ impl RpcServer {
                         // Wait for all queued streaming notifications to be completely flushed
                         let _ = writer_handle.await;
 
-                        if !is_notification
-                            && let Ok(resp_json) = serde_json::to_string(&resp)
-                        {
+                        if !is_notification && let Ok(resp_json) = serde_json::to_string(&resp) {
                             let mut out = stdout_lock.lock().await;
                             let _ = out.write_all(format!("{}\n", resp_json).as_bytes()).await;
                             let _ = out.flush().await;
@@ -731,7 +771,10 @@ mod tests {
         };
         let resp_fork = server.handle_request(req_fork, |_| {}).await;
         let res_fork = resp_fork.result.expect("session fork result");
-        let branch_id = res_fork.get("branch_node_id").and_then(|v| v.as_str()).unwrap();
+        let branch_id = res_fork
+            .get("branch_node_id")
+            .and_then(|v| v.as_str())
+            .unwrap();
 
         // 3. Session history
         let req_hist = RpcRequest {
@@ -901,12 +944,14 @@ mod tests {
 
         // 2. Valid request with string id
         let valid_str_id = r#"{"jsonrpc": "2.0", "id": "req-99", "method": "pi/tools/list"}"#;
-        let parsed_str = RpcServer::parse_raw_request(valid_str_id).expect("should parse valid request");
+        let parsed_str =
+            RpcServer::parse_raw_request(valid_str_id).expect("should parse valid request");
         assert_eq!(parsed_str.id, Some(serde_json::json!("req-99")));
 
         // 3. Valid notification (no id)
         let valid_notif = r#"{"jsonrpc": "2.0", "method": "pi/ping"}"#;
-        let parsed_notif = RpcServer::parse_raw_request(valid_notif).expect("should parse valid notification");
+        let parsed_notif =
+            RpcServer::parse_raw_request(valid_notif).expect("should parse valid notification");
         assert!(parsed_notif.id.is_none());
 
         // 4. Parse error -32700 for malformed JSON
@@ -980,10 +1025,18 @@ mod tests {
             line.clear();
         }
 
-        server_handle.await.unwrap().expect("server loop should exit cleanly on EOF");
+        server_handle
+            .await
+            .unwrap()
+            .expect("server loop should exit cleanly on EOF");
 
         // Exactly 4 response lines expected (the notification was suppressed!)
-        assert_eq!(output_lines.len(), 4, "Expected 4 output lines, got: {:?}", output_lines);
+        assert_eq!(
+            output_lines.len(),
+            4,
+            "Expected 4 output lines, got: {:?}",
+            output_lines
+        );
 
         // Line 1: Ping response (id: 1)
         let resp1: Value = serde_json::from_str(&output_lines[0]).unwrap();
@@ -1004,7 +1057,10 @@ mod tests {
         let resp4: Value = serde_json::from_str(&output_lines[3]).unwrap();
         assert_eq!(resp4.get("id").unwrap(), 5);
         assert_eq!(resp4.get("result").unwrap().get("model").unwrap(), "gpt-4o");
-        assert_eq!(resp4.get("result").unwrap().get("provider").unwrap(), "openai");
+        assert_eq!(
+            resp4.get("result").unwrap().get("provider").unwrap(),
+            "openai"
+        );
     }
 
     #[tokio::test]

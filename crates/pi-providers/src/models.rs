@@ -1,9 +1,12 @@
+use crate::{
+    LLAMACPP_DEFAULT_HOST, LMSTUDIO_DEFAULT_HOST, OLLAMA_API_TAGS, OLLAMA_DEFAULT_HOST,
+    OLLAMA_V1_PATH, VLLM_DEFAULT_HOST,
+};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
-use crate::{LMSTUDIO_DEFAULT_HOST, LLAMACPP_DEFAULT_HOST, OLLAMA_API_TAGS, OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH, VLLM_DEFAULT_HOST};
 
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
@@ -29,7 +32,15 @@ pub struct ModelInfo {
 }
 
 impl ModelInfo {
-    pub fn new(id: &str, provider: &str, context_window: usize, max_output: usize, reasoning: bool, vision: bool, desc: &str) -> Self {
+    pub fn new(
+        id: &str,
+        provider: &str,
+        context_window: usize,
+        max_output: usize,
+        reasoning: bool,
+        vision: bool,
+        desc: &str,
+    ) -> Self {
         Self {
             id: id.to_string(),
             name: id.split('/').next_back().unwrap_or(id).to_string(),
@@ -127,7 +138,10 @@ impl ModelCatalogLoader {
             return (1_048_576, 64_000); // 1M Context + 64k Output
         } else if clean_id.contains("grok-4.6") || clean_id.contains("grok-4") {
             return (1_048_576, 128_000); // 1M Context + 128k Output
-        } else if clean_id.contains("opus-5") || clean_id.contains("claude-4") || clean_id.contains("gpt-5") {
+        } else if clean_id.contains("opus-5")
+            || clean_id.contains("claude-4")
+            || clean_id.contains("gpt-5")
+        {
             return (500_000, 128_000); // 500k Context + 128k Output
         } else if clean_id.contains("glm-5") || clean_id.contains("kimi-k3") {
             return (256_000, 64_000); // 256k Context
@@ -137,9 +151,13 @@ impl ModelCatalogLoader {
             return (256_000, 32_768); // 256k Context
         } else if clean_id.contains("claude-3-7") || clean_id.contains("3-7-sonnet") {
             return (200_000, 64_000); // 200k Context + 64k Output
-        } else if clean_id.contains("claude-3-5") || clean_id.contains("claude-3") || clean_id.contains("anthropic") {
+        } else if clean_id.contains("claude-3-5")
+            || clean_id.contains("claude-3")
+            || clean_id.contains("anthropic")
+        {
             return (200_000, 8_192); // 200k Context
-        } else if clean_id.contains("o3") || clean_id.contains("o1") || clean_id.contains("grok-3") {
+        } else if clean_id.contains("o3") || clean_id.contains("o1") || clean_id.contains("grok-3")
+        {
             return (200_000, 100_000); // 200k Context + 100k Output
         } else if clean_id.contains("deepseek-r2") || clean_id.contains("deepseek-v4") {
             return (128_000, 16_384); // 128k Context
@@ -185,96 +203,561 @@ impl ModelCatalogLoader {
     pub fn static_frontier_models() -> Vec<ModelInfo> {
         vec![
             // xAI Grok (2026 SOTA Frontier Flagship)
-            ModelInfo::new("xai/grok-4.6", "xAI", 1_048_576, 128_000, true, true, "Flagship Grok 4.6 frontier deep reasoning model with 1M context"),
-            ModelInfo::new("xai/grok-4", "xAI", 1_048_576, 128_000, true, true, "xAI Grok 4 frontier multimodal reasoning engine"),
-            ModelInfo::new("xai/grok-4-mini", "xAI", 500_000, 64_000, true, false, "xAI Grok 4 Mini ultra-fast reasoning model"),
-            ModelInfo::new("xai/grok-3-latest", "xAI", 200_000, 100_000, true, true, "xAI Grok 3 high-capacity reasoning model"),
-            ModelInfo::new("openrouter/x-ai/grok-4.6", "OpenRouter", 1_048_576, 128_000, true, true, "Grok 4.6 via OpenRouter Gateway"),
-
+            ModelInfo::new(
+                "xai/grok-4.6",
+                "xAI",
+                1_048_576,
+                128_000,
+                true,
+                true,
+                "Flagship Grok 4.6 frontier deep reasoning model with 1M context",
+            ),
+            ModelInfo::new(
+                "xai/grok-4",
+                "xAI",
+                1_048_576,
+                128_000,
+                true,
+                true,
+                "xAI Grok 4 frontier multimodal reasoning engine",
+            ),
+            ModelInfo::new(
+                "xai/grok-4-mini",
+                "xAI",
+                500_000,
+                64_000,
+                true,
+                false,
+                "xAI Grok 4 Mini ultra-fast reasoning model",
+            ),
+            ModelInfo::new(
+                "xai/grok-3-latest",
+                "xAI",
+                200_000,
+                100_000,
+                true,
+                true,
+                "xAI Grok 3 high-capacity reasoning model",
+            ),
+            ModelInfo::new(
+                "openrouter/x-ai/grok-4.6",
+                "OpenRouter",
+                1_048_576,
+                128_000,
+                true,
+                true,
+                "Grok 4.6 via OpenRouter Gateway",
+            ),
             // Anthropic Claude (2026 Hybrid Reasoning & Frontier Coding)
-            ModelInfo::new("anthropic/claude-opus-5", "Anthropic", 500_000, 128_000, true, true, "Claude Opus 5 top-tier deep refactoring & verified agentic coding"),
-            ModelInfo::new("anthropic/claude-4-sonnet", "Anthropic", 500_000, 128_000, true, true, "Anthropic Claude 4 Sonnet flagship hybrid reasoning & coding"),
-            ModelInfo::new("anthropic/claude-4-opus", "Anthropic", 500_000, 128_000, true, true, "Claude 4 Opus deep architecture analysis & verified coding"),
-            ModelInfo::new("anthropic/claude-3-7-sonnet-latest", "Anthropic", 200_000, 64_000, true, true, "Claude 3.7 Sonnet hybrid reasoning & coding"),
-            ModelInfo::new("anthropic/claude-3-5-sonnet-latest", "Anthropic", 200_000, 8_192, false, true, "Claude 3.5 Sonnet benchmark coding model"),
-            ModelInfo::new("anthropic/claude-3-5-haiku-latest", "Anthropic", 200_000, 8_192, false, false, "Ultra-fast low-latency code assistant"),
-
+            ModelInfo::new(
+                "anthropic/claude-opus-5",
+                "Anthropic",
+                500_000,
+                128_000,
+                true,
+                true,
+                "Claude Opus 5 top-tier deep refactoring & verified agentic coding",
+            ),
+            ModelInfo::new(
+                "anthropic/claude-4-sonnet",
+                "Anthropic",
+                500_000,
+                128_000,
+                true,
+                true,
+                "Anthropic Claude 4 Sonnet flagship hybrid reasoning & coding",
+            ),
+            ModelInfo::new(
+                "anthropic/claude-4-opus",
+                "Anthropic",
+                500_000,
+                128_000,
+                true,
+                true,
+                "Claude 4 Opus deep architecture analysis & verified coding",
+            ),
+            ModelInfo::new(
+                "anthropic/claude-3-7-sonnet-latest",
+                "Anthropic",
+                200_000,
+                64_000,
+                true,
+                true,
+                "Claude 3.7 Sonnet hybrid reasoning & coding",
+            ),
+            ModelInfo::new(
+                "anthropic/claude-3-5-sonnet-latest",
+                "Anthropic",
+                200_000,
+                8_192,
+                false,
+                true,
+                "Claude 3.5 Sonnet benchmark coding model",
+            ),
+            ModelInfo::new(
+                "anthropic/claude-3-5-haiku-latest",
+                "Anthropic",
+                200_000,
+                8_192,
+                false,
+                false,
+                "Ultra-fast low-latency code assistant",
+            ),
             // OpenAI Frontier (2026 Flagship Intelligence & Deep Reasoning)
-            ModelInfo::new("openai/gpt-5.6-sol", "OpenAI", 500_000, 128_000, true, true, "GPT-5.6 Sol terminal-first autonomous agent leader"),
-            ModelInfo::new("openai/gpt-5-preview", "OpenAI", 500_000, 128_000, true, true, "OpenAI GPT-5 flagship frontier reasoning model"),
-            ModelInfo::new("openai/gpt-5", "OpenAI", 500_000, 128_000, true, true, "OpenAI GPT-5 next-generation general intelligence"),
-            ModelInfo::new("openai/o3", "OpenAI", 200_000, 100_000, true, true, "OpenAI o3 flagship deep reasoning & verification"),
-            ModelInfo::new("openai/o3-mini", "OpenAI", 200_000, 100_000, true, false, "OpenAI o3-mini fast reasoning and code synthesis"),
-            ModelInfo::new("openai/gpt-4.5-preview", "OpenAI", 128_000, 16_384, false, true, "GPT-4.5 massive world-knowledge model"),
-            ModelInfo::new("openai/gpt-4o", "OpenAI", 128_000, 16_384, false, true, "Flagship versatile multimodal intelligence"),
-
+            ModelInfo::new(
+                "openai/gpt-5.6-sol",
+                "OpenAI",
+                500_000,
+                128_000,
+                true,
+                true,
+                "GPT-5.6 Sol terminal-first autonomous agent leader",
+            ),
+            ModelInfo::new(
+                "openai/gpt-5-preview",
+                "OpenAI",
+                500_000,
+                128_000,
+                true,
+                true,
+                "OpenAI GPT-5 flagship frontier reasoning model",
+            ),
+            ModelInfo::new(
+                "openai/gpt-5",
+                "OpenAI",
+                500_000,
+                128_000,
+                true,
+                true,
+                "OpenAI GPT-5 next-generation general intelligence",
+            ),
+            ModelInfo::new(
+                "openai/o3",
+                "OpenAI",
+                200_000,
+                100_000,
+                true,
+                true,
+                "OpenAI o3 flagship deep reasoning & verification",
+            ),
+            ModelInfo::new(
+                "openai/o3-mini",
+                "OpenAI",
+                200_000,
+                100_000,
+                true,
+                false,
+                "OpenAI o3-mini fast reasoning and code synthesis",
+            ),
+            ModelInfo::new(
+                "openai/gpt-4.5-preview",
+                "OpenAI",
+                128_000,
+                16_384,
+                false,
+                true,
+                "GPT-4.5 massive world-knowledge model",
+            ),
+            ModelInfo::new(
+                "openai/gpt-4o",
+                "OpenAI",
+                128_000,
+                16_384,
+                false,
+                true,
+                "Flagship versatile multimodal intelligence",
+            ),
             // Google Gemini (2026 Multimodal & Ultra-Long 2M Context)
-            ModelInfo::new("gemini/gemini-3.1-pro", "Google", 2_097_152, 64_000, true, true, "Gemini 3.1 Pro 2M context large-repo and UI coding leader"),
-            ModelInfo::new("gemini/gemini-3.0-pro", "Google", 2_097_152, 64_000, true, true, "Gemini 3.0 Pro frontier 2M context deep reasoning"),
-            ModelInfo::new("gemini/gemini-2.5-pro", "Google", 2_097_152, 64_000, true, true, "Gemini 2.5 Pro with 2M context comprehension"),
-            ModelInfo::new("gemini/gemini-2.5-flash", "Google", 1_048_576, 64_000, true, true, "Gemini 2.5 Flash low-latency multimodal intelligence"),
-            ModelInfo::new("gemini/gemini-2.0-flash", "Google", 1_048_576, 8_192, false, true, "Next-gen multimodal flash speed with 1M context"),
-            ModelInfo::new("gemini/gemini-2.0-flash-thinking-exp", "Google (Free Exp)", 1_048_576, 64_000, true, true, "Gemini 2.0 Flash Thinking Experimental reasoning"),
-
+            ModelInfo::new(
+                "gemini/gemini-3.1-pro",
+                "Google",
+                2_097_152,
+                64_000,
+                true,
+                true,
+                "Gemini 3.1 Pro 2M context large-repo and UI coding leader",
+            ),
+            ModelInfo::new(
+                "gemini/gemini-3.0-pro",
+                "Google",
+                2_097_152,
+                64_000,
+                true,
+                true,
+                "Gemini 3.0 Pro frontier 2M context deep reasoning",
+            ),
+            ModelInfo::new(
+                "gemini/gemini-2.5-pro",
+                "Google",
+                2_097_152,
+                64_000,
+                true,
+                true,
+                "Gemini 2.5 Pro with 2M context comprehension",
+            ),
+            ModelInfo::new(
+                "gemini/gemini-2.5-flash",
+                "Google",
+                1_048_576,
+                64_000,
+                true,
+                true,
+                "Gemini 2.5 Flash low-latency multimodal intelligence",
+            ),
+            ModelInfo::new(
+                "gemini/gemini-2.0-flash",
+                "Google",
+                1_048_576,
+                8_192,
+                false,
+                true,
+                "Next-gen multimodal flash speed with 1M context",
+            ),
+            ModelInfo::new(
+                "gemini/gemini-2.0-flash-thinking-exp",
+                "Google (Free Exp)",
+                1_048_576,
+                64_000,
+                true,
+                true,
+                "Gemini 2.0 Flash Thinking Experimental reasoning",
+            ),
             // DeepSeek & Open Weight Frontier (2026)
-            ModelInfo::new("deepseek/deepseek-v4-pro", "DeepSeek", 128_000, 16_384, true, false, "DeepSeek-V4 Pro high-value frontier reasoning"),
-            ModelInfo::new("deepseek/deepseek-v4", "DeepSeek", 128_000, 16_384, false, false, "DeepSeek-V4 frontier MoE model"),
-            ModelInfo::new("deepseek/deepseek-r2", "DeepSeek", 128_000, 16_384, true, false, "DeepSeek-R2 next-gen open reasoning architecture"),
-            ModelInfo::new("deepseek/deepseek-reasoner", "DeepSeek", 64_000, 8_000, true, false, "DeepSeek-R1 open reasoning model"),
-            ModelInfo::new("deepseek/deepseek-chat", "DeepSeek", 64_000, 8_000, false, false, "DeepSeek-V3 671B MoE coding model"),
-
+            ModelInfo::new(
+                "deepseek/deepseek-v4-pro",
+                "DeepSeek",
+                128_000,
+                16_384,
+                true,
+                false,
+                "DeepSeek-V4 Pro high-value frontier reasoning",
+            ),
+            ModelInfo::new(
+                "deepseek/deepseek-v4",
+                "DeepSeek",
+                128_000,
+                16_384,
+                false,
+                false,
+                "DeepSeek-V4 frontier MoE model",
+            ),
+            ModelInfo::new(
+                "deepseek/deepseek-r2",
+                "DeepSeek",
+                128_000,
+                16_384,
+                true,
+                false,
+                "DeepSeek-R2 next-gen open reasoning architecture",
+            ),
+            ModelInfo::new(
+                "deepseek/deepseek-reasoner",
+                "DeepSeek",
+                64_000,
+                8_000,
+                true,
+                false,
+                "DeepSeek-R1 open reasoning model",
+            ),
+            ModelInfo::new(
+                "deepseek/deepseek-chat",
+                "DeepSeek",
+                64_000,
+                8_000,
+                false,
+                false,
+                "DeepSeek-V3 671B MoE coding model",
+            ),
             // GLM & Kimi (2026 Long-Horizon & Frontend SOTA)
-            ModelInfo::new("zhipu/glm-5.2", "Zhipu AI", 256_000, 64_000, true, false, "GLM 5.2 premier open-weight long-horizon agentic coding"),
-            ModelInfo::new("moonshot/kimi-k3", "Moonshot", 256_000, 64_000, true, true, "Kimi K3 exceptional frontend & web coding model"),
-
+            ModelInfo::new(
+                "zhipu/glm-5.2",
+                "Zhipu AI",
+                256_000,
+                64_000,
+                true,
+                false,
+                "GLM 5.2 premier open-weight long-horizon agentic coding",
+            ),
+            ModelInfo::new(
+                "moonshot/kimi-k3",
+                "Moonshot",
+                256_000,
+                64_000,
+                true,
+                true,
+                "Kimi K3 exceptional frontend & web coding model",
+            ),
             // Mistral & Codestral (2026 SOTA)
-            ModelInfo::new("mistral/codestral-2601", "Mistral", 256_000, 16_384, false, false, "Codestral 2601 frontier coding model with 256k context"),
-            ModelInfo::new("mistral/codestral-latest", "Mistral", 256_000, 8_192, false, false, "Specialized coding LLM with 256k context"),
-            ModelInfo::new("mistral/mistral-large-latest", "Mistral", 128_000, 8_192, false, false, "Flagship European multilingual model"),
-
+            ModelInfo::new(
+                "mistral/codestral-2601",
+                "Mistral",
+                256_000,
+                16_384,
+                false,
+                false,
+                "Codestral 2601 frontier coding model with 256k context",
+            ),
+            ModelInfo::new(
+                "mistral/codestral-latest",
+                "Mistral",
+                256_000,
+                8_192,
+                false,
+                false,
+                "Specialized coding LLM with 256k context",
+            ),
+            ModelInfo::new(
+                "mistral/mistral-large-latest",
+                "Mistral",
+                128_000,
+                8_192,
+                false,
+                false,
+                "Flagship European multilingual model",
+            ),
             // Alibaba Qwen & QwQ Reasoning
-            ModelInfo::new("qwen/qwen-3.6-coder", "Qwen", 256_000, 32_768, false, false, "Qwen 3.6 Coder open champion for multi-file generation"),
-            ModelInfo::new("qwen/qwen-3-coder-32b", "Qwen", 256_000, 32_768, false, false, "Qwen 3 Coder 32B next-gen open coding champion"),
-            ModelInfo::new("qwen/qwq-72b", "Qwen", 256_000, 32_768, true, false, "QwQ 72B open frontier reasoning model"),
-            ModelInfo::new("qwen/qwq-32b", "Qwen", 128_000, 16_384, true, false, "QwQ 32B open mathematical and code reasoning"),
-
+            ModelInfo::new(
+                "qwen/qwen-3.6-coder",
+                "Qwen",
+                256_000,
+                32_768,
+                false,
+                false,
+                "Qwen 3.6 Coder open champion for multi-file generation",
+            ),
+            ModelInfo::new(
+                "qwen/qwen-3-coder-32b",
+                "Qwen",
+                256_000,
+                32_768,
+                false,
+                false,
+                "Qwen 3 Coder 32B next-gen open coding champion",
+            ),
+            ModelInfo::new(
+                "qwen/qwq-72b",
+                "Qwen",
+                256_000,
+                32_768,
+                true,
+                false,
+                "QwQ 72B open frontier reasoning model",
+            ),
+            ModelInfo::new(
+                "qwen/qwq-32b",
+                "Qwen",
+                128_000,
+                16_384,
+                true,
+                false,
+                "QwQ 32B open mathematical and code reasoning",
+            ),
             // OpenRouter Free Tier Models (Zero Cost)
-            ModelInfo::new("openrouter/deepseek/deepseek-r1:free", "OpenRouter (Free)", 64_000, 8_000, true, false, "Free DeepSeek-R1 full open reasoning model"),
-            ModelInfo::new("openrouter/deepseek/deepseek-chat:free", "OpenRouter (Free)", 64_000, 8_000, false, false, "Free DeepSeek-V3 671B MoE model"),
-            ModelInfo::new("openrouter/meta-llama/llama-3.3-70b-instruct:free", "OpenRouter (Free)", 128_000, 8_192, false, false, "Free Llama 3.3 70B flagship open model"),
-            ModelInfo::new("openrouter/google/gemini-2.0-flash-exp:free", "OpenRouter (Free)", 1_048_576, 8_192, false, true, "Free Gemini 2.0 Flash Experimental with 1M context"),
-            ModelInfo::new("openrouter/google/gemini-2.0-flash-thinking-exp:free", "OpenRouter (Free)", 1_048_576, 8_192, true, true, "Free Gemini 2.0 Flash Thinking Experimental reasoning"),
-            ModelInfo::new("openrouter/qwen/qwen-2.5-coder-32b-instruct:free", "OpenRouter (Free)", 128_000, 8_192, false, false, "Free Qwen 2.5 Coder 32B specialized coding model"),
-            ModelInfo::new("openrouter/mistralai/mistral-small-24b-instruct-2501:free", "OpenRouter (Free)", 32_000, 8_192, false, false, "Free Mistral Small 24B lightweight model"),
-
+            ModelInfo::new(
+                "openrouter/deepseek/deepseek-r1:free",
+                "OpenRouter (Free)",
+                64_000,
+                8_000,
+                true,
+                false,
+                "Free DeepSeek-R1 full open reasoning model",
+            ),
+            ModelInfo::new(
+                "openrouter/deepseek/deepseek-chat:free",
+                "OpenRouter (Free)",
+                64_000,
+                8_000,
+                false,
+                false,
+                "Free DeepSeek-V3 671B MoE model",
+            ),
+            ModelInfo::new(
+                "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+                "OpenRouter (Free)",
+                128_000,
+                8_192,
+                false,
+                false,
+                "Free Llama 3.3 70B flagship open model",
+            ),
+            ModelInfo::new(
+                "openrouter/google/gemini-2.0-flash-exp:free",
+                "OpenRouter (Free)",
+                1_048_576,
+                8_192,
+                false,
+                true,
+                "Free Gemini 2.0 Flash Experimental with 1M context",
+            ),
+            ModelInfo::new(
+                "openrouter/google/gemini-2.0-flash-thinking-exp:free",
+                "OpenRouter (Free)",
+                1_048_576,
+                8_192,
+                true,
+                true,
+                "Free Gemini 2.0 Flash Thinking Experimental reasoning",
+            ),
+            ModelInfo::new(
+                "openrouter/qwen/qwen-2.5-coder-32b-instruct:free",
+                "OpenRouter (Free)",
+                128_000,
+                8_192,
+                false,
+                false,
+                "Free Qwen 2.5 Coder 32B specialized coding model",
+            ),
+            ModelInfo::new(
+                "openrouter/mistralai/mistral-small-24b-instruct-2501:free",
+                "OpenRouter (Free)",
+                32_000,
+                8_192,
+                false,
+                false,
+                "Free Mistral Small 24B lightweight model",
+            ),
             // Ollama / Local Models (Zero Cost / Free Local Daemons)
-            ModelInfo::new("ollama/qwen2.5-coder:32b", "Ollama (Local Free)", 128_000, 16_384, false, false, "Local Qwen 2.5 Coder 32B running via Ollama"),
-            ModelInfo::new("ollama/deepseek-r1:32b", "Ollama (Local Free)", 64_000, 8_000, true, false, "Local DeepSeek R1 32B reasoning running via Ollama"),
-            ModelInfo::new("ollama/llama3.3:70b", "Ollama (Local Free)", 128_000, 8_192, false, false, "Local Llama 3.3 70B running via Ollama"),
-            ModelInfo::new("lmstudio/local-model", "LM Studio (Local Free)", 128_000, 8_192, false, true, "Local LLM loaded in LM Studio on port 1234"),
-
+            ModelInfo::new(
+                "ollama/qwen2.5-coder:32b",
+                "Ollama (Local Free)",
+                128_000,
+                16_384,
+                false,
+                false,
+                "Local Qwen 2.5 Coder 32B running via Ollama",
+            ),
+            ModelInfo::new(
+                "ollama/deepseek-r1:32b",
+                "Ollama (Local Free)",
+                64_000,
+                8_000,
+                true,
+                false,
+                "Local DeepSeek R1 32B reasoning running via Ollama",
+            ),
+            ModelInfo::new(
+                "ollama/llama3.3:70b",
+                "Ollama (Local Free)",
+                128_000,
+                8_192,
+                false,
+                false,
+                "Local Llama 3.3 70B running via Ollama",
+            ),
+            ModelInfo::new(
+                "lmstudio/local-model",
+                "LM Studio (Local Free)",
+                128_000,
+                8_192,
+                false,
+                true,
+                "Local LLM loaded in LM Studio on port 1234",
+            ),
             // GitHub Copilot Gateway
-            ModelInfo::new("copilot/claude-3.5-sonnet", "GitHub Copilot", 200_000, 8_192, false, true, "GitHub Copilot Claude 3.5 Sonnet pipeline"),
-            ModelInfo::new("copilot/gpt-4o", "GitHub Copilot", 128_000, 8_192, false, true, "GitHub Copilot GPT-4o pipeline"),
-            ModelInfo::new("copilot/o3-mini", "GitHub Copilot", 200_000, 100_000, true, false, "GitHub Copilot o3-mini reasoning"),
-
+            ModelInfo::new(
+                "copilot/claude-3.5-sonnet",
+                "GitHub Copilot",
+                200_000,
+                8_192,
+                false,
+                true,
+                "GitHub Copilot Claude 3.5 Sonnet pipeline",
+            ),
+            ModelInfo::new(
+                "copilot/gpt-4o",
+                "GitHub Copilot",
+                128_000,
+                8_192,
+                false,
+                true,
+                "GitHub Copilot GPT-4o pipeline",
+            ),
+            ModelInfo::new(
+                "copilot/o3-mini",
+                "GitHub Copilot",
+                200_000,
+                100_000,
+                true,
+                false,
+                "GitHub Copilot o3-mini reasoning",
+            ),
             // Amazon Bedrock Gateway
-            ModelInfo::new("bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0", "Amazon Bedrock", 200_000, 8_192, false, true, "Amazon Bedrock Claude 3.5 Sonnet"),
-            ModelInfo::new("bedrock/anthropic.claude-3-5-haiku-20241022-v1:0", "Amazon Bedrock", 200_000, 8_192, false, false, "Amazon Bedrock Claude 3.5 Haiku"),
-
+            ModelInfo::new(
+                "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0",
+                "Amazon Bedrock",
+                200_000,
+                8_192,
+                false,
+                true,
+                "Amazon Bedrock Claude 3.5 Sonnet",
+            ),
+            ModelInfo::new(
+                "bedrock/anthropic.claude-3-5-haiku-20241022-v1:0",
+                "Amazon Bedrock",
+                200_000,
+                8_192,
+                false,
+                false,
+                "Amazon Bedrock Claude 3.5 Haiku",
+            ),
             // Groq High-Throughput (300+ tok/s)
-            ModelInfo::new("groq/llama-3.3-70b-versatile", "Groq", 128_000, 32_768, false, false, "Llama 3.3 70B running at 300+ tok/s"),
-            ModelInfo::new("groq/deepseek-r1-distill-llama-70b", "Groq", 128_000, 8_192, true, false, "High-speed DeepSeek-R1 distillation"),
-
+            ModelInfo::new(
+                "groq/llama-3.3-70b-versatile",
+                "Groq",
+                128_000,
+                32_768,
+                false,
+                false,
+                "Llama 3.3 70B running at 300+ tok/s",
+            ),
+            ModelInfo::new(
+                "groq/deepseek-r1-distill-llama-70b",
+                "Groq",
+                128_000,
+                8_192,
+                true,
+                false,
+                "High-speed DeepSeek-R1 distillation",
+            ),
             // Cerebras Ultra-Low Latency
-            ModelInfo::new("cerebras/llama-3.3-70b", "Cerebras", 128_000, 8_192, false, false, "Ultra-fast Cerebras CS-3 wafer engine"),
-
+            ModelInfo::new(
+                "cerebras/llama-3.3-70b",
+                "Cerebras",
+                128_000,
+                8_192,
+                false,
+                false,
+                "Ultra-fast Cerebras CS-3 wafer engine",
+            ),
             // Perplexity
-            ModelInfo::new("perplexity/sonar-reasoning-pro", "Perplexity", 128_000, 8_192, true, false, "Deep web-grounded reasoning model"),
-
+            ModelInfo::new(
+                "perplexity/sonar-reasoning-pro",
+                "Perplexity",
+                128_000,
+                8_192,
+                true,
+                false,
+                "Deep web-grounded reasoning model",
+            ),
             // Together AI & Fireworks
-            ModelInfo::new("together/meta-llama/Llama-3.3-70B-Instruct-Turbo", "Together AI", 128_000, 8_192, false, false, "Fast open Llama 3.3"),
-            ModelInfo::new("fireworks/accounts/fireworks/models/deepseek-r1", "Fireworks", 64_000, 8_000, true, false, "Serverless DeepSeek-R1 reasoning"),
+            ModelInfo::new(
+                "together/meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                "Together AI",
+                128_000,
+                8_192,
+                false,
+                false,
+                "Fast open Llama 3.3",
+            ),
+            ModelInfo::new(
+                "fireworks/accounts/fireworks/models/deepseek-r1",
+                "Fireworks",
+                64_000,
+                8_000,
+                true,
+                false,
+                "Serverless DeepSeek-R1 reasoning",
+            ),
         ]
     }
 
@@ -296,7 +779,11 @@ impl ModelCatalogLoader {
                     for (prov_name, p_cfg) in providers {
                         if let Some(models) = p_cfg.models {
                             for m in models {
-                                let id = if m.id.contains('/') { m.id.clone() } else { format!("{}/{}", prov_name, m.id) };
+                                let id = if m.id.contains('/') {
+                                    m.id.clone()
+                                } else {
+                                    format!("{}/{}", prov_name, m.id)
+                                };
                                 custom_models.push(ModelInfo::new(
                                     &id,
                                     m.provider.as_deref().unwrap_or(&prov_name),
@@ -304,7 +791,9 @@ impl ModelCatalogLoader {
                                     m.max_output.unwrap_or(8_192),
                                     m.reasoning.unwrap_or(false),
                                     m.vision.unwrap_or(false),
-                                    m.description.as_deref().unwrap_or("Custom user-configured model"),
+                                    m.description
+                                        .as_deref()
+                                        .unwrap_or("Custom user-configured model"),
                                 ));
                             }
                         }
@@ -322,7 +811,9 @@ impl ModelCatalogLoader {
                             m.max_output.unwrap_or(8_192),
                             m.reasoning.unwrap_or(false),
                             m.vision.unwrap_or(false),
-                            m.description.as_deref().unwrap_or("Custom user-configured model"),
+                            m.description
+                                .as_deref()
+                                .unwrap_or("Custom user-configured model"),
                         ));
                     }
                 }
@@ -373,7 +864,10 @@ impl ModelCatalogLoader {
         let client = get_http_client();
 
         // 1. Query OpenRouter API (Live search across 250+ cloud & free models)
-        if let Ok(res) = client.get("https://openrouter.ai/api/v1/models").send().await
+        if let Ok(res) = client
+            .get("https://openrouter.ai/api/v1/models")
+            .send()
+            .await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("data").and_then(|d| d.as_array())
@@ -382,12 +876,26 @@ impl ModelCatalogLoader {
                 if let Some(raw_id) = item.get("id").and_then(|n| n.as_str()) {
                     let id = format!("openrouter/{}", raw_id);
                     let name = item.get("name").and_then(|n| n.as_str()).unwrap_or(raw_id);
-                    let context = item.get("context_length").and_then(|c| c.as_u64()).unwrap_or(128_000) as usize;
-                    let desc = item.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                    let context = item
+                        .get("context_length")
+                        .and_then(|c| c.as_u64())
+                        .unwrap_or(128_000) as usize;
+                    let desc = item
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("");
 
                     let is_free = raw_id.ends_with(":free")
-                        || item.get("pricing").and_then(|p| p.get("prompt")).and_then(|pr| pr.as_str()) == Some("0");
-                    let provider_name = if is_free { "OpenRouter (Free)" } else { "OpenRouter" };
+                        || item
+                            .get("pricing")
+                            .and_then(|p| p.get("prompt"))
+                            .and_then(|pr| pr.as_str())
+                            == Some("0");
+                    let provider_name = if is_free {
+                        "OpenRouter (Free)"
+                    } else {
+                        "OpenRouter"
+                    };
 
                     if let Some(pos) = models.iter().position(|m| m.id == id) {
                         models[pos].context_window = context;
@@ -397,9 +905,20 @@ impl ModelCatalogLoader {
                             provider_name,
                             context,
                             8_192,
-                            raw_id.contains("r1") || raw_id.contains("reason") || raw_id.contains("thinking"),
-                            raw_id.contains("vision") || raw_id.contains("vl") || raw_id.contains("4o"),
-                            if is_free { format!("[Free Tier] {}", name) } else if desc.is_empty() { name.to_string() } else { desc.to_string() }.as_str(),
+                            raw_id.contains("r1")
+                                || raw_id.contains("reason")
+                                || raw_id.contains("thinking"),
+                            raw_id.contains("vision")
+                                || raw_id.contains("vl")
+                                || raw_id.contains("4o"),
+                            if is_free {
+                                format!("[Free Tier] {}", name)
+                            } else if desc.is_empty() {
+                                name.to_string()
+                            } else {
+                                desc.to_string()
+                            }
+                            .as_str(),
                         ));
                     }
                 }
@@ -416,7 +935,11 @@ impl ModelCatalogLoader {
                 if let Some(raw_id) = item.get("id").and_then(|n| n.as_str()) {
                     let id = format!("opencode/{}", raw_id);
                     let is_free = raw_id.ends_with("-free") || raw_id == "big-pickle";
-                    let provider_name = if is_free { "OpenCode Zen (Free)" } else { "OpenCode Zen" };
+                    let provider_name = if is_free {
+                        "OpenCode Zen (Free)"
+                    } else {
+                        "OpenCode Zen"
+                    };
 
                     if !models.iter().any(|m| m.id == id) {
                         models.push(ModelInfo::new(
@@ -424,9 +947,19 @@ impl ModelCatalogLoader {
                             provider_name,
                             128_000,
                             16_384,
-                            raw_id.contains("r1") || raw_id.contains("pro") || raw_id.contains("ultra") || raw_id.contains("codex"),
-                            raw_id.contains("sonnet") || raw_id.contains("flash") || raw_id.contains("opus"),
-                            if is_free { format!("[Free Coding Model] OpenCode Zen: {}", raw_id) } else { format!("OpenCode Zen: {}", raw_id) }.as_str(),
+                            raw_id.contains("r1")
+                                || raw_id.contains("pro")
+                                || raw_id.contains("ultra")
+                                || raw_id.contains("codex"),
+                            raw_id.contains("sonnet")
+                                || raw_id.contains("flash")
+                                || raw_id.contains("opus"),
+                            if is_free {
+                                format!("[Free Coding Model] OpenCode Zen: {}", raw_id)
+                            } else {
+                                format!("OpenCode Zen: {}", raw_id)
+                            }
+                            .as_str(),
                         ));
                     }
                 }
@@ -434,7 +967,10 @@ impl ModelCatalogLoader {
         }
 
         // 3. Query Local Ollama daemon via constant
-        if let Ok(res) = client.get(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_API_TAGS)).send().await
+        if let Ok(res) = client
+            .get(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_API_TAGS))
+            .send()
+            .await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("models").and_then(|m| m.as_array())
@@ -458,7 +994,13 @@ impl ModelCatalogLoader {
         }
 
         // 3. Query Local LM Studio daemon
-        if let Ok(res) = client.get(format!("{}{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH, "/models")).send().await
+        if let Ok(res) = client
+            .get(format!(
+                "{}{}{}",
+                LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH, "/models"
+            ))
+            .send()
+            .await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("data").and_then(|d| d.as_array())
@@ -482,7 +1024,13 @@ impl ModelCatalogLoader {
         }
 
         // 4. Query Local llama.cpp daemon
-        if let Ok(res) = client.get(format!("{}{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH, "/models")).send().await
+        if let Ok(res) = client
+            .get(format!(
+                "{}{}{}",
+                LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH, "/models"
+            ))
+            .send()
+            .await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("data").and_then(|d| d.as_array())
@@ -506,7 +1054,13 @@ impl ModelCatalogLoader {
         }
 
         // 5. Query Local vLLM daemon
-        if let Ok(res) = client.get(format!("{}{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH, "/models")).send().await
+        if let Ok(res) = client
+            .get(format!(
+                "{}{}{}",
+                VLLM_DEFAULT_HOST, OLLAMA_V1_PATH, "/models"
+            ))
+            .send()
+            .await
             && res.status().is_success()
             && let Ok(json) = res.json::<serde_json::Value>().await
             && let Some(arr) = json.get("data").and_then(|d| d.as_array())
@@ -778,7 +1332,10 @@ impl ModelCatalogLoader {
                     total += best;
                     worst = i32::min(worst, best);
                 }
-                let score = MatchScore { total, worst_token: worst };
+                let score = MatchScore {
+                    total,
+                    worst_token: worst,
+                };
                 Some((score, m))
             })
             .collect();
@@ -809,7 +1366,11 @@ mod tests {
         let models = ModelCatalogLoader::static_frontier_models();
         let search_claude = ModelCatalogLoader::search_models(&models, "claude");
         assert!(!search_claude.is_empty());
-        assert!(search_claude.iter().any(|m| m.id.contains("claude") || m.provider.to_lowercase().contains("claude")));
+        assert!(
+            search_claude
+                .iter()
+                .any(|m| m.id.contains("claude") || m.provider.to_lowercase().contains("claude"))
+        );
 
         let search_reasoner = ModelCatalogLoader::search_models(&models, "reasoner");
         assert!(!search_reasoner.is_empty());
@@ -824,7 +1385,11 @@ mod tests {
         assert!(gpt4.iter().any(|m| m.id == "openai/gpt-4o"));
 
         let claud = ModelCatalogLoader::search_models(&models, "claud sonnet");
-        assert!(claud.iter().any(|m| m.id == "anthropic/claude-3-7-sonnet-latest"));
+        assert!(
+            claud
+                .iter()
+                .any(|m| m.id == "anthropic/claude-3-7-sonnet-latest")
+        );
 
         let deep = ModelCatalogLoader::search_models(&models, "deep r1");
         assert!(deep.iter().any(|m| m.id.contains("deepseek-reasoner")));
@@ -835,7 +1400,11 @@ mod tests {
         let models = ModelCatalogLoader::static_frontier_models();
         let results = ModelCatalogLoader::search_models(&models, "claude sonnet");
         assert!(!results.is_empty());
-        assert!(results.iter().any(|m| m.id == "anthropic/claude-3-7-sonnet-latest"));
+        assert!(
+            results
+                .iter()
+                .any(|m| m.id == "anthropic/claude-3-7-sonnet-latest")
+        );
     }
 
     #[test]
@@ -850,7 +1419,15 @@ mod tests {
 
     #[test]
     fn test_model_info_properties() {
-        let m = ModelInfo::new("my-prov/custom-llm", "MyProvider", 65536, 4096, true, true, "Custom test description");
+        let m = ModelInfo::new(
+            "my-prov/custom-llm",
+            "MyProvider",
+            65536,
+            4096,
+            true,
+            true,
+            "Custom test description",
+        );
         assert_eq!(m.id, "my-prov/custom-llm");
         assert_eq!(m.name, "custom-llm");
         assert_eq!(m.provider, "MyProvider");
@@ -890,7 +1467,10 @@ mod tests {
         assert!(cfg.providers.is_some());
         let provs = cfg.providers.unwrap();
         assert!(provs.contains_key("custom_gw"));
-        assert_eq!(provs["custom_gw"].base_url.as_deref(), Some("https://custom.ai/v1"));
+        assert_eq!(
+            provs["custom_gw"].base_url.as_deref(),
+            Some("https://custom.ai/v1")
+        );
         let p_models = provs["custom_gw"].models.as_ref().unwrap();
         assert_eq!(p_models[0].id, "custom-fast");
         assert_eq!(p_models[0].context_window, Some(32000));
@@ -909,29 +1489,37 @@ mod tests {
         assert_eq!(out_grok, 128_000);
 
         // OpenAI GPT-5 (500k context + 128k output)
-        let (cw_gpt5, out_gpt5) = ModelCatalogLoader::infer_model_limits("openai/gpt-5-preview", "openai");
+        let (cw_gpt5, out_gpt5) =
+            ModelCatalogLoader::infer_model_limits("openai/gpt-5-preview", "openai");
         assert_eq!(cw_gpt5, 500_000);
         assert_eq!(out_gpt5, 128_000);
 
         // Anthropic Claude 4 (500k context + 128k output)
-        let (cw_claude4, out_claude4) = ModelCatalogLoader::infer_model_limits("anthropic/claude-4-sonnet", "anthropic");
+        let (cw_claude4, out_claude4) =
+            ModelCatalogLoader::infer_model_limits("anthropic/claude-4-sonnet", "anthropic");
         assert_eq!(cw_claude4, 500_000);
         assert_eq!(out_claude4, 128_000);
 
         // Gemini 3.0 2M
-        let (cw_gemini_pro, _) = ModelCatalogLoader::infer_model_limits("gemini/gemini-3.0-pro", "gemini");
+        let (cw_gemini_pro, _) =
+            ModelCatalogLoader::infer_model_limits("gemini/gemini-3.0-pro", "gemini");
         assert_eq!(cw_gemini_pro, 2_097_152);
 
         // Gemini 2.0 Flash 1M
-        let (cw_gemini_flash, _) = ModelCatalogLoader::infer_model_limits("gemini-2.0-flash", "gemini");
+        let (cw_gemini_flash, _) =
+            ModelCatalogLoader::infer_model_limits("gemini-2.0-flash", "gemini");
         assert_eq!(cw_gemini_flash, 1_048_576);
 
         // Codestral 256k
-        let (cw_codestral, _) = ModelCatalogLoader::infer_model_limits("mistral/codestral-2601", "mistral");
+        let (cw_codestral, _) =
+            ModelCatalogLoader::infer_model_limits("mistral/codestral-2601", "mistral");
         assert_eq!(cw_codestral, 256_000);
 
         // Claude 3.7 200k
-        let (cw_claude, max_out) = ModelCatalogLoader::infer_model_limits("anthropic/claude-3-7-sonnet-latest", "anthropic");
+        let (cw_claude, max_out) = ModelCatalogLoader::infer_model_limits(
+            "anthropic/claude-3-7-sonnet-latest",
+            "anthropic",
+        );
         assert_eq!(cw_claude, 200_000);
         assert_eq!(max_out, 64_000);
 
@@ -940,7 +1528,8 @@ mod tests {
         assert_eq!(cw_o1, 200_000);
 
         // DeepSeek 64k
-        let (cw_deepseek, _) = ModelCatalogLoader::infer_model_limits("deepseek/deepseek-reasoner", "deepseek");
+        let (cw_deepseek, _) =
+            ModelCatalogLoader::infer_model_limits("deepseek/deepseek-reasoner", "deepseek");
         assert_eq!(cw_deepseek, 64_000);
 
         // Local Ollama 32k

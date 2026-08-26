@@ -1,11 +1,11 @@
 use crate::style::ThemePalette;
 use pi_core::plan::{ExecutionPlan, PlanTask, TaskStatus};
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
-    Frame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -56,7 +56,10 @@ impl PlanState {
     }
 
     pub fn completed_count(&self) -> usize {
-        self.tasks.iter().filter(|t| t.status.is_completed()).count()
+        self.tasks
+            .iter()
+            .filter(|t| t.status.is_completed())
+            .count()
     }
 
     pub fn failed_count(&self) -> usize {
@@ -103,9 +106,18 @@ impl PlanState {
             && let Some(task) = self.tasks.get_mut(sel)
         {
             task.status = match task.status {
-                TaskStatus::Pending => TaskStatus::Running { progress_pct: 50, started_at: 0 },
-                TaskStatus::Running { .. } => TaskStatus::Completed { duration_ms: 0, summary: String::new() },
-                TaskStatus::Completed { .. } => TaskStatus::Failed { error: "Manual fail".to_string(), retry_count: 0 },
+                TaskStatus::Pending => TaskStatus::Running {
+                    progress_pct: 50,
+                    started_at: 0,
+                },
+                TaskStatus::Running { .. } => TaskStatus::Completed {
+                    duration_ms: 0,
+                    summary: String::new(),
+                },
+                TaskStatus::Completed { .. } => TaskStatus::Failed {
+                    error: "Manual fail".to_string(),
+                    retry_count: 0,
+                },
                 TaskStatus::Failed { .. } => TaskStatus::Pending,
             };
             self.update_active_index();
@@ -116,7 +128,10 @@ impl PlanState {
         if let Some(sel) = self.list_state.selected()
             && let Some(task) = self.tasks.get_mut(sel)
         {
-            task.status = TaskStatus::Completed { duration_ms: 0, summary: String::new() };
+            task.status = TaskStatus::Completed {
+                duration_ms: 0,
+                summary: String::new(),
+            };
             self.update_active_index();
         }
     }
@@ -185,11 +200,31 @@ impl PlanOverlayWidget {
         };
 
         // Header Line
-        let collapse_indicator = if state.is_collapsed { " ▶ (collapsed)" } else { " ▼" };
+        let collapse_indicator = if state.is_collapsed {
+            " ▶ (collapsed)"
+        } else {
+            " ▼"
+        };
         lines.push(Line::from(vec![
-            Span::styled("📋 Active Plan: ", Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD)),
-            Span::styled(state.goal.clone(), Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
-            Span::styled(format!(" [{}/{} · {:.0}%]{}", completed, total, progress, collapse_indicator), Style::default().fg(progress_color).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "📋 Active Plan: ",
+                Style::default()
+                    .fg(theme.yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                state.goal.clone(),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(
+                    " [{}/{} · {:.0}%]{}",
+                    completed, total, progress, collapse_indicator
+                ),
+                Style::default()
+                    .fg(progress_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]));
 
         if !state.is_collapsed {
@@ -206,13 +241,23 @@ impl PlanOverlayWidget {
                 };
 
                 let mut spans = vec![
-                    Span::styled(format!("   {} ", badge_str), Style::default().fg(badge_color).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("   {} ", badge_str),
+                        Style::default()
+                            .fg(badge_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(format!("{}. ", idx + 1), Style::default().fg(theme.muted)),
                     Span::styled(task.title.clone(), title_style),
                 ];
 
                 if is_active {
-                    spans.push(Span::styled(" ⚡ Active", Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD)));
+                    spans.push(Span::styled(
+                        " ⚡ Active",
+                        Style::default()
+                            .fg(theme.yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ));
                 }
 
                 lines.push(Line::from(spans));
@@ -223,12 +268,7 @@ impl PlanOverlayWidget {
     }
 
     /// Renders the full interactive modal dialog overlay
-    pub fn render_modal(
-        state: &PlanState,
-        f: &mut Frame,
-        area: Rect,
-        theme: &ThemePalette,
-    ) {
+    pub fn render_modal(state: &PlanState, f: &mut Frame, area: Rect, theme: &ThemePalette) {
         f.render_widget(Clear, area);
 
         let block = Block::default()
@@ -269,23 +309,36 @@ impl PlanOverlayWidget {
         };
 
         let header_line_1 = Line::from(vec![
-            Span::styled("Goal: ", Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD)),
-            Span::styled(&state.goal, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Goal: ",
+                Style::default()
+                    .fg(theme.yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                &state.goal,
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
         ]);
 
         let header_line_2 = Line::from(vec![
             Span::styled("Progress: [", Style::default().fg(theme.muted)),
-            Span::styled("█".repeat(filled_chars), Style::default().fg(progress_color)),
+            Span::styled(
+                "█".repeat(filled_chars),
+                Style::default().fg(progress_color),
+            ),
             Span::styled("░".repeat(empty_chars), Style::default().fg(theme.border)),
-            Span::styled(format!("] {:.0}% ({} of {} tasks done)", progress, completed, total), Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                format!("] {:.0}% ({} of {} tasks done)", progress, completed, total),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
         ]);
 
-        let header_widget = Paragraph::new(vec![header_line_1, header_line_2])
-            .block(
-                Block::default()
-                    .borders(Borders::BOTTOM)
-                    .border_style(Style::default().fg(theme.border)),
-            );
+        let header_widget = Paragraph::new(vec![header_line_1, header_line_2]).block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(Style::default().fg(theme.border)),
+        );
         f.render_widget(header_widget, chunks[0]);
 
         // 2. Main Content Split View
@@ -310,7 +363,12 @@ impl PlanOverlayWidget {
                 };
 
                 let mut spans = vec![
-                    Span::styled(format!("{} ", badge_str), Style::default().fg(badge_color).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("{} ", badge_str),
+                        Style::default()
+                            .fg(badge_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(format!("{}. ", idx + 1), Style::default().fg(theme.muted)),
                     Span::styled(&task.title, title_style),
                 ];
@@ -351,20 +409,41 @@ impl PlanOverlayWidget {
             let mut inspector_lines = Vec::new();
 
             inspector_lines.push(Line::from(vec![
-                Span::styled("Title: ", Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(&selected_task.title, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Title: ",
+                    Style::default()
+                        .fg(theme.yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    &selected_task.title,
+                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                ),
             ]));
 
             let (badge_str, badge_color) = task_status_badge(&selected_task.status);
             inspector_lines.push(Line::from(vec![
                 Span::styled("Status: ", Style::default().fg(theme.muted)),
-                Span::styled(format!("{} {}", badge_str, task_status_label(&selected_task.status)), Style::default().fg(badge_color).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("   ID: {}", selected_task.id), Style::default().fg(theme.muted)),
+                Span::styled(
+                    format!("{} {}", badge_str, task_status_label(&selected_task.status)),
+                    Style::default()
+                        .fg(badge_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("   ID: {}", selected_task.id),
+                    Style::default().fg(theme.muted),
+                ),
             ]));
 
             if let Some(ref cmd) = selected_task.verification_command {
                 inspector_lines.push(Line::from(vec![
-                    Span::styled("Verification Gate: ", Style::default().fg(theme.magenta).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Verification Gate: ",
+                        Style::default()
+                            .fg(theme.magenta)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(cmd, Style::default().fg(theme.text)),
                 ]));
             }
@@ -372,35 +451,45 @@ impl PlanOverlayWidget {
             if !selected_task.dependencies.is_empty() {
                 inspector_lines.push(Line::from(vec![
                     Span::styled("Dependencies: ", Style::default().fg(theme.muted)),
-                    Span::styled(selected_task.dependencies.join(", "), Style::default().fg(theme.cyan)),
+                    Span::styled(
+                        selected_task.dependencies.join(", "),
+                        Style::default().fg(theme.cyan),
+                    ),
                 ]));
             }
 
             inspector_lines.push(Line::from(""));
-            inspector_lines.push(Line::from(vec![
-                Span::styled("Description:", Style::default().fg(theme.text).add_modifier(Modifier::UNDERLINED)),
-            ]));
-            inspector_lines.push(Line::from(Span::styled(&selected_task.description, Style::default().fg(theme.text))));
+            inspector_lines.push(Line::from(vec![Span::styled(
+                "Description:",
+                Style::default()
+                    .fg(theme.text)
+                    .add_modifier(Modifier::UNDERLINED),
+            )]));
+            inspector_lines.push(Line::from(Span::styled(
+                &selected_task.description,
+                Style::default().fg(theme.text),
+            )));
 
             let inspector_paragraph = Paragraph::new(inspector_lines)
                 .block(inspector_block)
                 .wrap(Wrap { trim: false });
             f.render_widget(inspector_paragraph, main_chunks[1]);
         } else {
-            let empty_msg = Paragraph::new(Line::from(vec![
-                Span::styled("No task selected.", Style::default().fg(theme.muted)),
-            ]))
+            let empty_msg = Paragraph::new(Line::from(vec![Span::styled(
+                "No task selected.",
+                Style::default().fg(theme.muted),
+            )]))
             .block(inspector_block);
             f.render_widget(empty_msg, main_chunks[1]);
         }
 
         // 3. Cheatsheet Footer
-        let footer_spans = vec![
-            Span::styled("[↑/↓: Navigate · Space: Cycle Status · c: Toggle Collapse · Esc: Close]", Style::default().fg(theme.green)),
-        ];
+        let footer_spans = vec![Span::styled(
+            "[↑/↓: Navigate · Space: Cycle Status · c: Toggle Collapse · Esc: Close]",
+            Style::default().fg(theme.green),
+        )];
 
-        let footer = Paragraph::new(Line::from(footer_spans))
-            .style(Style::default().bg(theme.bg));
+        let footer = Paragraph::new(Line::from(footer_spans)).style(Style::default().bg(theme.bg));
         f.render_widget(footer, chunks[2]);
     }
 }
@@ -412,13 +501,39 @@ mod tests {
     #[test]
     fn test_plan_state_progress_calculation() {
         let mut plan = ExecutionPlan::new("p1", "Sample plan");
-        let mut t1 = PlanTask::new("task-1", "Memory Explorer Overlay (`/memory`)", "Build searchable TauVault memory inspector with scope tabs, tag management, and counter-rule display.");
-        t1.status = TaskStatus::Completed { duration_ms: 0, summary: String::new() };
-        let mut t2 = PlanTask::new("task-2", "Live Plan & Todo Checklist Widget (`/plan`)", "Implement collapsible interactive checklist showing [✔], [◐], [ ], [✖] tasks with live progress calculation.");
-        t2.status = TaskStatus::Running { progress_pct: 75, started_at: 0 };
-        let t3 = PlanTask::new("task-3", "Clarification Questionnaire Modal (`/ask`)", "Implement interactive single-choice and multi-choice modal for agent queries and user confirmations.");
-        let t4 = PlanTask::new("task-4", "Wiring & Autocomplete in `pi-tui/src/lib.rs`", "Connect state fields, slash commands (/memory, /plan, /ask), and keyboard event handlers in main loop.");
-        let t5 = PlanTask::new("task-5", "Quality Verification & Zero Warnings Gate", "Verify all 47+ workspace unit tests pass and cargo clippy --all-targets passes with zero warnings.");
+        let mut t1 = PlanTask::new(
+            "task-1",
+            "Memory Explorer Overlay (`/memory`)",
+            "Build searchable TauVault memory inspector with scope tabs, tag management, and counter-rule display.",
+        );
+        t1.status = TaskStatus::Completed {
+            duration_ms: 0,
+            summary: String::new(),
+        };
+        let mut t2 = PlanTask::new(
+            "task-2",
+            "Live Plan & Todo Checklist Widget (`/plan`)",
+            "Implement collapsible interactive checklist showing [✔], [◐], [ ], [✖] tasks with live progress calculation.",
+        );
+        t2.status = TaskStatus::Running {
+            progress_pct: 75,
+            started_at: 0,
+        };
+        let t3 = PlanTask::new(
+            "task-3",
+            "Clarification Questionnaire Modal (`/ask`)",
+            "Implement interactive single-choice and multi-choice modal for agent queries and user confirmations.",
+        );
+        let t4 = PlanTask::new(
+            "task-4",
+            "Wiring & Autocomplete in `pi-tui/src/lib.rs`",
+            "Connect state fields, slash commands (/memory, /plan, /ask), and keyboard event handlers in main loop.",
+        );
+        let t5 = PlanTask::new(
+            "task-5",
+            "Quality Verification & Zero Warnings Gate",
+            "Verify all 47+ workspace unit tests pass and cargo clippy --all-targets passes with zero warnings.",
+        );
         plan.add_task(t1);
         plan.add_task(t2);
         plan.add_task(t3);
@@ -480,7 +595,10 @@ mod tests {
         assert!(matches!(state.tasks[2].status, TaskStatus::Running { .. }));
 
         state.toggle_selected_task_status();
-        assert!(matches!(state.tasks[2].status, TaskStatus::Completed { .. }));
+        assert!(matches!(
+            state.tasks[2].status,
+            TaskStatus::Completed { .. }
+        ));
 
         state.toggle_selected_task_status();
         assert!(matches!(state.tasks[2].status, TaskStatus::Failed { .. }));
@@ -492,11 +610,29 @@ mod tests {
     #[test]
     fn test_plan_compact_rendering() {
         let mut plan = ExecutionPlan::new("p1", "Sample plan");
-        let mut t1 = PlanTask::new("task-1", "Memory Explorer Overlay (`/memory`)", "Build searchable TauVault memory inspector with scope tabs, tag management, and counter-rule display.");
-        t1.status = TaskStatus::Completed { duration_ms: 0, summary: String::new() };
-        let mut t2 = PlanTask::new("task-2", "Live Plan & Todo Checklist Widget (`/plan`)", "Implement collapsible interactive checklist showing [✔], [◐], [ ], [✖] tasks with live progress calculation.");
-        t2.status = TaskStatus::Running { progress_pct: 75, started_at: 0 };
-        let t3 = PlanTask::new("task-3", "Clarification Questionnaire Modal (`/ask`)", "Implement interactive single-choice and multi-choice modal for agent queries and user confirmations.");
+        let mut t1 = PlanTask::new(
+            "task-1",
+            "Memory Explorer Overlay (`/memory`)",
+            "Build searchable TauVault memory inspector with scope tabs, tag management, and counter-rule display.",
+        );
+        t1.status = TaskStatus::Completed {
+            duration_ms: 0,
+            summary: String::new(),
+        };
+        let mut t2 = PlanTask::new(
+            "task-2",
+            "Live Plan & Todo Checklist Widget (`/plan`)",
+            "Implement collapsible interactive checklist showing [✔], [◐], [ ], [✖] tasks with live progress calculation.",
+        );
+        t2.status = TaskStatus::Running {
+            progress_pct: 75,
+            started_at: 0,
+        };
+        let t3 = PlanTask::new(
+            "task-3",
+            "Clarification Questionnaire Modal (`/ask`)",
+            "Implement interactive single-choice and multi-choice modal for agent queries and user confirmations.",
+        );
         plan.add_task(t1);
         plan.add_task(t2);
         plan.add_task(t3);

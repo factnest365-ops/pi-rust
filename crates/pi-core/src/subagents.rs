@@ -1,11 +1,15 @@
 use crate::AgentLoop;
 use anyhow::{Result, anyhow};
-use chrono::Utc;
+use chrono::{Duration, Utc};
+use dirs::home_dir;
 use pi_providers::ModelConfig;
+use pi_session::SessionTree;
 use pi_tools::{InvokeSubagentArgs, ManageSubagentsArgs, SubagentToolHandler};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
+use std::io::Write;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -52,6 +56,27 @@ pub struct SubagentSummary {
     pub finished_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubagentMessage {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub body: String,
+    pub timestamp: String,
+    pub delivered: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistentSubagentRecord {
+    pub name: String,
+    pub config: SubagentConfig,
+    pub session_path: Option<PathBuf>,
+    pub status: SubagentStatus,
+    pub created_at: String,
+    pub finished_at: Option<String>,
+    pub updated_at: String,
+}
+
 #[derive(Clone)]
 pub struct SubagentInstance {
     pub id: Uuid,
@@ -62,6 +87,8 @@ pub struct SubagentInstance {
     pub cancellation_token: CancellationToken,
     pub created_at: chrono::DateTime<Utc>,
     pub finished_at: Option<chrono::DateTime<Utc>>,
+    pub persistent_name: Option<String>,
+    pub messages: Arc<RwLock<VecDeque<SubagentMessage>>>,
 }
 
 pub struct SubagentRunner;
@@ -87,6 +114,7 @@ impl SubagentRunner {
 pub struct SubagentManager {
     pub default_model_config: ModelConfig,
     instances: Arc<RwLock<HashMap<String, SubagentInstance>>>,
+    pub persist_dir: Option<PathBuf>,
 }
 
 impl SubagentManager {
@@ -94,12 +122,93 @@ impl SubagentManager {
         Self {
             default_model_config,
             instances: Arc::new(RwLock::new(HashMap::new())),
+            persist_dir: None,
         }
     }
 
     pub fn new_with_empty_model() -> Self {
         let dummy_model = ModelConfig::resolve("mock/mock-model");
         Self::new(dummy_model)
+    }
+
+    fn tau_state_dir() -> PathBuf {
+        let home = home_dir().unwrap_or_else(|| PathBuf::from("."));
+        home.join(".tau").join("subagents")
+    }
+
+    fn sanitize_name(name: &str) -> String {
+        name.chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect()
+    }
+
+    fn build_agent_loop(&self, config: SubagentConfig) -> Result<AgentLoop> {
+        let mut child_model = self.default_model_config.clone();
+        if let Some(ref m) = config.model_override {
+            child_model.model_id = m.clone();
+        }
+        let mut child_agent_loop = AgentLoop::new(child_model);
+        if let Some(ref sp) = config.system_prompt_override {
+            child_agent_loop.system_engine.base_prompt = sp.clone();
+        }
+        if let Some(ref tools) = config.allowed_tools {
+            child_agent_loop.allowed_tools = Some(tools.clone());
+        }
+        Ok(child_agent_loop)
+    }
+
+    async fn load_registry_entry(
+        &self,
+        registry_path: &PathBuf,
+        name: &str,
+    ) -> Result<Option<PersistentSubagentRecord>> {
+        if !registry_path.exists() {
+            return Ok(None);
+        }
+        let content = std::fs::read_to_string(registry_path)?;
+        for line in content.lines() {
+            if let Ok(record) = serde_json::from_str::<PersistentSubagentRecord>(line) {
+                if record.name == name {
+                    return Ok(Some(record));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    async fn save_registry_entry(
+        &self,
+        registry_path: &PathBuf,
+        record: &PersistentSubagentRecord,
+    ) -> Result<()> {
+        if let Ok(json) = serde_json::to_string(record) {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(registry_path)?
+                .write_all(format!("{}\n", json).as_bytes())?;
+        }
+        Ok(())
+    }
+
+    async fn save_registry_entry_sync(
+        registry_path: &PathBuf,
+        record: &PersistentSubagentRecord,
+    ) -> Result<()> {
+        if let Ok(json) = serde_json::to_string(record) {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(registry_path)?
+                .write_all(format!("{}\n", json).as_bytes())?;
+        }
+        Ok(())
     }
 
     pub async fn spawn(&self, config: SubagentConfig, task: &str) -> Result<String> {
@@ -130,6 +239,8 @@ impl SubagentManager {
             cancellation_token: cancellation_token.clone(),
             created_at: Utc::now(),
             finished_at: None,
+            persistent_name: None,
+            messages: Arc::new(RwLock::new(VecDeque::new())),
         };
 
         {
@@ -162,6 +273,253 @@ impl SubagentManager {
         Ok(id_str)
     }
 
+    /// Spawns or re-addressing a persistent named subagent. If a finished persistent
+    /// subagent with the same name exists, its prior session context is loaded for a
+    /// follow-up turn. Sibling-to-sibling and child-to-parent messaging are supported;
+    /// there are no additional scope restrictions beyond name-based addressing.
+    pub async fn spawn_persistent(&self, config: SubagentConfig, task: &str) -> Result<String> {
+        let name = config.name.clone();
+        let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
+        let registry_path = persist_dir.join("registry.jsonl");
+        let inbox_dir = persist_dir.join(Self::sanitize_name(&name));
+        let _ = std::fs::create_dir_all(&inbox_dir);
+
+        let existing = self.load_registry_entry(&registry_path, &name).await?;
+
+        let mut agent_loop = self.build_agent_loop(config.clone())?;
+        let session_path = agent_loop.session_tree.disk_path.clone();
+
+        if let Some(record) = existing {
+            match record.status {
+                SubagentStatus::Finished(_) | SubagentStatus::Errored(_) => {
+                    if let Some(ref p) = record.session_path {
+                        if p.exists() {
+                            agent_loop = self.build_agent_loop(config.clone())?;
+                            agent_loop.session_tree = SessionTree::load_from_jsonl(p)?;
+                        }
+                    }
+                }
+                SubagentStatus::Running => {
+                    return Err(anyhow!("Persistent subagent '{}' is already running", name));
+                }
+                _ => {}
+            }
+        }
+
+        let subagent_id = Uuid::new_v4();
+        let id_str = subagent_id.to_string();
+        let cancellation_token = CancellationToken::new();
+        let now = Utc::now();
+
+        let instance = SubagentInstance {
+            id: subagent_id,
+            name: name.clone(),
+            task_description: task.to_string(),
+            agent_loop,
+            status: SubagentStatus::Running,
+            cancellation_token: cancellation_token.clone(),
+            created_at: now,
+            finished_at: None,
+            persistent_name: Some(name.clone()),
+            messages: Arc::new(RwLock::new(VecDeque::new())),
+        };
+
+        {
+            let mut guard = self.instances.write().await;
+            guard.insert(id_str.clone(), instance.clone());
+        }
+
+        let record = PersistentSubagentRecord {
+            name: name.clone(),
+            config: config.clone(),
+            session_path: session_path.clone(),
+            status: SubagentStatus::Running,
+            created_at: now.to_rfc3339(),
+            finished_at: None,
+            updated_at: now.to_rfc3339(),
+        };
+        self.save_registry_entry(&registry_path, &record).await?;
+
+        let instances_clone = self.instances.clone();
+        let id_clone = id_str.clone();
+        let task_owned = task.to_string();
+        let config_clone = config.clone();
+        let registry_path_clone = registry_path.clone();
+        let persistent_name_clone = name.clone();
+
+        tokio::spawn(async move {
+            let result =
+                SubagentRunner::run_task(instance.agent_loop, task_owned, cancellation_token).await;
+
+            let mut guard = instances_clone.write().await;
+            if let Some(inst) = guard.get_mut(&id_clone) {
+                inst.finished_at = Some(Utc::now());
+                match result {
+                    Ok(output) => inst.status = SubagentStatus::Finished(output),
+                    Err(err) => inst.status = SubagentStatus::Errored(err.to_string()),
+                }
+
+                let updated = PersistentSubagentRecord {
+                    name: persistent_name_clone,
+                    config: config_clone,
+                    session_path: inst.agent_loop.session_tree.disk_path.clone(),
+                    status: inst.status.clone(),
+                    created_at: inst.created_at.to_rfc3339(),
+                    finished_at: inst.finished_at.map(|t| t.to_rfc3339()),
+                    updated_at: Utc::now().to_rfc3339(),
+                };
+                let _ = Self::save_registry_entry_sync(&registry_path_clone, &updated).await;
+            }
+        });
+
+        Ok(name)
+    }
+
+    /// Sends an A2A message from one agent to another. Messages are append-only on disk
+    /// and queued in memory if the recipient is currently loaded. Delivery occurs at the
+    /// recipient's next turn boundary.
+    pub async fn send_message(&self, from: &str, to: &str, body: &str) -> Result<()> {
+        let message = SubagentMessage {
+            id: Uuid::new_v4().to_string(),
+            from: from.to_string(),
+            to: to.to_string(),
+            body: body.to_string(),
+            timestamp: Utc::now().to_rfc3339(),
+            delivered: false,
+        };
+
+        let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
+        let inbox_path = persist_dir
+            .join(Self::sanitize_name(to))
+            .join("inbox.jsonl");
+
+        if let Ok(json) = serde_json::to_string(&message) {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(inbox_path)?
+                .write_all(format!("{}\n", json).as_bytes())?;
+        }
+
+        for inst in self.instances.read().await.values() {
+            if inst.persistent_name.as_deref() == Some(to) || inst.name == to {
+                inst.messages.write().await.push_back(message.clone());
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Drains the inbox for a named subagent. Returns all pending messages and clears
+    /// the in-memory queue. If the subagent is not currently loaded, reads from disk
+    /// and truncates the inbox file.
+    pub async fn drain_inbox(&self, name: &str) -> Result<Vec<SubagentMessage>> {
+        let mut messages = Vec::new();
+
+        for inst in self.instances.read().await.values() {
+            if inst.persistent_name.as_deref() == Some(name) || inst.name == name {
+                let mut queue = inst.messages.write().await;
+                messages.extend(queue.drain(..));
+                break;
+            }
+        }
+
+        if messages.is_empty() {
+            let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
+            let inbox_path = persist_dir
+                .join(Self::sanitize_name(name))
+                .join("inbox.jsonl");
+            if inbox_path.exists() {
+                let content = std::fs::read_to_string(&inbox_path)?;
+                for line in content.lines() {
+                    if let Ok(msg) = serde_json::from_str::<SubagentMessage>(line) {
+                        messages.push(msg);
+                    }
+                }
+                let _ = std::fs::write(&inbox_path, "");
+            }
+        }
+
+        Ok(messages)
+    }
+
+    /// Lists all persistent subagent records currently stored on disk.
+    pub async fn list_persistent(&self) -> Result<Vec<PersistentSubagentRecord>> {
+        let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
+        let registry_path = persist_dir.join("registry.jsonl");
+
+        if !registry_path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut records = Vec::new();
+        let content = std::fs::read_to_string(&registry_path)?;
+        for line in content.lines() {
+            if let Ok(record) = serde_json::from_str::<PersistentSubagentRecord>(line) {
+                records.push(record);
+            }
+        }
+        Ok(records)
+    }
+
+    /// Recovers persistent subagent registries from disk into the manager's in-memory
+    /// view. Returns the number of non-running records recovered.
+    pub async fn recover(&self) -> Result<usize> {
+        let records = self.list_persistent().await?;
+        let mut count = 0usize;
+        for record in records {
+            if !matches!(record.status, SubagentStatus::Running) {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
+    /// Prunes persistent subagent records that have been idle longer than `max_idle`.
+    /// Removes registry entries and their inbox directories from disk.
+    pub async fn prune(&self, max_idle: Duration) -> Result<usize> {
+        let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
+        let cutoff = Utc::now() - max_idle;
+
+        let records = self.list_persistent().await?;
+        let mut pruned = 0usize;
+        let mut kept = Vec::new();
+
+        for record in records {
+            if let Some(finished_at) = record.finished_at.as_ref() {
+                if let Ok(time) = chrono::DateTime::parse_from_rfc3339(finished_at) {
+                    let time = time.with_timezone(&Utc);
+                    if time < cutoff {
+                        let inbox_dir = persist_dir.join(Self::sanitize_name(&record.name));
+                        let _ = std::fs::remove_dir_all(&inbox_dir);
+                        pruned += 1;
+                        continue;
+                    }
+                }
+            }
+            kept.push(record);
+        }
+
+        let registry_path = persist_dir.join("registry.jsonl");
+        let mut file = std::fs::File::create(&registry_path)?;
+        for record in kept {
+            if let Ok(json) = serde_json::to_string(&record) {
+                writeln!(file, "{}", json)?;
+            }
+        }
+
+        let mut guard = self.instances.write().await;
+        guard.retain(|_, inst| {
+            inst.persistent_name
+                .as_ref()
+                .map(|n| !kept.iter().any(|r| r.name == *n))
+                .unwrap_or(true)
+        });
+
+        Ok(pruned)
+    }
+
     pub async fn invoke_and_wait(&self, config: SubagentConfig, task: &str) -> Result<String> {
         let subagent_id = Uuid::new_v4();
         let id_str = subagent_id.to_string();
@@ -190,6 +548,8 @@ impl SubagentManager {
             cancellation_token: cancellation_token.clone(),
             created_at: Utc::now(),
             finished_at: None,
+            persistent_name: None,
+            messages: Arc::new(RwLock::new(VecDeque::new())),
         };
 
         {
@@ -341,6 +701,7 @@ impl SubagentToolHandler for SubagentToolHandlerBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_subagent_lifecycle_and_cancellation() {
@@ -443,5 +804,161 @@ mod tests {
 
         let kill_non_existent = manager.kill("non-existent-id").await;
         assert!(kill_non_existent.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_persistent_subagent_send_then_drain_roundtrip() {
+        let tmp = tempdir().unwrap();
+        let manager = Arc::new(
+            SubagentManager::new_with_empty_model().with_persist_dir(tmp.path().to_path_buf()),
+        );
+
+        let config = SubagentConfig {
+            name: "Follower".to_string(),
+            model_override: None,
+            system_prompt_override: None,
+            allowed_tools: None,
+        };
+
+        let _ = manager
+            .spawn_persistent(config.clone(), "Initial task")
+            .await
+            .unwrap();
+
+        manager
+            .send_message("Leader", "Follower", "Hello from leader")
+            .await
+            .unwrap();
+
+        let messages = manager.drain_inbox("Follower").await.unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].from, "Leader");
+        assert_eq!(messages[0].body, "Hello from leader");
+
+        let empty = manager.drain_inbox("Follower").await.unwrap();
+        assert!(empty.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_persistent_subagent_survives_drop_and_recover() {
+        let tmp = tempdir().unwrap();
+        let persist_path = tmp.path().to_path_buf();
+
+        {
+            let manager =
+                SubagentManager::new_with_empty_model().with_persist_dir(persist_path.clone());
+            let config = SubagentConfig {
+                name: "Survivor".to_string(),
+                model_override: None,
+                system_prompt_override: None,
+                allowed_tools: None,
+            };
+            manager
+                .spawn_persistent(config, "First turn")
+                .await
+                .unwrap();
+        }
+
+        let manager = SubagentManager::new_with_empty_model().with_persist_dir(persist_path);
+        let recovered = manager.recover().await.unwrap();
+        assert!(recovered >= 1);
+
+        let persistent = manager.list_persistent().await.unwrap();
+        assert!(persistent.iter().any(|r| r.name == "Survivor"));
+    }
+
+    #[tokio::test]
+    async fn test_persistent_follow_up_preserves_name_and_config() {
+        let tmp = tempdir().unwrap();
+        let manager = Arc::new(
+            SubagentManager::new_with_empty_model().with_persist_dir(tmp.path().to_path_buf()),
+        );
+
+        let config = SubagentConfig {
+            name: "Resume".to_string(),
+            model_override: Some("mock/override-model".to_string()),
+            system_prompt_override: Some("System prompt".to_string()),
+            allowed_tools: Some(vec!["read".to_string()]),
+        };
+
+        manager
+            .spawn_persistent(config.clone(), "First task")
+            .await
+            .unwrap();
+
+        manager
+            .send_message("self", "Resume", "follow-up context")
+            .await
+            .unwrap();
+
+        let _ = manager
+            .spawn_persistent(config.clone(), "Second task")
+            .await
+            .unwrap();
+
+        let records = manager.list_persistent().await.unwrap();
+        let record = records.iter().find(|r| r.name == "Resume").unwrap();
+        assert_eq!(record.config.name, "Resume");
+        assert_eq!(
+            record.config.model_override,
+            Some("mock/override-model".to_string())
+        );
+        assert_eq!(
+            record.config.system_prompt_override,
+            Some("System prompt".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_persistent_concurrent_sends_do_not_corrupt_inbox() {
+        let tmp = tempdir().unwrap();
+        let manager = Arc::new(
+            SubagentManager::new_with_empty_model().with_persist_dir(tmp.path().to_path_buf()),
+        );
+
+        let config = SubagentConfig {
+            name: "Concurrent".to_string(),
+            model_override: None,
+            system_prompt_override: None,
+            allowed_tools: None,
+        };
+
+        manager
+            .spawn_persistent(config, "Concurrent task")
+            .await
+            .unwrap();
+
+        let mut handles = Vec::new();
+        for i in 0..20 {
+            let manager = manager.clone();
+            handles.push(tokio::spawn(async move {
+                manager
+                    .send_message(
+                        &format!("sender-{}", i),
+                        "Concurrent",
+                        &format!("msg-{}", i),
+                    )
+                    .await
+            }));
+        }
+        for handle in handles {
+            handle.await.unwrap().unwrap();
+        }
+
+        let messages = manager.drain_inbox("Concurrent").await.unwrap();
+        assert_eq!(messages.len(), 20);
+        let bodies: Vec<String> = messages.into_iter().map(|m| m.body).collect();
+        for i in 0..20 {
+            assert!(bodies.contains(&format!("msg-{}", i)));
+        }
+    }
+}
+
+impl SubagentManager {
+    /// Creates a manager pre-configured with a persistence directory.
+    pub fn with_persist_dir(mut self, dir: PathBuf) -> Self {
+        let _ = std::fs::create_dir_all(&dir);
+        self.persist_dir = Some(dir);
+        self
     }
 }

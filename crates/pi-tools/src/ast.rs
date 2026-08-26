@@ -51,7 +51,11 @@ impl AstTool {
         let lines: Vec<String> = BufReader::new(file).lines().collect::<Result<_, _>>()?;
 
         let Some((start, end)) = Self::find_symbol_range(&lines, file_path, symbol) else {
-            return Err(anyhow::anyhow!("Symbol '{}' not found in {}", symbol, file_path));
+            return Err(anyhow::anyhow!(
+                "Symbol '{}' not found in {}",
+                symbol,
+                file_path
+            ));
         };
 
         let mut output = format!(
@@ -78,8 +82,14 @@ impl AstTool {
         let file = File::open(file_path)?;
         let lines: Vec<String> = BufReader::new(file).lines().collect::<Result<_, _>>()?;
 
-        let Some((target_start, target_end)) = Self::find_symbol_range(&lines, file_path, symbol_name) else {
-            return Err(anyhow::anyhow!("Symbol '{}' not found in {}", symbol_name, file_path));
+        let Some((target_start, target_end)) =
+            Self::find_symbol_range(&lines, file_path, symbol_name)
+        else {
+            return Err(anyhow::anyhow!(
+                "Symbol '{}' not found in {}",
+                symbol_name,
+                file_path
+            ));
         };
 
         let all_symbols = Self::discover_all_symbols(&lines, file_path);
@@ -133,9 +143,14 @@ impl AstTool {
                     // Also find the struct/trait corresponding to sym.name
                     if !sym.name.is_empty() {
                         for t in &all_symbols {
-                            if (t.kind == "Struct" || t.kind == "Enum" || t.kind == "Trait" || t.kind == "Class")
+                            if (t.kind == "Struct"
+                                || t.kind == "Enum"
+                                || t.kind == "Trait"
+                                || t.kind == "Class")
                                 && t.name == sym.name
-                                && !related_types.iter().any(|r| r.name == t.name && r.kind == t.kind)
+                                && !related_types
+                                    .iter()
+                                    .any(|r| r.name == t.name && r.kind == t.kind)
                             {
                                 related_types.push(t);
                             }
@@ -146,7 +161,9 @@ impl AstTool {
                 && (Self::contains_identifier(&target_body, &sym.name)
                     || target_body.contains(&format!("&{}", sym.name))
                     || target_body.contains(&format!(": {}", sym.name)))
-                && !related_types.iter().any(|t| t.name == sym.name && t.kind == sym.kind)
+                && !related_types
+                    .iter()
+                    .any(|t| t.name == sym.name && t.kind == sym.kind)
             {
                 related_types.push(sym);
             }
@@ -167,7 +184,9 @@ impl AstTool {
 
         // 5. Build Formatted High-Signal AST Slice
         let mut out = String::new();
-        out.push_str("================================================================================\n");
+        out.push_str(
+            "================================================================================\n",
+        );
         out.push_str(&format!(
             "AST DEPENDENCY CONTEXT SLICE: '{}'\nFile: {} (Lines {}-{})\n",
             symbol_name,
@@ -175,7 +194,9 @@ impl AstTool {
             target_start + 1,
             target_end + 1
         ));
-        out.push_str("================================================================================\n\n");
+        out.push_str(
+            "================================================================================\n\n",
+        );
 
         out.push_str("[Target Definition]\n");
         for idx in target_start..=target_end {
@@ -188,7 +209,12 @@ impl AstTool {
         if !related_types.is_empty() {
             out.push_str("[Associated Types, Structs & Traits]\n");
             for sym in &related_types {
-                out.push_str(&format!("  line {:4} | [{}] {}\n", sym.start_line + 1, sym.kind, sym.signature));
+                out.push_str(&format!(
+                    "  line {:4} | [{}] {}\n",
+                    sym.start_line + 1,
+                    sym.kind,
+                    sym.signature
+                ));
                 if sym.end_line > sym.start_line && sym.end_line - sym.start_line <= 12 {
                     for i in (sym.start_line + 1)..=sym.end_line {
                         if i < lines.len() {
@@ -200,12 +226,19 @@ impl AstTool {
             out.push('\n');
         }
 
-        out.push_str(&format!("[Callee Signatures (Invoked by '{}')]\n", symbol_name));
+        out.push_str(&format!(
+            "[Callee Signatures (Invoked by '{}')]\n",
+            symbol_name
+        ));
         if callees.is_empty() {
             out.push_str("  (None detected in file scope)\n");
         } else {
             for c in callees {
-                out.push_str(&format!("  line {:4} | {}\n", c.start_line + 1, c.signature));
+                out.push_str(&format!(
+                    "  line {:4} | {}\n",
+                    c.start_line + 1,
+                    c.signature
+                ));
             }
         }
         out.push('\n');
@@ -215,7 +248,11 @@ impl AstTool {
             out.push_str("  (None detected in file scope)\n");
         } else {
             for c in callers {
-                out.push_str(&format!("  line {:4} | {}\n", c.start_line + 1, c.signature));
+                out.push_str(&format!(
+                    "  line {:4} | {}\n",
+                    c.start_line + 1,
+                    c.signature
+                ));
             }
         }
         out.push('\n');
@@ -228,7 +265,9 @@ impl AstTool {
             out.push('\n');
         }
 
-        out.push_str("================================================================================\n");
+        out.push_str(
+            "================================================================================\n",
+        );
 
         Ok(out)
     }
@@ -313,30 +352,54 @@ impl AstTool {
                 || trimmed.starts_with("pub(crate) fn ")
                 || trimmed.starts_with("pub(crate) async fn ")
             {
-                (Self::extract_symbol_name(trimmed, "fn "), "Function".to_string())
+                (
+                    Self::extract_symbol_name(trimmed, "fn "),
+                    "Function".to_string(),
+                )
             } else if trimmed.starts_with("pub struct ")
                 || trimmed.starts_with("pub(crate) struct ")
                 || trimmed.starts_with("struct ")
             {
-                (Self::extract_symbol_name(trimmed, "struct "), "Struct".to_string())
+                (
+                    Self::extract_symbol_name(trimmed, "struct "),
+                    "Struct".to_string(),
+                )
             } else if trimmed.starts_with("pub enum ")
                 || trimmed.starts_with("pub(crate) enum ")
                 || trimmed.starts_with("enum ")
             {
-                (Self::extract_symbol_name(trimmed, "enum "), "Enum".to_string())
+                (
+                    Self::extract_symbol_name(trimmed, "enum "),
+                    "Enum".to_string(),
+                )
             } else if trimmed.starts_with("pub trait ")
                 || trimmed.starts_with("pub(crate) trait ")
                 || trimmed.starts_with("trait ")
             {
-                (Self::extract_symbol_name(trimmed, "trait "), "Trait".to_string())
+                (
+                    Self::extract_symbol_name(trimmed, "trait "),
+                    "Trait".to_string(),
+                )
             } else if trimmed.starts_with("impl ") || trimmed.starts_with("impl<") {
                 let name = Self::extract_impl_target(trimmed);
                 (name, "Implementation".to_string())
-            } else if is_python && (trimmed.starts_with("def ") || trimmed.starts_with("async def ")) {
-                let kw = if trimmed.starts_with("async def ") { "async def " } else { "def " };
-                (Self::extract_symbol_name(trimmed, kw), "Function".to_string())
+            } else if is_python
+                && (trimmed.starts_with("def ") || trimmed.starts_with("async def "))
+            {
+                let kw = if trimmed.starts_with("async def ") {
+                    "async def "
+                } else {
+                    "def "
+                };
+                (
+                    Self::extract_symbol_name(trimmed, kw),
+                    "Function".to_string(),
+                )
             } else if is_python && trimmed.starts_with("class ") {
-                (Self::extract_symbol_name(trimmed, "class "), "Class".to_string())
+                (
+                    Self::extract_symbol_name(trimmed, "class "),
+                    "Class".to_string(),
+                )
             } else {
                 continue;
             };
@@ -403,7 +466,8 @@ impl AstTool {
         let mut i = 0;
         while i + ident_bytes.len() <= bytes.len() {
             if &bytes[i..i + ident_bytes.len()] == ident_bytes {
-                let prev_ok = i == 0 || (!bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_');
+                let prev_ok =
+                    i == 0 || (!bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_');
                 let next_pos = i + ident_bytes.len();
                 let next_ok = next_pos == bytes.len()
                     || (!bytes[next_pos].is_ascii_alphanumeric() && bytes[next_pos] != b'_');
@@ -456,7 +520,11 @@ impl AstTool {
         let file = File::open(file_path)?;
         let lines: Vec<String> = BufReader::new(file).lines().collect::<Result<_, _>>()?;
 
-        let mut outline = format!("--- File Structure: {} ({} lines) ---\n", file_path, lines.len());
+        let mut outline = format!(
+            "--- File Structure: {} ({} lines) ---\n",
+            file_path,
+            lines.len()
+        );
 
         for (idx, line) in lines.iter().enumerate() {
             let trimmed = line.trim();

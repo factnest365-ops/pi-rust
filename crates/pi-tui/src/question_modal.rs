@@ -1,10 +1,10 @@
 use crate::style::ThemePalette;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
-    Frame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -89,19 +89,31 @@ impl QuestionModalState {
             QuestionOption {
                 id: "opt-1".to_string(),
                 label: "Strict Invariant: Zero Warnings & Pure Safe Rust".to_string(),
-                description: Some("Ensure 100% safe Rust and zero compiler warnings across all workspace crates.".to_string()),
+                description: Some(
+                    "Ensure 100% safe Rust and zero compiler warnings across all workspace crates."
+                        .to_string(),
+                ),
                 selected: true,
             },
             QuestionOption {
                 id: "opt-2".to_string(),
                 label: "Non-Blocking Async Subprocess Execution".to_string(),
-                description: Some(format!("Guarantee {}s timeout and automatic zombie process termination on abort.", pi_core::plan::VERIFY_TIMEOUT_SECS).to_string()),
+                description: Some(
+                    format!(
+                        "Guarantee {}s timeout and automatic zombie process termination on abort.",
+                        pi_core::plan::VERIFY_TIMEOUT_SECS
+                    )
+                    .to_string(),
+                ),
                 selected: false,
             },
             QuestionOption {
                 id: "opt-3".to_string(),
                 label: "Surgical Memory & Plan Cockpit Overlay".to_string(),
-                description: Some("Provide keyboard-navigable TUI widgets for interactive task management.".to_string()),
+                description: Some(
+                    "Provide keyboard-navigable TUI widgets for interactive task management."
+                        .to_string(),
+                ),
                 selected: false,
             },
         ];
@@ -191,12 +203,7 @@ impl QuestionModalState {
 pub struct QuestionModalWidget;
 
 impl QuestionModalWidget {
-    pub fn render(
-        state: &QuestionModalState,
-        f: &mut Frame,
-        area: Rect,
-        theme: &ThemePalette,
-    ) {
+    pub fn render(state: &QuestionModalState, f: &mut Frame, area: Rect, theme: &ThemePalette) {
         f.render_widget(Clear, area);
 
         let modal_border_color = match state.kind {
@@ -234,8 +241,16 @@ impl QuestionModalWidget {
 
         // 1. Question Text Header
         let question_paragraph = Paragraph::new(Line::from(vec![
-            Span::styled("Q: ", Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD)),
-            Span::styled(&state.question, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Q: ",
+                Style::default()
+                    .fg(theme.yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                &state.question,
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            ),
         ]))
         .wrap(Wrap { trim: false })
         .block(
@@ -252,26 +267,41 @@ impl QuestionModalWidget {
             .map(|opt| {
                 let badge = match state.kind {
                     QuestionKind::SingleChoice => {
-                        if opt.selected { "(•)" } else { "( )" }
+                        if opt.selected {
+                            "(•)"
+                        } else {
+                            "( )"
+                        }
                     }
                     QuestionKind::MultiChoice => {
-                        if opt.selected { "[✔]" } else { "[ ]" }
+                        if opt.selected {
+                            "[✔]"
+                        } else {
+                            "[ ]"
+                        }
                     }
                 };
 
-                let badge_color = if opt.selected { theme.green } else { theme.muted };
+                let badge_color = if opt.selected {
+                    theme.green
+                } else {
+                    theme.muted
+                };
                 let label_style = if opt.selected {
                     Style::default().fg(theme.text).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(theme.text)
                 };
 
-                let mut lines = vec![
-                    Line::from(vec![
-                        Span::styled(format!("{} ", badge), Style::default().fg(badge_color).add_modifier(Modifier::BOLD)),
-                        Span::styled(&opt.label, label_style),
-                    ]),
-                ];
+                let mut lines = vec![Line::from(vec![
+                    Span::styled(
+                        format!("{} ", badge),
+                        Style::default()
+                            .fg(badge_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(&opt.label, label_style),
+                ])];
 
                 if let Some(ref desc) = opt.description {
                     lines.push(Line::from(vec![
@@ -305,30 +335,43 @@ impl QuestionModalWidget {
 
         // 3. Custom Write-in Box
         let is_custom_selected = state.list_state.selected() == Some(state.options.len());
-        let custom_border_color = if is_custom_selected { theme.yellow } else { theme.border };
+        let custom_border_color = if is_custom_selected {
+            theme.yellow
+        } else {
+            theme.border
+        };
         let cursor_char = if is_custom_selected { "█" } else { "" };
 
         let custom_line = Line::from(vec![
-            Span::styled(" Write-in / Other: ", Style::default().fg(if is_custom_selected { theme.yellow } else { theme.muted })),
-            Span::styled(format!("{}{}", state.custom_input, cursor_char), Style::default().fg(theme.text)),
+            Span::styled(
+                " Write-in / Other: ",
+                Style::default().fg(if is_custom_selected {
+                    theme.yellow
+                } else {
+                    theme.muted
+                }),
+            ),
+            Span::styled(
+                format!("{}{}", state.custom_input, cursor_char),
+                Style::default().fg(theme.text),
+            ),
         ]);
 
-        let custom_box = Paragraph::new(custom_line)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(custom_border_color)),
-            );
+        let custom_box = Paragraph::new(custom_line).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(custom_border_color)),
+        );
         f.render_widget(custom_box, chunks[2]);
 
         // 4. Bottom Cheatsheet Footer
-        let footer_spans = vec![
-            Span::styled("[↑/↓: Navigate · Space: Toggle · Enter: Submit · Esc: Dismiss]", Style::default().fg(modal_border_color)),
-        ];
+        let footer_spans = vec![Span::styled(
+            "[↑/↓: Navigate · Space: Toggle · Enter: Submit · Esc: Dismiss]",
+            Style::default().fg(modal_border_color),
+        )];
 
-        let footer = Paragraph::new(Line::from(footer_spans))
-            .style(Style::default().bg(theme.bg));
+        let footer = Paragraph::new(Line::from(footer_spans)).style(Style::default().bg(theme.bg));
         f.render_widget(footer, chunks[3]);
     }
 }
@@ -389,7 +432,11 @@ mod tests {
         let mut state = QuestionModalState::sample_question();
         state.custom_input = "Custom tailored response".to_string();
         let answers = state.submit();
-        assert!(answers.iter().any(|a| a.contains("Custom: Custom tailored response")));
+        assert!(
+            answers
+                .iter()
+                .any(|a| a.contains("Custom: Custom tailored response"))
+        );
         assert!(state.is_submitted);
     }
 }

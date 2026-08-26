@@ -1,9 +1,9 @@
 use crate::style::ThemePalette;
+use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Wrap};
-use ratatui::Frame;
 
 #[derive(Debug, Clone)]
 pub struct HelpItem {
@@ -105,7 +105,6 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
         description: "Scroll Viewport",
         details: "Scroll up or down in chat transcript or help list",
     },
-
     // Slash Commands
     HelpItem {
         category: "Slash Commands",
@@ -221,7 +220,6 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
         description: "Exit pi-rust Agent",
         details: "Graceful shutdown and save session state to disk",
     },
-
     // Dual Tool Calling & Worktree Architecture
     HelpItem {
         category: "Dual Tool Calling & Worktree Architecture",
@@ -303,12 +301,7 @@ impl HelpOverlay {
         }
     }
 
-    pub fn render(
-        f: &mut Frame,
-        area: Rect,
-        state: &HelpOverlayState,
-        palette: &ThemePalette,
-    ) {
+    pub fn render(f: &mut Frame, area: Rect, state: &HelpOverlayState, palette: &ThemePalette) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
@@ -341,7 +334,11 @@ impl HelpOverlay {
             ),
             Span::styled(search_display, Style::default().fg(palette.text)),
             Span::styled(
-                format!(" (Showing {} of {} entries)", filtered.len(), ALL_HELP_ITEMS.len()),
+                format!(
+                    " (Showing {} of {} entries)",
+                    filtered.len(),
+                    ALL_HELP_ITEMS.len()
+                ),
                 Style::default().fg(palette.muted),
             ),
         ]))
@@ -366,14 +363,12 @@ impl HelpOverlay {
             }
 
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!(" ═══ {} ═══", category),
-                    Style::default()
-                        .fg(palette.accent)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                format!(" ═══ {} ═══", category),
+                Style::default()
+                    .fg(palette.accent)
+                    .add_modifier(Modifier::BOLD),
+            )]));
             lines.push(Line::from(""));
 
             for item in cat_items {
@@ -391,22 +386,17 @@ impl HelpOverlay {
                             .fg(palette.text)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled(
-                        item.details,
-                        Style::default().fg(palette.muted),
-                    ),
+                    Span::styled(item.details, Style::default().fg(palette.muted)),
                 ]));
             }
         }
 
         if lines.is_empty() {
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled(
-                    "   No matching commands or shortcuts found for query.",
-                    Style::default().fg(palette.muted),
-                ),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                "   No matching commands or shortcuts found for query.",
+                Style::default().fg(palette.muted),
+            )]));
         }
 
         let total_lines = lines.len();
@@ -423,9 +413,10 @@ impl HelpOverlay {
             state.scroll_offset.min(total_lines as u16),
             total_lines.saturating_sub(viewport_height as usize)
         );
-        let footer = Paragraph::new(Line::from(vec![
-            Span::styled(footer_text, Style::default().fg(palette.muted).bg(palette.surface)),
-        ]))
+        let footer = Paragraph::new(Line::from(vec![Span::styled(
+            footer_text,
+            Style::default().fg(palette.muted).bg(palette.surface),
+        )]))
         .alignment(Alignment::Center);
         f.render_widget(footer, chunks[2]);
     }
@@ -442,7 +433,11 @@ mod tests {
 
         let model_filter = HelpOverlay::filter_items("model");
         assert!(model_filter.iter().any(|i| i.key_or_cmd == "Ctrl+L"));
-        assert!(model_filter.iter().any(|i| i.key_or_cmd == "/models [name]"));
+        assert!(
+            model_filter
+                .iter()
+                .any(|i| i.key_or_cmd == "/models [name]")
+        );
 
         let diff_filter = HelpOverlay::filter_items("diff");
         assert_eq!(diff_filter.len(), 1);

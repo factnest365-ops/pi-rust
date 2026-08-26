@@ -36,7 +36,10 @@ impl WebTool {
 
         let raw_text = res.text().await?;
 
-        let parsed_markdown = if content_type.contains("text/html") || raw_text.contains("<html") || raw_text.contains("<body") {
+        let parsed_markdown = if content_type.contains("text/html")
+            || raw_text.contains("<html")
+            || raw_text.contains("<body")
+        {
             Self::html_to_markdown(&raw_text)
         } else {
             raw_text
@@ -67,7 +70,10 @@ impl WebTool {
 
         let status = res.status();
         if !status.is_success() {
-            return Err(anyhow::anyhow!("Search request failed with HTTP {}", status));
+            return Err(anyhow::anyhow!(
+                "Search request failed with HTTP {}",
+                status
+            ));
         }
 
         let raw_html = res.text().await?;
@@ -77,7 +83,10 @@ impl WebTool {
         let boundary = parsed.floor_char_boundary(max_len.min(parsed.len()));
         let preview = &parsed[..boundary];
 
-        Ok(format!("### Web Search Results for '{}':\n\n{}", query, preview))
+        Ok(format!(
+            "### Web Search Results for '{}':\n\n{}",
+            query, preview
+        ))
     }
 
     pub fn execute(args: &Value) -> Result<String> {
@@ -91,9 +100,9 @@ impl WebTool {
         // Async execution handled in tokio runtime
         let rt = tokio::runtime::Handle::try_current();
         match rt {
-            Ok(handle) => tokio::task::block_in_place(|| {
-                handle.block_on(Self::fetch_url(url, max_length))
-            }),
+            Ok(handle) => {
+                tokio::task::block_in_place(|| handle.block_on(Self::fetch_url(url, max_length)))
+            }
             Err(_) => {
                 let rt = tokio::runtime::Runtime::new()?;
                 rt.block_on(Self::fetch_url(url, max_length))
@@ -221,7 +230,11 @@ impl WebTool {
                     let rest = &html[i..];
                     if let Some(tag_end) = rest.find('>') {
                         let tag_content = rest[1..tag_end].trim();
-                        let tag_name = tag_content.split_whitespace().next().unwrap_or("").to_lowercase();
+                        let tag_name = tag_content
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("")
+                            .to_lowercase();
 
                         match tag_name.as_str() {
                             "h1" => cleaned.push_str("\n\n# "),
@@ -230,7 +243,9 @@ impl WebTool {
                             "h4" => cleaned.push_str("\n\n#### "),
                             "h5" => cleaned.push_str("\n\n##### "),
                             "h6" => cleaned.push_str("\n\n###### "),
-                            "/h1" | "/h2" | "/h3" | "/h4" | "/h5" | "/h6" => cleaned.push_str("\n\n"),
+                            "/h1" | "/h2" | "/h3" | "/h4" | "/h5" | "/h6" => {
+                                cleaned.push_str("\n\n")
+                            }
                             "p" | "/p" => cleaned.push_str("\n\n"),
                             "br" | "br/" | "br /" => cleaned.push('\n'),
                             "li" => cleaned.push_str("\n- "),

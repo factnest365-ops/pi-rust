@@ -51,7 +51,9 @@ impl ThemeKind {
         match self {
             ThemeKind::DefaultPi => "Clean GitHub dark with vibrant blue accents",
             ThemeKind::TokyoNight => "Deep indigo background with neon pastel accents",
-            ThemeKind::CatppuccinMacchiato => "Soothing macchiato palette with warm sapphire highlights",
+            ThemeKind::CatppuccinMacchiato => {
+                "Soothing macchiato palette with warm sapphire highlights"
+            }
             ThemeKind::GruvboxDark => "Retro groove warm dark palette with earthy tones",
             ThemeKind::Nord => "Arctic ice blue with serene frosty hues",
             ThemeKind::SolarizedDark => "Precision dark solarized teal and cyan contrasts",
@@ -64,7 +66,9 @@ impl ThemeKind {
         match clean.as_str() {
             "default" | "defaultpi" | "pi" | "github" | "githubdark" => Some(ThemeKind::DefaultPi),
             "tokyonight" | "tokyo" | "night" => Some(ThemeKind::TokyoNight),
-            "catppuccin" | "catppuccinmacchiato" | "macchiato" | "cat" => Some(ThemeKind::CatppuccinMacchiato),
+            "catppuccin" | "catppuccinmacchiato" | "macchiato" | "cat" => {
+                Some(ThemeKind::CatppuccinMacchiato)
+            }
             "gruvbox" | "gruvboxdark" | "groove" => Some(ThemeKind::GruvboxDark),
             "nord" | "arctic" | "frost" => Some(ThemeKind::Nord),
             "solarized" | "solarizeddark" | "solar" => Some(ThemeKind::SolarizedDark),
@@ -113,16 +117,16 @@ impl ThemePalette {
     pub fn default_pi() -> Self {
         Self {
             kind: ThemeKind::DefaultPi,
-            accent: Color::Rgb(47, 129, 247), // #2f81f7
-            bg: Color::Rgb(13, 17, 23),       // #0d1117
-            surface: Color::Rgb(22, 27, 34),  // #161b22
-            border: Color::Rgb(48, 54, 61),   // #30363d
-            text: Color::Rgb(230, 237, 243),  // #e6edf3
-            muted: Color::Rgb(125, 133, 144), // #7d8590
-            green: Color::Rgb(63, 185, 80),   // #3fb950
-            red: Color::Rgb(248, 81, 73),     // #f85149
-            yellow: Color::Rgb(210, 153, 34), // #d29922
-            cyan: Color::Rgb(56, 189, 248),   // #38bdf8
+            accent: Color::Rgb(47, 129, 247),   // #2f81f7
+            bg: Color::Rgb(13, 17, 23),         // #0d1117
+            surface: Color::Rgb(22, 27, 34),    // #161b22
+            border: Color::Rgb(48, 54, 61),     // #30363d
+            text: Color::Rgb(230, 237, 243),    // #e6edf3
+            muted: Color::Rgb(125, 133, 144),   // #7d8590
+            green: Color::Rgb(63, 185, 80),     // #3fb950
+            red: Color::Rgb(248, 81, 73),       // #f85149
+            yellow: Color::Rgb(210, 153, 34),   // #d29922
+            cyan: Color::Rgb(56, 189, 248),     // #38bdf8
             magenta: Color::Rgb(188, 140, 255), // #bc8cff
             logo_gradient: [
                 Color::Rgb(130, 190, 255),
@@ -138,16 +142,16 @@ impl ThemePalette {
     pub fn tokyo_night() -> Self {
         Self {
             kind: ThemeKind::TokyoNight,
-            accent: Color::Rgb(122, 162, 247), // #7aa2f7
-            bg: Color::Rgb(26, 27, 38),        // #1a1b26
-            surface: Color::Rgb(36, 40, 59),   // #24283b
-            border: Color::Rgb(65, 72, 104),   // #414868
-            text: Color::Rgb(192, 202, 245),   // #c0caf5
-            muted: Color::Rgb(86, 95, 137),    // #565f89
-            green: Color::Rgb(158, 206, 106),  // #9ece6a
-            red: Color::Rgb(247, 118, 142),    // #f7768e
-            yellow: Color::Rgb(224, 175, 104), // #e0af68
-            cyan: Color::Rgb(125, 207, 255),   // #7dcfff
+            accent: Color::Rgb(122, 162, 247),  // #7aa2f7
+            bg: Color::Rgb(26, 27, 38),         // #1a1b26
+            surface: Color::Rgb(36, 40, 59),    // #24283b
+            border: Color::Rgb(65, 72, 104),    // #414868
+            text: Color::Rgb(192, 202, 245),    // #c0caf5
+            muted: Color::Rgb(86, 95, 137),     // #565f89
+            green: Color::Rgb(158, 206, 106),   // #9ece6a
+            red: Color::Rgb(247, 118, 142),     // #f7768e
+            yellow: Color::Rgb(224, 175, 104),  // #e0af68
+            cyan: Color::Rgb(125, 207, 255),    // #7dcfff
             magenta: Color::Rgb(187, 154, 247), // #bb9af7
             logo_gradient: [
                 Color::Rgb(187, 154, 247),
@@ -163,16 +167,16 @@ impl ThemePalette {
     pub fn catppuccin_macchiato() -> Self {
         Self {
             kind: ThemeKind::CatppuccinMacchiato,
-            accent: Color::Rgb(138, 173, 244), // Sapphire #8aadf4
-            bg: Color::Rgb(36, 39, 58),        // Base #24273a
-            surface: Color::Rgb(49, 50, 68),   // Mantle #313244
-            border: Color::Rgb(91, 96, 120),   // Surface2 #5b6078
-            text: Color::Rgb(202, 211, 245),   // Text #cad3f5
-            muted: Color::Rgb(147, 154, 183),  // Subtext0 #939ab7
-            green: Color::Rgb(166, 218, 149),  // Green #a6da95
-            red: Color::Rgb(237, 135, 150),    // Red #ed8796
-            yellow: Color::Rgb(238, 212, 159), // Yellow #eed49f
-            cyan: Color::Rgb(145, 215, 227),   // Sky #91d7e3
+            accent: Color::Rgb(138, 173, 244),  // Sapphire #8aadf4
+            bg: Color::Rgb(36, 39, 58),         // Base #24273a
+            surface: Color::Rgb(49, 50, 68),    // Mantle #313244
+            border: Color::Rgb(91, 96, 120),    // Surface2 #5b6078
+            text: Color::Rgb(202, 211, 245),    // Text #cad3f5
+            muted: Color::Rgb(147, 154, 183),   // Subtext0 #939ab7
+            green: Color::Rgb(166, 218, 149),   // Green #a6da95
+            red: Color::Rgb(237, 135, 150),     // Red #ed8796
+            yellow: Color::Rgb(238, 212, 159),  // Yellow #eed49f
+            cyan: Color::Rgb(145, 215, 227),    // Sky #91d7e3
             magenta: Color::Rgb(245, 189, 230), // Pink #f5bde6
             logo_gradient: [
                 Color::Rgb(245, 189, 230),
@@ -188,16 +192,16 @@ impl ThemePalette {
     pub fn gruvbox_dark() -> Self {
         Self {
             kind: ThemeKind::GruvboxDark,
-            accent: Color::Rgb(254, 128, 25),  // Orange #fe8019
-            bg: Color::Rgb(40, 40, 40),        // #282828
-            surface: Color::Rgb(60, 56, 54),   // #3c3836
-            border: Color::Rgb(80, 73, 69),    // #504945
-            text: Color::Rgb(235, 219, 178),   // #ebdbb2
-            muted: Color::Rgb(168, 153, 132),  // #a89984
-            green: Color::Rgb(184, 187, 38),   // #b8bb26
-            red: Color::Rgb(251, 73, 52),      // #fb4934
-            yellow: Color::Rgb(250, 189, 47),  // #fabd2f
-            cyan: Color::Rgb(142, 192, 124),   // #8ec07c
+            accent: Color::Rgb(254, 128, 25),   // Orange #fe8019
+            bg: Color::Rgb(40, 40, 40),         // #282828
+            surface: Color::Rgb(60, 56, 54),    // #3c3836
+            border: Color::Rgb(80, 73, 69),     // #504945
+            text: Color::Rgb(235, 219, 178),    // #ebdbb2
+            muted: Color::Rgb(168, 153, 132),   // #a89984
+            green: Color::Rgb(184, 187, 38),    // #b8bb26
+            red: Color::Rgb(251, 73, 52),       // #fb4934
+            yellow: Color::Rgb(250, 189, 47),   // #fabd2f
+            cyan: Color::Rgb(142, 192, 124),    // #8ec07c
             magenta: Color::Rgb(211, 134, 155), // #d3869b
             logo_gradient: [
                 Color::Rgb(250, 189, 47),
@@ -263,16 +267,16 @@ impl ThemePalette {
     pub fn one_dark() -> Self {
         Self {
             kind: ThemeKind::OneDark,
-            accent: Color::Rgb(97, 175, 239),  // Blue #61afef
-            bg: Color::Rgb(40, 44, 52),        // #282c34
-            surface: Color::Rgb(33, 37, 43),   // #21252b
-            border: Color::Rgb(75, 82, 99),    // #4b5263
-            text: Color::Rgb(171, 178, 191),   // #abb2bf
-            muted: Color::Rgb(92, 99, 112),    // #5c6370
-            green: Color::Rgb(152, 195, 121),  // #98c379
-            red: Color::Rgb(224, 108, 117),    // #e06c75
-            yellow: Color::Rgb(229, 192, 123), // #e5c07b
-            cyan: Color::Rgb(86, 182, 194),    // #56b6c2
+            accent: Color::Rgb(97, 175, 239),   // Blue #61afef
+            bg: Color::Rgb(40, 44, 52),         // #282c34
+            surface: Color::Rgb(33, 37, 43),    // #21252b
+            border: Color::Rgb(75, 82, 99),     // #4b5263
+            text: Color::Rgb(171, 178, 191),    // #abb2bf
+            muted: Color::Rgb(92, 99, 112),     // #5c6370
+            green: Color::Rgb(152, 195, 121),   // #98c379
+            red: Color::Rgb(224, 108, 117),     // #e06c75
+            yellow: Color::Rgb(229, 192, 123),  // #e5c07b
+            cyan: Color::Rgb(86, 182, 194),     // #56b6c2
             magenta: Color::Rgb(198, 120, 221), // #c678dd
             logo_gradient: [
                 Color::Rgb(198, 120, 221),
@@ -298,7 +302,9 @@ impl ThemePalette {
     }
 
     pub fn title(&self) -> Style {
-        Style::default().fg(self.accent).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.accent)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn user_label(&self) -> Style {
@@ -306,15 +312,21 @@ impl ThemePalette {
     }
 
     pub fn assistant_label(&self) -> Style {
-        Style::default().fg(self.accent).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.accent)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn tool_label(&self) -> Style {
-        Style::default().fg(self.yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.yellow)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn system_label(&self) -> Style {
-        Style::default().fg(self.accent).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.accent)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn system_content(&self) -> Style {
@@ -338,7 +350,9 @@ impl ThemePalette {
     }
 
     pub fn highlight_keyword(&self) -> Style {
-        Style::default().fg(self.yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(self.yellow)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn highlight_type(&self) -> Style {
@@ -393,23 +407,33 @@ impl Theme {
     }
 
     pub fn title() -> Style {
-        Style::default().fg(Self::ACCENT).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Self::ACCENT)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn user_label() -> Style {
-        Style::default().fg(Self::MUTED).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Self::MUTED)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn assistant_label() -> Style {
-        Style::default().fg(Self::ACCENT).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Self::ACCENT)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn tool_label() -> Style {
-        Style::default().fg(Self::YELLOW).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Self::YELLOW)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn system_label() -> Style {
-        Style::default().fg(Self::ACCENT).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Self::ACCENT)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn system_content() -> Style {
@@ -433,7 +457,9 @@ impl Theme {
     }
 
     pub fn highlight_keyword() -> Style {
-        Style::default().fg(Self::YELLOW).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Self::YELLOW)
+            .add_modifier(Modifier::BOLD)
     }
 
     pub fn highlight_type() -> Style {
@@ -461,10 +487,16 @@ mod tests {
     fn test_theme_parsing() {
         assert_eq!(ThemeKind::parse("default"), Some(ThemeKind::DefaultPi));
         assert_eq!(ThemeKind::parse("tokyo-night"), Some(ThemeKind::TokyoNight));
-        assert_eq!(ThemeKind::parse("catppuccin"), Some(ThemeKind::CatppuccinMacchiato));
+        assert_eq!(
+            ThemeKind::parse("catppuccin"),
+            Some(ThemeKind::CatppuccinMacchiato)
+        );
         assert_eq!(ThemeKind::parse("gruvbox"), Some(ThemeKind::GruvboxDark));
         assert_eq!(ThemeKind::parse("nord"), Some(ThemeKind::Nord));
-        assert_eq!(ThemeKind::parse("solarized"), Some(ThemeKind::SolarizedDark));
+        assert_eq!(
+            ThemeKind::parse("solarized"),
+            Some(ThemeKind::SolarizedDark)
+        );
         assert_eq!(ThemeKind::parse("one-dark"), Some(ThemeKind::OneDark));
         assert_eq!(ThemeKind::parse("invalid-theme"), None);
     }

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -48,7 +48,9 @@ pub fn parse_duration(input: impl AsRef<str>) -> Result<Duration> {
         return Err(anyhow!("empty natural language interval"));
     }
 
-    let amount = parts[0].parse::<u64>().map_err(|_| anyhow!("invalid amount: {}", parts[0]))?;
+    let amount = parts[0]
+        .parse::<u64>()
+        .map_err(|_| anyhow!("invalid amount: {}", parts[0]))?;
 
     if amount == 0 {
         return Err(anyhow!("interval amount must be greater than 0"));
@@ -68,17 +70,26 @@ mod tests {
 
     #[test]
     fn parses_minutes() {
-        assert_eq!(parse_duration("every 15 mins").unwrap(), Duration::from_secs(15 * 60));
+        assert_eq!(
+            parse_duration("every 15 mins").unwrap(),
+            Duration::from_secs(15 * 60)
+        );
     }
 
     #[test]
     fn parses_hours() {
-        assert_eq!(parse_duration("every 2 hours").unwrap(), Duration::from_secs(2 * 60 * 60));
+        assert_eq!(
+            parse_duration("every 2 hours").unwrap(),
+            Duration::from_secs(2 * 60 * 60)
+        );
     }
 
     #[test]
     fn parses_days() {
-        assert_eq!(parse_duration("every 1 day").unwrap(), Duration::from_secs(24 * 60 * 60));
+        assert_eq!(
+            parse_duration("every 1 day").unwrap(),
+            Duration::from_secs(24 * 60 * 60)
+        );
     }
 
     #[test]

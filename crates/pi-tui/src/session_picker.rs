@@ -5,9 +5,7 @@ use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState};
 pub struct SessionPicker;
 
 impl SessionPicker {
-    pub fn render_widget<'a>(
-        items: &'a [String],
-    ) -> (List<'a>, Block<'a>) {
+    pub fn render_widget<'a>(items: &'a [String]) -> (List<'a>, Block<'a>) {
         let list_items: Vec<ListItem> = items
             .iter()
             .map(|label| ListItem::new(Span::styled(label, Style::default().fg(Color::Cyan))))

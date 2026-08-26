@@ -130,18 +130,26 @@ impl AuthResolver {
 
         // 1. Check environment variables
         let env_keys = match norm.as_str() {
-            "anthropic" | "claude" => vec!["ANTHROPIC_API_KEY", "ANTHROPIC_OAUTH_TOKEN", "CLAUDE_API_KEY"],
+            "anthropic" | "claude" => vec![
+                "ANTHROPIC_API_KEY",
+                "ANTHROPIC_OAUTH_TOKEN",
+                "CLAUDE_API_KEY",
+            ],
             "openai" | "gpt" => vec!["OPENAI_API_KEY"],
             "ant-ling" => vec!["ANT_LING_API_KEY"],
             "azure" | "azure-openai" => vec!["AZURE_OPENAI_API_KEY"],
             "deepseek" => vec!["DEEPSEEK_API_KEY"],
             "nvidia" | "nvidia-nim" => vec!["NVIDIA_API_KEY"],
             "gemini" | "google" => vec!["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEY"],
-            "vertex" | "vertex-ai" => vec!["GOOGLE_CLOUD_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"],
+            "vertex" | "vertex-ai" => {
+                vec!["GOOGLE_CLOUD_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"]
+            }
             "mistral" | "codestral" => vec!["MISTRAL_API_KEY", "CODESTRAL_API_KEY"],
             "groq" => vec!["GROQ_API_KEY"],
             "cerebras" => vec!["CEREBRAS_API_KEY"],
-            "cloudflare" | "cloudflare-ai-gateway" | "cloudflare-workers-ai" => vec!["CLOUDFLARE_API_KEY"],
+            "cloudflare" | "cloudflare-ai-gateway" | "cloudflare-workers-ai" => {
+                vec!["CLOUDFLARE_API_KEY"]
+            }
             "xai" => vec!["XAI_API_KEY"],
             "openrouter" => vec!["OPENROUTER_API_KEY"],
             "vercel" | "vercel-ai-gateway" => vec!["AI_GATEWAY_API_KEY"],
@@ -153,10 +161,19 @@ impl AuthResolver {
             "moonshot" | "kimi" => vec!["MOONSHOT_API_KEY", "KIMI_API_KEY"],
             "copilot" | "github-copilot" => vec!["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"],
             "bedrock" | "amazon-bedrock" => vec!["AWS_BEARER_TOKEN_BEDROCK", "AWS_ACCESS_KEY_ID"],
-            "opencode" | "zen" | "opencode-go" | "opencode-zen" => vec!["OPENCODE_API_KEY", "ZEN_API_KEY"],
+            "opencode" | "zen" | "opencode-go" | "opencode-zen" => {
+                vec!["OPENCODE_API_KEY", "ZEN_API_KEY"]
+            }
             "fireworks" => vec!["FIREWORKS_API_KEY"],
-            "qwen" | "qwen-token-plan" => vec!["QWEN_TOKEN_PLAN_API_KEY", "QWEN_TOKEN_PLAN_CN_API_KEY"],
-            "xiaomi" | "mimo" => vec!["XIAOMI_API_KEY", "XIAOMI_TOKEN_PLAN_CN_API_KEY", "XIAOMI_TOKEN_PLAN_AMS_API_KEY", "XIAOMI_TOKEN_PLAN_SGP_API_KEY"],
+            "qwen" | "qwen-token-plan" => {
+                vec!["QWEN_TOKEN_PLAN_API_KEY", "QWEN_TOKEN_PLAN_CN_API_KEY"]
+            }
+            "xiaomi" | "mimo" => vec![
+                "XIAOMI_API_KEY",
+                "XIAOMI_TOKEN_PLAN_CN_API_KEY",
+                "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
+                "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
+            ],
             "kilo" | "kilo-gateway" => vec!["KILO_API_KEY"],
             "agnes" | "agnes-gateway" => vec!["AGNES_API_KEY"],
             _ => vec![],
@@ -186,14 +203,24 @@ impl AuthResolver {
         {
             for alias in &aliases {
                 let direct_key = match alias.as_str() {
-                    "anthropic" | "claude" => json.get("anthropic_api_key").or_else(|| json.get("claude_api_key")),
-                    "openai" | "gpt" => json.get("openai_api_key").or_else(|| json.get("gpt_api_key")),
-                    "gemini" | "google" => json.get("gemini_api_key").or_else(|| json.get("google_api_key")),
+                    "anthropic" | "claude" => json
+                        .get("anthropic_api_key")
+                        .or_else(|| json.get("claude_api_key")),
+                    "openai" | "gpt" => json
+                        .get("openai_api_key")
+                        .or_else(|| json.get("gpt_api_key")),
+                    "gemini" | "google" => json
+                        .get("gemini_api_key")
+                        .or_else(|| json.get("google_api_key")),
                     "openrouter" => json.get("openrouter_api_key"),
                     "groq" => json.get("groq_api_key"),
                     "deepseek" => json.get("deepseek_api_key"),
-                    "mistral" | "codestral" => json.get("mistral_api_key").or_else(|| json.get("codestral_api_key")),
-                    "opencode" | "zen" | "opencode-zen" | "opencode-go" => json.get("opencode_api_key").or_else(|| json.get("zen_api_key")),
+                    "mistral" | "codestral" => json
+                        .get("mistral_api_key")
+                        .or_else(|| json.get("codestral_api_key")),
+                    "opencode" | "zen" | "opencode-zen" | "opencode-go" => json
+                        .get("opencode_api_key")
+                        .or_else(|| json.get("zen_api_key")),
                     "kilo" | "kilo-gateway" => json.get("kilo_api_key"),
                     "agnes" | "agnes-gateway" => json.get("agnes_api_key"),
                     _ => json.get(format!("{}_api_key", alias)),
@@ -298,7 +325,9 @@ impl AuthResolver {
             "azure" | "azure-openai" => "azure_api_key".to_string(),
             "nvidia" | "nvidia-nim" => "nvidia_api_key".to_string(),
             "bedrock" | "amazon-bedrock" => "bedrock_api_key".to_string(),
-            "cloudflare" | "cloudflare-ai-gateway" | "cloudflare-workers-ai" => "cloudflare_api_key".to_string(),
+            "cloudflare" | "cloudflare-ai-gateway" | "cloudflare-workers-ai" => {
+                "cloudflare_api_key".to_string()
+            }
             _ => format!("{}_api_key", norm),
         };
         if let Some(obj) = config_json.as_object_mut() {
@@ -364,44 +393,63 @@ impl AuthResolver {
 
         let res = match norm.as_str() {
             "anthropic" | "claude" => {
-                client.get("https://api.anthropic.com/v1/models")
+                client
+                    .get("https://api.anthropic.com/v1/models")
                     .header("x-api-key", trimmed_key)
                     .header("anthropic-version", "2023-06-01")
-                    .send().await
+                    .send()
+                    .await
             }
             "openai" | "gpt" => {
-                client.get("https://api.openai.com/v1/models")
+                client
+                    .get("https://api.openai.com/v1/models")
                     .bearer_auth(trimmed_key)
-                    .send().await
+                    .send()
+                    .await
             }
             "gemini" | "google" => {
-                client.get(format!("https://generativelanguage.googleapis.com/v1beta/models?key={}", trimmed_key))
-                    .send().await
+                client
+                    .get(format!(
+                        "https://generativelanguage.googleapis.com/v1beta/models?key={}",
+                        trimmed_key
+                    ))
+                    .send()
+                    .await
             }
             "deepseek" => {
-                client.get("https://api.deepseek.com/v1/models")
+                client
+                    .get("https://api.deepseek.com/v1/models")
                     .bearer_auth(trimmed_key)
-                    .send().await
+                    .send()
+                    .await
             }
             "groq" => {
-                client.get("https://api.groq.com/openai/v1/models")
+                client
+                    .get("https://api.groq.com/openai/v1/models")
                     .bearer_auth(trimmed_key)
-                    .send().await
+                    .send()
+                    .await
             }
             "openrouter" => {
-                client.get("https://openrouter.ai/api/v1/auth/key")
+                client
+                    .get("https://openrouter.ai/api/v1/auth/key")
                     .bearer_auth(trimmed_key)
-                    .send().await
+                    .send()
+                    .await
             }
             "mistral" | "codestral" => {
-                client.get("https://api.mistral.ai/v1/models")
+                client
+                    .get("https://api.mistral.ai/v1/models")
                     .bearer_auth(trimmed_key)
-                    .send().await
+                    .send()
+                    .await
             }
             "cerebras" => {
-                client.get("https://api.cerebras.ai/v1/models")
+                client
+                    .get("https://api.cerebras.ai/v1/models")
                     .bearer_auth(trimmed_key)
-                    .send().await
+                    .send()
+                    .await
             }
             _ => {
                 return Ok(true);

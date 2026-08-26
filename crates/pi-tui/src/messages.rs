@@ -24,7 +24,11 @@ pub struct MessageRenderer;
 impl MessageRenderer {
     /// Check if content is the Tau ASCII logo
     fn is_tau_logo(content: &str) -> bool {
-        content.contains("████████╗") || content.contains("██╔══██╗██║") || content.contains("╚══██╔══╝") || content.contains("╚██████╔╝") || content.contains("██████╔╝")
+        content.contains("████████╗")
+            || content.contains("██╔══██╗██║")
+            || content.contains("╚══██╔══╝")
+            || content.contains("╚██████╔╝")
+            || content.contains("██████╔╝")
     }
 
     /// Split model content into thinking/reasoning blocks and final answer content
@@ -35,7 +39,9 @@ impl MessageRenderer {
         let mut remaining = content;
 
         while !remaining.is_empty() {
-            let start_pos = remaining.find("<thinking>").or_else(|| remaining.find("<think>"));
+            let start_pos = remaining
+                .find("<thinking>")
+                .or_else(|| remaining.find("<think>"));
             if let Some(start_idx) = start_pos {
                 let safe_start = remaining.floor_char_boundary(start_idx);
                 clean_content.push_str(&remaining[..safe_start]);
@@ -49,7 +55,9 @@ impl MessageRenderer {
                 let after_tag_idx = (safe_start + tag_len).min(remaining.len());
                 let safe_after = remaining.floor_char_boundary(after_tag_idx);
                 let after_tag = &remaining[safe_after..];
-                let end_pos = after_tag.find("</thinking>").or_else(|| after_tag.find("</think>"));
+                let end_pos = after_tag
+                    .find("</thinking>")
+                    .or_else(|| after_tag.find("</think>"));
 
                 if let Some(end_idx) = end_pos {
                     let safe_end = after_tag.floor_char_boundary(end_idx);
@@ -82,11 +90,28 @@ impl MessageRenderer {
         (thinking_opt, clean_content.trim().to_string())
     }
 
-    pub fn render_message(role: &str, content: &str, expand_tools: bool, show_thinking: bool) -> Vec<Line<'static>> {
-        Self::render_message_styled(role, content, expand_tools, show_thinking, &ThemePalette::default_pi())
+    pub fn render_message(
+        role: &str,
+        content: &str,
+        expand_tools: bool,
+        show_thinking: bool,
+    ) -> Vec<Line<'static>> {
+        Self::render_message_styled(
+            role,
+            content,
+            expand_tools,
+            show_thinking,
+            &ThemePalette::default_pi(),
+        )
     }
 
-    pub fn render_message_styled(role: &str, content: &str, expand_tools: bool, show_thinking: bool, theme: &ThemePalette) -> Vec<Line<'static>> {
+    pub fn render_message_styled(
+        role: &str,
+        content: &str,
+        expand_tools: bool,
+        show_thinking: bool,
+        theme: &ThemePalette,
+    ) -> Vec<Line<'static>> {
         if role == "tool" && !expand_tools {
             return Vec::new();
         }
@@ -98,9 +123,7 @@ impl MessageRenderer {
                 lines.push(Line::from(vec![
                     Span::styled("────────────────────────────────────────────────────────────────────────────────", theme.code_border()),
                 ]));
-                lines.push(Line::from(vec![
-                    Span::styled("❯ You", theme.user_label()),
-                ]));
+                lines.push(Line::from(vec![Span::styled("❯ You", theme.user_label())]));
                 lines.push(Line::from(""));
                 lines.extend(MarkdownRenderer::render_styled(content, theme));
             }
@@ -110,17 +133,19 @@ impl MessageRenderer {
                 lines.push(Line::from(vec![
                     Span::styled("────────────────────────────────────────────────────────────────────────────────", theme.code_border()),
                 ]));
-                lines.push(Line::from(vec![
-                    Span::styled("❯ Pi", theme.assistant_label()),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    "❯ Pi",
+                    theme.assistant_label(),
+                )]));
                 lines.push(Line::from(""));
 
                 if let Some(thinking) = thinking_opt {
                     let token_est = (thinking.len() / 4).max(1);
                     if show_thinking {
-                        lines.push(Line::from(vec![
-                            Span::styled(format!("🧠 Reasoning ({} tokens)", token_est), theme.tool_label()),
-                        ]));
+                        lines.push(Line::from(vec![Span::styled(
+                            format!("🧠 Reasoning ({} tokens)", token_est),
+                            theme.tool_label(),
+                        )]));
                         for tline in thinking.lines() {
                             lines.push(Line::from(vec![
                                 Span::styled(" │ ", theme.code_border()),
@@ -129,9 +154,13 @@ impl MessageRenderer {
                         }
                         lines.push(Line::from(""));
                     } else {
-                        lines.push(Line::from(vec![
-                            Span::styled(format!("🧠 Reasoning ({} tokens hidden · Ctrl+T to expand)", token_est), theme.highlight_comment()),
-                        ]));
+                        lines.push(Line::from(vec![Span::styled(
+                            format!(
+                                "🧠 Reasoning ({} tokens hidden · Ctrl+T to expand)",
+                                token_est
+                            ),
+                            theme.highlight_comment(),
+                        )]));
                         lines.push(Line::from(""));
                     }
                 }
@@ -141,9 +170,10 @@ impl MessageRenderer {
                 }
             }
             "path" => {
-                lines.push(Line::from(vec![
-                    Span::styled(content.to_string(), theme.assistant_label()),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    content.to_string(),
+                    theme.assistant_label(),
+                )]));
             }
             "tool" => {
                 if content.starts_with("Executing tool [") {
@@ -157,7 +187,9 @@ impl MessageRenderer {
                         .nth(1)
                         .and_then(|s| s.split(')').next())
                         .unwrap_or("");
-                    lines.extend(ToolDisplay::render_executing_styled(tool_name, call_id, theme));
+                    lines.extend(ToolDisplay::render_executing_styled(
+                        tool_name, call_id, theme,
+                    ));
                 } else if content.starts_with("Tool [") {
                     let tool_name = content
                         .split('[')
@@ -165,7 +197,9 @@ impl MessageRenderer {
                         .and_then(|s| s.split(']').next())
                         .unwrap_or("tool");
                     let is_error = content.contains("error: true");
-                    lines.extend(ToolDisplay::render_completed_styled(tool_name, is_error, theme));
+                    lines.extend(ToolDisplay::render_completed_styled(
+                        tool_name, is_error, theme,
+                    ));
                 } else {
                     lines.push(Line::from(vec![
                         Span::styled("⚙ Tool Output: ", theme.tool_label()),
@@ -179,28 +213,35 @@ impl MessageRenderer {
                     // Render logo with gradient coloring per line
                     lines.push(Line::from(""));
                     for (i, logo_line) in TAU_LOGO_LINES.iter().enumerate() {
-                        lines.push(Line::from(vec![
-                            Span::styled(logo_line.to_string(), theme.logo_gradient(i)),
-                        ]));
+                        lines.push(Line::from(vec![Span::styled(
+                            logo_line.to_string(),
+                            theme.logo_gradient(i),
+                        )]));
                     }
-                } else if content.starts_with("[Context]") || content.starts_with("[Skills]") || content.starts_with("[Extensions]") {
+                } else if content.starts_with("[Context]")
+                    || content.starts_with("[Skills]")
+                    || content.starts_with("[Extensions]")
+                {
                     // Render bracketed section headers in accent blue, content in muted
                     for line in content.lines() {
                         if line.starts_with('[') {
-                            lines.push(Line::from(vec![
-                                Span::styled(line.to_string(), theme.system_label()),
-                            ]));
+                            lines.push(Line::from(vec![Span::styled(
+                                line.to_string(),
+                                theme.system_label(),
+                            )]));
                         } else {
-                            lines.push(Line::from(vec![
-                                Span::styled(format!("  {}", line.trim()), theme.system_content()),
-                            ]));
+                            lines.push(Line::from(vec![Span::styled(
+                                format!("  {}", line.trim()),
+                                theme.system_content(),
+                            )]));
                         }
                     }
                 } else {
                     // Regular system messages — accent for labels, muted for content
-                    lines.push(Line::from(vec![
-                        Span::styled(content.to_string(), theme.system_content()),
-                    ]));
+                    lines.push(Line::from(vec![Span::styled(
+                        content.to_string(),
+                        theme.system_content(),
+                    )]));
                 }
             }
         }
@@ -233,16 +274,35 @@ mod tests {
     #[test]
     fn test_render_message_styled_across_roles() {
         let theme = ThemePalette::tokyo_night();
-        let user_lines = MessageRenderer::render_message_styled("user", "Hello pi", true, true, &theme);
+        let user_lines =
+            MessageRenderer::render_message_styled("user", "Hello pi", true, true, &theme);
         assert!(!user_lines.is_empty());
 
-        let pi_lines = MessageRenderer::render_message_styled("pi", "<think>hmm</think>Result", true, true, &theme);
+        let pi_lines = MessageRenderer::render_message_styled(
+            "pi",
+            "<think>hmm</think>Result",
+            true,
+            true,
+            &theme,
+        );
         assert!(!pi_lines.is_empty());
 
-        let tool_lines = MessageRenderer::render_message_styled("tool", "Executing tool [read] (call_id: c1)", true, true, &theme);
+        let tool_lines = MessageRenderer::render_message_styled(
+            "tool",
+            "Executing tool [read] (call_id: c1)",
+            true,
+            true,
+            &theme,
+        );
         assert!(!tool_lines.is_empty());
 
-        let collapsed_tool = MessageRenderer::render_message_styled("tool", "Executing tool [read]", false, true, &theme);
+        let collapsed_tool = MessageRenderer::render_message_styled(
+            "tool",
+            "Executing tool [read]",
+            false,
+            true,
+            &theme,
+        );
         assert!(collapsed_tool.is_empty());
     }
 
@@ -250,8 +310,8 @@ mod tests {
     fn test_render_tau_logo_styled() {
         let theme = ThemePalette::tokyo_night();
         let logo_text = "  ████████╗ █████╗ ██╗   ██╗\n  ╚══██╔══╝██╔══██╗██║   ██║\n     ██║   ███████║██║   ██║\n     ██║   ██╔══██║██║   ██║\n     ██║   ██║  ██║╚██████╔╝\n     ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ";
-        let logo_lines = MessageRenderer::render_message_styled("system", logo_text, true, true, &theme);
+        let logo_lines =
+            MessageRenderer::render_message_styled("system", logo_text, true, true, &theme);
         assert!(!logo_lines.is_empty());
     }
 }
-

@@ -70,27 +70,79 @@ impl McpManager {
         let candidate_paths = vec![
             // Hermes, Jarvis, LM Studio, Jan
             ("LMStudio", home.join(".lmstudio").join("mcp.json")),
-            ("Jan", home.join("Library").join("Application Support").join("Jan").join("data").join("mcp_config.json")),
+            (
+                "Jan",
+                home.join("Library")
+                    .join("Application Support")
+                    .join("Jan")
+                    .join("data")
+                    .join("mcp_config.json"),
+            ),
             ("Hermes", home.join(".hermes").join("mcp.json")),
             ("Jarvis", home.join(".jarvis").join("mcp.json")),
             // Cursor & Windsurf
             ("Cursor", home.join(".cursor").join("mcp.json")),
-            ("Windsurf", home.join(".codeium").join("windsurf").join("mcp_config.json")),
+            (
+                "Windsurf",
+                home.join(".codeium")
+                    .join("windsurf")
+                    .join("mcp_config.json"),
+            ),
             // Claude Code & Desktop
             ("Claude", home.join(".claude.json")),
             ("Claude", home.join(".claude").join("mcp.json")),
-            ("Claude", home.join("Library").join("Application Support").join("Claude").join("claude_desktop_config.json")),
-            ("Claude", home.join(".config").join("claude").join("claude_desktop_config.json")),
+            (
+                "Claude",
+                home.join("Library")
+                    .join("Application Support")
+                    .join("Claude")
+                    .join("claude_desktop_config.json"),
+            ),
+            (
+                "Claude",
+                home.join(".config")
+                    .join("claude")
+                    .join("claude_desktop_config.json"),
+            ),
             // VS Code / Cloud Code
-            ("VSCode", home.join("Library").join("Application Support").join("Code").join("User").join("mcp.json")),
-            ("VSCode", home.join(".config").join("Code").join("User").join("mcp.json")),
+            (
+                "VSCode",
+                home.join("Library")
+                    .join("Application Support")
+                    .join("Code")
+                    .join("User")
+                    .join("mcp.json"),
+            ),
+            (
+                "VSCode",
+                home.join(".config")
+                    .join("Code")
+                    .join("User")
+                    .join("mcp.json"),
+            ),
             // Gemini / Antigravity / Cloud Code
-            ("Gemini", home.join(".gemini").join("config").join("mcp_config.json")),
-            ("Gemini", home.join(".gemini").join("antigravity-cli").join("mcp_config.json")),
-            ("Gemini", home.join(".gemini").join("antigravity-ide").join("mcp_config.json")),
+            (
+                "Gemini",
+                home.join(".gemini").join("config").join("mcp_config.json"),
+            ),
+            (
+                "Gemini",
+                home.join(".gemini")
+                    .join("antigravity-cli")
+                    .join("mcp_config.json"),
+            ),
+            (
+                "Gemini",
+                home.join(".gemini")
+                    .join("antigravity-ide")
+                    .join("mcp_config.json"),
+            ),
             // MCPorter / MC Proctor
             ("MCPorter", home.join(".mcporter").join("mcporter.json")),
-            ("MCPorter", home.join(".config").join("mcporter").join("mcporter.json")),
+            (
+                "MCPorter",
+                home.join(".config").join("mcporter").join("mcporter.json"),
+            ),
             // Pi Agent Global
             ("PiGlobal", home.join(".pi").join("agent").join("mcp.json")),
             ("PiGlobal", home.join(".pi").join("mcp.json")),
@@ -136,8 +188,14 @@ impl McpManager {
     }
 
     fn parse_server_entry(name: &str, val: &Value, source_agent: &str) -> Option<McpServerConfig> {
-        let command = val.get("command").and_then(|v| v.as_str()).map(ToString::to_string);
-        let url = val.get("url").and_then(|v| v.as_str()).map(ToString::to_string);
+        let command = val
+            .get("command")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
+        let url = val
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
 
         if command.is_none() && url.is_none() {
             return None;
@@ -161,7 +219,10 @@ impl McpManager {
             }
         }
 
-        let disabled = val.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+        let disabled = val
+            .get("disabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let transport = if url.is_some() {
             McpTransportType::Http
         } else {
@@ -195,12 +256,16 @@ impl McpManager {
                 Ok(tools) => {
                     for tool in tools {
                         let tool_name = tool.name.clone();
-                        self.tool_to_server_map.insert(tool_name.clone(), server_name.clone());
+                        self.tool_to_server_map
+                            .insert(tool_name.clone(), server_name.clone());
                         self.cached_tools.insert(tool_name, tool);
                     }
                 }
                 Err(err) => {
-                    eprintln!("Failed to fetch tools from MCP server [{}] ({}): {}", server_name, config.source_agent, err);
+                    eprintln!(
+                        "Failed to fetch tools from MCP server [{}] ({}): {}",
+                        server_name, config.source_agent, err
+                    );
                 }
             }
         }
@@ -237,11 +302,14 @@ impl McpManager {
             }
 
             if let Ok(json_val) = serde_json::from_str::<Value>(trimmed) {
-                let id_match = json_val.get("id").map(|id| {
-                    id == &serde_json::json!(expected_id)
-                        || id.as_str() == Some(&expected_id.to_string())
-                        || id.as_i64() == Some(expected_id)
-                }).unwrap_or(false);
+                let id_match = json_val
+                    .get("id")
+                    .map(|id| {
+                        id == &serde_json::json!(expected_id)
+                            || id.as_str() == Some(&expected_id.to_string())
+                            || id.as_i64() == Some(expected_id)
+                    })
+                    .unwrap_or(false);
 
                 if id_match {
                     return Ok(json_val);
@@ -249,7 +317,10 @@ impl McpManager {
             }
         }
 
-        Err(anyhow::anyhow!("Timed out waiting for MCP JSON-RPC response with id {}", expected_id))
+        Err(anyhow::anyhow!(
+            "Timed out waiting for MCP JSON-RPC response with id {}",
+            expected_id
+        ))
     }
 
     async fn fetch_stdio_tools(config: &McpServerConfig) -> Result<Vec<McpToolDefinition>> {
@@ -265,8 +336,14 @@ impl McpManager {
             .stderr(Stdio::null())
             .spawn()?;
 
-        let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("Failed to open stdin"))?;
-        let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("Failed to open stdout"))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to open stdin"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to open stdout"))?;
         let mut reader = BufReader::new(stdout);
 
         let fetch_res: Result<Vec<McpToolDefinition>> = async {
@@ -287,18 +364,23 @@ impl McpManager {
                     }
                 }
             });
-            stdin.write_all(format!("{}\n", serde_json::to_string(&init_req)?).as_bytes()).await?;
+            stdin
+                .write_all(format!("{}\n", serde_json::to_string(&init_req)?).as_bytes())
+                .await?;
             stdin.flush().await?;
 
             // Read initialize response matching id: 1
-            let _init_resp = Self::read_stdio_response(&mut reader, 1, Duration::from_secs(5)).await?;
+            let _init_resp =
+                Self::read_stdio_response(&mut reader, 1, Duration::from_secs(5)).await?;
 
             // Send notifications/initialized
             let notif = serde_json::json!({
                 "jsonrpc": "2.0",
                 "method": "notifications/initialized"
             });
-            stdin.write_all(format!("{}\n", serde_json::to_string(&notif)?).as_bytes()).await?;
+            stdin
+                .write_all(format!("{}\n", serde_json::to_string(&notif)?).as_bytes())
+                .await?;
             stdin.flush().await?;
 
             // 2. Send tools/list request
@@ -308,16 +390,27 @@ impl McpManager {
                 "method": "tools/list",
                 "params": {}
             });
-            stdin.write_all(format!("{}\n", serde_json::to_string(&list_req)?).as_bytes()).await?;
+            stdin
+                .write_all(format!("{}\n", serde_json::to_string(&list_req)?).as_bytes())
+                .await?;
             stdin.flush().await?;
 
-            let resp: Value = Self::read_stdio_response(&mut reader, 2, Duration::from_secs(5)).await?;
+            let resp: Value =
+                Self::read_stdio_response(&mut reader, 2, Duration::from_secs(5)).await?;
 
             let mut tools = Vec::new();
-            if let Some(tools_arr) = resp.get("result").and_then(|r| r.get("tools")).and_then(|t| t.as_array()) {
+            if let Some(tools_arr) = resp
+                .get("result")
+                .and_then(|r| r.get("tools"))
+                .and_then(|t| t.as_array())
+            {
                 for t in tools_arr {
                     if let Some(name) = t.get("name").and_then(|n| n.as_str()) {
-                        let desc = t.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string();
+                        let desc = t
+                            .get("description")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         let params = t.get("inputSchema").cloned().unwrap_or(serde_json::json!({
                             "type": "object",
                             "properties": {}
@@ -342,7 +435,8 @@ impl McpManager {
             }
 
             Ok(tools)
-        }.await;
+        }
+        .await;
 
         // Clean up child process unconditionally
         let _ = child.kill().await;
@@ -368,23 +462,36 @@ impl McpManager {
         });
 
         // 2026-07-28 MCP Header-based stateless routing
-        let res = client.post(url)
+        let res = client
+            .post(url)
             .header("Mcp-Method", "tools/list")
             .json(&list_payload)
             .send()
             .await?;
 
         if !res.status().is_success() {
-            return Err(anyhow::anyhow!("HTTP error {} from MCP server {}", res.status(), url));
+            return Err(anyhow::anyhow!(
+                "HTTP error {} from MCP server {}",
+                res.status(),
+                url
+            ));
         }
 
         let resp: Value = res.json().await?;
         let mut tools = Vec::new();
 
-        if let Some(tools_arr) = resp.get("result").and_then(|r| r.get("tools")).and_then(|t| t.as_array()) {
+        if let Some(tools_arr) = resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(|t| t.as_array())
+        {
             for t in tools_arr {
                 if let Some(name) = t.get("name").and_then(|n| n.as_str()) {
-                    let desc = t.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string();
+                    let desc = t
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let params = t.get("inputSchema").cloned().unwrap_or(serde_json::json!({
                         "type": "object",
                         "properties": {}
@@ -407,7 +514,10 @@ impl McpManager {
     /// Execute an MCP tool via JSON-RPC
     pub async fn execute_tool(&self, tool_name: &str, arguments: &Value) -> Result<String> {
         let Some(server_name) = self.tool_to_server_map.get(tool_name) else {
-            return Err(anyhow::anyhow!("MCP tool '{}' not registered to any server", tool_name));
+            return Err(anyhow::anyhow!(
+                "MCP tool '{}' not registered to any server",
+                tool_name
+            ));
         };
 
         let Some(config) = self.servers.get(server_name) else {
@@ -421,14 +531,25 @@ impl McpManager {
             .unwrap_or(tool_name);
 
         match config.transport {
-            McpTransportType::Stdio => Self::execute_stdio_tool(config, original_name, arguments).await,
-            McpTransportType::Http => Self::execute_http_tool(config, original_name, arguments).await,
+            McpTransportType::Stdio => {
+                Self::execute_stdio_tool(config, original_name, arguments).await
+            }
+            McpTransportType::Http => {
+                Self::execute_http_tool(config, original_name, arguments).await
+            }
         }
     }
 
-    async fn execute_stdio_tool(config: &McpServerConfig, original_name: &str, arguments: &Value) -> Result<String> {
+    async fn execute_stdio_tool(
+        config: &McpServerConfig,
+        original_name: &str,
+        arguments: &Value,
+    ) -> Result<String> {
         let Some(ref cmd) = config.command else {
-            return Err(anyhow::anyhow!("No command configured for MCP server {}", config.name));
+            return Err(anyhow::anyhow!(
+                "No command configured for MCP server {}",
+                config.name
+            ));
         };
 
         let mut child = Command::new(cmd)
@@ -439,8 +560,14 @@ impl McpManager {
             .stderr(Stdio::null())
             .spawn()?;
 
-        let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("Failed to open stdin"))?;
-        let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("Failed to open stdout"))?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to open stdin"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to open stdout"))?;
         let mut reader = BufReader::new(stdout);
 
         let exec_res: Result<String> = async {
@@ -455,13 +582,19 @@ impl McpManager {
                     "clientInfo": { "name": "pi-rs", "version": "0.1.0" }
                 }
             });
-            stdin.write_all(format!("{}\n", serde_json::to_string(&init_req)?).as_bytes()).await?;
+            stdin
+                .write_all(format!("{}\n", serde_json::to_string(&init_req)?).as_bytes())
+                .await?;
             stdin.flush().await?;
 
-            let _init_resp = Self::read_stdio_response(&mut reader, 1, Duration::from_secs(10)).await?;
+            let _init_resp =
+                Self::read_stdio_response(&mut reader, 1, Duration::from_secs(10)).await?;
 
-            let notif = serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
-            stdin.write_all(format!("{}\n", serde_json::to_string(&notif)?).as_bytes()).await?;
+            let notif =
+                serde_json::json!({ "jsonrpc": "2.0", "method": "notifications/initialized" });
+            stdin
+                .write_all(format!("{}\n", serde_json::to_string(&notif)?).as_bytes())
+                .await?;
             stdin.flush().await?;
 
             // 2. Call tool
@@ -474,18 +607,27 @@ impl McpManager {
                     "arguments": arguments
                 }
             });
-            stdin.write_all(format!("{}\n", serde_json::to_string(&call_req)?).as_bytes()).await?;
+            stdin
+                .write_all(format!("{}\n", serde_json::to_string(&call_req)?).as_bytes())
+                .await?;
             stdin.flush().await?;
 
-            let resp: Value = Self::read_stdio_response(&mut reader, 2, Duration::from_secs(120)).await?;
+            let resp: Value =
+                Self::read_stdio_response(&mut reader, 2, Duration::from_secs(120)).await?;
 
             if let Some(err) = resp.get("error") {
-                let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown MCP error");
+                let msg = err
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown MCP error");
                 return Err(anyhow::anyhow!("MCP tool error: {}", msg));
             }
 
             if let Some(result) = resp.get("result") {
-                let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+                let is_error = result
+                    .get("isError")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let mut out = String::new();
                 if let Some(content_arr) = result.get("content").and_then(|c| c.as_array()) {
                     for item in content_arr {
@@ -504,7 +646,8 @@ impl McpManager {
             }
 
             Ok("MCP tool executed with empty response.".to_string())
-        }.await;
+        }
+        .await;
 
         let _ = child.kill().await;
         let _ = child.wait().await;
@@ -512,9 +655,16 @@ impl McpManager {
         exec_res
     }
 
-    async fn execute_http_tool(config: &McpServerConfig, original_name: &str, arguments: &Value) -> Result<String> {
+    async fn execute_http_tool(
+        config: &McpServerConfig,
+        original_name: &str,
+        arguments: &Value,
+    ) -> Result<String> {
         let Some(ref url) = config.url else {
-            return Err(anyhow::anyhow!("No URL configured for HTTP MCP server {}", config.name));
+            return Err(anyhow::anyhow!(
+                "No URL configured for HTTP MCP server {}",
+                config.name
+            ));
         };
 
         let client = reqwest::Client::builder()
@@ -532,7 +682,8 @@ impl McpManager {
         });
 
         // 2026-07-28 Stateless Header-based routing
-        let res = client.post(url)
+        let res = client
+            .post(url)
             .header("Mcp-Method", "tools/call")
             .header("Mcp-Name", original_name)
             .json(&call_payload)
@@ -540,17 +691,27 @@ impl McpManager {
             .await?;
 
         if !res.status().is_success() {
-            return Err(anyhow::anyhow!("HTTP error {} from MCP server {}", res.status(), url));
+            return Err(anyhow::anyhow!(
+                "HTTP error {} from MCP server {}",
+                res.status(),
+                url
+            ));
         }
 
         let resp: Value = res.json().await?;
         if let Some(err) = resp.get("error") {
-            let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown MCP error");
+            let msg = err
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown MCP error");
             return Err(anyhow::anyhow!("MCP tool error: {}", msg));
         }
 
         if let Some(result) = resp.get("result") {
-            let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+            let is_error = result
+                .get("isError")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let mut out = String::new();
             if let Some(content_arr) = result.get("content").and_then(|c| c.as_array()) {
                 for item in content_arr {
@@ -617,12 +778,24 @@ mod tests {
         assert_eq!(manager.servers.len(), 2);
         assert!(manager.servers.contains_key("chrome-devtools"));
         assert_eq!(manager.servers["chrome-devtools"].source_agent, "TestAgent");
-        assert_eq!(manager.servers["chrome-devtools"].command.as_deref(), Some("npx"));
-        assert_eq!(manager.servers["chrome-devtools"].transport, McpTransportType::Stdio);
+        assert_eq!(
+            manager.servers["chrome-devtools"].command.as_deref(),
+            Some("npx")
+        );
+        assert_eq!(
+            manager.servers["chrome-devtools"].transport,
+            McpTransportType::Stdio
+        );
 
         assert!(manager.servers.contains_key("remote-db"));
-        assert_eq!(manager.servers["remote-db"].transport, McpTransportType::Http);
-        assert_eq!(manager.servers["remote-db"].url.as_deref(), Some("https://mcp.example.com/api"));
+        assert_eq!(
+            manager.servers["remote-db"].transport,
+            McpTransportType::Http
+        );
+        assert_eq!(
+            manager.servers["remote-db"].url.as_deref(),
+            Some("https://mcp.example.com/api")
+        );
     }
 
     #[test]
@@ -646,7 +819,10 @@ mod tests {
 
         assert_eq!(manager.servers.len(), 1);
         assert!(manager.servers.contains_key("microsoft/playwright-mcp"));
-        assert_eq!(manager.servers["microsoft/playwright-mcp"].source_agent, "VSCode");
+        assert_eq!(
+            manager.servers["microsoft/playwright-mcp"].source_agent,
+            "VSCode"
+        );
     }
 
     #[test]
@@ -696,7 +872,12 @@ mod tests {
         let defs = manager.get_tool_definitions();
         assert_eq!(defs.len(), 1);
         assert_eq!(defs[0]["name"], "github_create_issue");
-        assert!(defs[0]["description"].as_str().unwrap().contains("[MCP: github]"));
+        assert!(
+            defs[0]["description"]
+                .as_str()
+                .unwrap()
+                .contains("[MCP: github]")
+        );
         assert_eq!(defs[0]["parameters"]["required"][0], "title");
     }
 
@@ -721,7 +902,8 @@ mod tests {
                             { "type": "text", "text": "Database connection refused" }
                         ]
                     }
-                }).to_string();
+                })
+                .to_string();
                 let resp = format!(
                     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     body.len(),
@@ -742,7 +924,12 @@ mod tests {
             disabled: false,
         };
 
-        let res = McpManager::execute_http_tool(&config, "query", &serde_json::json!({ "sql": "SELECT 1" })).await;
+        let res = McpManager::execute_http_tool(
+            &config,
+            "query",
+            &serde_json::json!({ "sql": "SELECT 1" }),
+        )
+        .await;
         assert!(res.is_err());
         let err_msg = res.unwrap_err().to_string();
         assert!(err_msg.contains("MCP tool application error"));

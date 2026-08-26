@@ -36,17 +36,29 @@ impl TokenProfiler {
 
         // Factor estimation calibrated for modern code/chat models
         let base_estimate = if model_id.contains("deepseek") || model_id.contains("r1") {
-            (ascii_count as f64 / 3.6) + (non_ascii_count as f64 * 1.2) + (whitespace_count as f64 * 0.3)
+            (ascii_count as f64 / 3.6)
+                + (non_ascii_count as f64 * 1.2)
+                + (whitespace_count as f64 * 0.3)
         } else if model_id.contains("claude") || model_id.contains("anthropic") {
-            (ascii_count as f64 / 3.7) + (non_ascii_count as f64 * 1.3) + (whitespace_count as f64 * 0.3)
+            (ascii_count as f64 / 3.7)
+                + (non_ascii_count as f64 * 1.3)
+                + (whitespace_count as f64 * 0.3)
         } else if model_id.contains("gemini") || model_id.contains("google") {
-            (ascii_count as f64 / 3.8) + (non_ascii_count as f64 * 1.1) + (whitespace_count as f64 * 0.3)
+            (ascii_count as f64 / 3.8)
+                + (non_ascii_count as f64 * 1.1)
+                + (whitespace_count as f64 * 0.3)
         } else if model_id.contains("qwen") {
-            (ascii_count as f64 / 3.5) + (non_ascii_count as f64 * 1.1) + (whitespace_count as f64 * 0.3)
+            (ascii_count as f64 / 3.5)
+                + (non_ascii_count as f64 * 1.1)
+                + (whitespace_count as f64 * 0.3)
         } else if model_id.contains("mistral") || model_id.contains("codestral") {
-            (ascii_count as f64 / 3.9) + (non_ascii_count as f64 * 1.3) + (whitespace_count as f64 * 0.3)
+            (ascii_count as f64 / 3.9)
+                + (non_ascii_count as f64 * 1.3)
+                + (whitespace_count as f64 * 0.3)
         } else {
-            (ascii_count as f64 / 4.0) + (non_ascii_count as f64 * 1.4) + (whitespace_count as f64 * 0.3)
+            (ascii_count as f64 / 4.0)
+                + (non_ascii_count as f64 * 1.4)
+                + (whitespace_count as f64 * 0.3)
         };
 
         base_estimate.ceil() as usize
@@ -141,7 +153,10 @@ mod tests {
             conv.push_str("word ");
         }
         let budget_sub80 = TokenProfiler::compute_budget("", &conv, model, limit);
-        assert_eq!(budget_sub80.needs_compaction, budget_sub80.percent_used >= 80.0);
+        assert_eq!(
+            budget_sub80.needs_compaction,
+            budget_sub80.percent_used >= 80.0
+        );
 
         while TokenProfiler::estimate_tokens(&conv, model) < 80 {
             conv.push_str("word ");

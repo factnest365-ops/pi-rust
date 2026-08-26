@@ -1,8 +1,8 @@
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
-use ratatui::Frame;
 
 #[derive(Debug, Clone)]
 pub struct SlashCommand {
@@ -170,11 +170,23 @@ pub const KNOWN_PROVIDERS: &[&str] = &[
 pub const KNOWN_THEMES: &[(&str, &str)] = &[
     ("default", "Clean GitHub dark with vibrant blue accents"),
     ("tokyonight", "Deep indigo with neon pastel accents"),
-    ("catppuccin", "Soothing macchiato palette with warm sapphire"),
-    ("gruvbox", "Retro groove warm dark palette with earthy tones"),
+    (
+        "catppuccin",
+        "Soothing macchiato palette with warm sapphire",
+    ),
+    (
+        "gruvbox",
+        "Retro groove warm dark palette with earthy tones",
+    ),
     ("nord", "Arctic ice blue with serene frosty hues"),
-    ("solarized", "Precision dark solarized teal and cyan contrasts"),
-    ("onedark", "Iconic balanced dark aesthetic with vibrant syntax"),
+    (
+        "solarized",
+        "Precision dark solarized teal and cyan contrasts",
+    ),
+    (
+        "onedark",
+        "Iconic balanced dark aesthetic with vibrant syntax",
+    ),
 ];
 
 pub struct AutocompleteEngine;
@@ -249,7 +261,10 @@ impl AutocompleteEngine {
         let total = suggestions.len();
         let count = total.min(6);
         let height = (count as u16) + 2;
-        let width = input_rect.width.max(60).min(f.area().width.saturating_sub(input_rect.x));
+        let width = input_rect
+            .width
+            .max(60)
+            .min(f.area().width.saturating_sub(input_rect.x));
 
         // Position directly UNDER the prompt box (omp / oh-my-pi design)
         let y = if input_rect.y + input_rect.height + height <= f.area().height {
@@ -285,17 +300,47 @@ impl AutocompleteEngine {
 
                 if is_selected {
                     Line::from(vec![
-                        Span::styled(" › ", Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD)),
-                        Span::styled(format!("{:<12}", name), Style::default().fg(theme.accent).bg(theme.surface).add_modifier(Modifier::BOLD)),
-                        Span::styled(format!(" {:<20}", sig), Style::default().fg(theme.text).bg(theme.surface)),
-                        Span::styled(format!(" {}", desc), Style::default().fg(theme.muted).bg(theme.surface)),
+                        Span::styled(
+                            " › ",
+                            Style::default()
+                                .fg(theme.accent)
+                                .bg(theme.surface)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("{:<12}", name),
+                            Style::default()
+                                .fg(theme.accent)
+                                .bg(theme.surface)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!(" {:<20}", sig),
+                            Style::default().fg(theme.text).bg(theme.surface),
+                        ),
+                        Span::styled(
+                            format!(" {}", desc),
+                            Style::default().fg(theme.muted).bg(theme.surface),
+                        ),
                     ])
                 } else {
                     Line::from(vec![
                         Span::styled("   ", Style::default().fg(theme.muted).bg(theme.bg)),
-                        Span::styled(format!("{:<12}", name), Style::default().fg(theme.text).bg(theme.bg).add_modifier(Modifier::BOLD)),
-                        Span::styled(format!(" {:<20}", sig), Style::default().fg(theme.muted).bg(theme.bg)),
-                        Span::styled(format!(" {}", desc), Style::default().fg(theme.border).bg(theme.bg)),
+                        Span::styled(
+                            format!("{:<12}", name),
+                            Style::default()
+                                .fg(theme.text)
+                                .bg(theme.bg)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!(" {:<20}", sig),
+                            Style::default().fg(theme.muted).bg(theme.bg),
+                        ),
+                        Span::styled(
+                            format!(" {}", desc),
+                            Style::default().fg(theme.border).bg(theme.bg),
+                        ),
                     ])
                 }
             })
@@ -305,9 +350,14 @@ impl AutocompleteEngine {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(theme.border).bg(theme.bg))
-            .title(Span::styled(" Commands (Tab: Select · Up/Down: Navigate · Esc: Close) ", Style::default().fg(theme.accent)));
+            .title(Span::styled(
+                " Commands (Tab: Select · Up/Down: Navigate · Esc: Close) ",
+                Style::default().fg(theme.accent),
+            ));
 
-        let popup = Paragraph::new(lines).block(block).style(Style::default().bg(theme.bg));
+        let popup = Paragraph::new(lines)
+            .block(block)
+            .style(Style::default().bg(theme.bg));
         f.render_widget(popup, area);
     }
 }
@@ -369,11 +419,7 @@ pub mod tests {
 
         // Test start/end calculations for various selected indices
         for selected in 0..total {
-            let start = if selected >= 6 {
-                selected - 6 + 1
-            } else {
-                0
-            };
+            let start = if selected >= 6 { selected - 6 + 1 } else { 0 };
             let end = (start + 6).min(total);
             assert!(start <= selected);
             assert!(selected < end);
@@ -381,4 +427,3 @@ pub mod tests {
         }
     }
 }
-

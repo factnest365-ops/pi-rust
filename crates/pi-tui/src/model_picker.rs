@@ -128,7 +128,11 @@ impl ModelPickerWidget {
             palette.cyan
         } else if p.contains("groq") || p.contains("cerebras") {
             palette.yellow
-        } else if p.contains("ollama") || p.contains("llama") || p.contains("lmstudio") || p.contains("vllm") {
+        } else if p.contains("ollama")
+            || p.contains("llama")
+            || p.contains("lmstudio")
+            || p.contains("vllm")
+        {
             Color::Rgb(100, 220, 220)
         } else {
             palette.muted
@@ -159,7 +163,13 @@ impl ModelPickerWidget {
         active_model_id: &'a str,
         total_catalog_count: usize,
         palette: &'a ThemePalette,
-    ) -> (Paragraph<'a>, Paragraph<'a>, List<'a>, Paragraph<'a>, Block<'a>) {
+    ) -> (
+        Paragraph<'a>,
+        Paragraph<'a>,
+        List<'a>,
+        Paragraph<'a>,
+        Block<'a>,
+    ) {
         // 1. Search Bar Header
         let search_display = if query.is_empty() {
             "> Type to search models, providers, context...▏"
@@ -170,14 +180,25 @@ impl ModelPickerWidget {
         let search_style = if query.is_empty() {
             Style::default().fg(palette.muted)
         } else {
-            Style::default().fg(palette.text).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD)
         };
 
         let search_bar = Paragraph::new(Line::from(vec![
-            Span::styled(" 🔍 Filter: ", Style::default().fg(palette.yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " 🔍 Filter: ",
+                Style::default()
+                    .fg(palette.yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(search_display, search_style),
             Span::styled(
-                format!("  ({} of {} models available)", filtered_models.len(), total_catalog_count),
+                format!(
+                    "  ({} of {} models available)",
+                    filtered_models.len(),
+                    total_catalog_count
+                ),
                 Style::default().fg(palette.muted),
             ),
         ]))
@@ -188,9 +209,10 @@ impl ModelPickerWidget {
         );
 
         // 2. Category Tabs Bar
-        let mut tab_spans = vec![
-            Span::styled(" [Tab] View: ", Style::default().fg(palette.muted)),
-        ];
+        let mut tab_spans = vec![Span::styled(
+            " [Tab] View: ",
+            Style::default().fg(palette.muted),
+        )];
 
         for tab in ModelCategoryTab::ALL {
             let is_active = *tab == active_tab;
@@ -207,12 +229,11 @@ impl ModelPickerWidget {
             tab_spans.push(Span::raw(" "));
         }
 
-        let tabs_bar = Paragraph::new(Line::from(tab_spans))
-            .block(
-                Block::default()
-                    .borders(Borders::BOTTOM)
-                    .border_style(Style::default().fg(palette.border)),
-            );
+        let tabs_bar = Paragraph::new(Line::from(tab_spans)).block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(Style::default().fg(palette.border)),
+        );
 
         // 3. Left List of Models
         let mut items: Vec<ListItem> = filtered_models
@@ -222,7 +243,12 @@ impl ModelPickerWidget {
                 let p_color = Self::provider_color(&m.provider, palette);
 
                 let active_marker = if is_active_model {
-                    Span::styled(" ● ", Style::default().fg(palette.green).add_modifier(Modifier::BOLD))
+                    Span::styled(
+                        " ● ",
+                        Style::default()
+                            .fg(palette.green)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     Span::styled("   ", Style::default().fg(palette.muted))
                 };
@@ -252,7 +278,9 @@ impl ModelPickerWidget {
 
                 let model_id_span = Span::styled(
                     m.id.clone(),
-                    Style::default().fg(palette.text).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(palette.text)
+                        .add_modifier(Modifier::BOLD),
                 );
 
                 let inline_spec_span = Span::styled(
@@ -296,9 +324,24 @@ impl ModelPickerWidget {
 
         if items.is_empty() && !query.trim().is_empty() {
             let custom_spans = vec![
-                Span::styled(" ▶ ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                Span::styled("[Custom    ] ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                Span::styled(query.trim(), Style::default().fg(palette.text).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    " ▶ ",
+                    Style::default()
+                        .fg(palette.cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "[Custom    ] ",
+                    Style::default()
+                        .fg(palette.cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    query.trim(),
+                    Style::default()
+                        .fg(palette.text)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" [Auto-inferred]", Style::default().fg(palette.muted)),
                 Span::styled(" [⚡Custom]", Style::default().fg(palette.cyan)),
             ];
@@ -331,22 +374,42 @@ impl ModelPickerWidget {
             let auth_status_line = if is_local {
                 Line::from(vec![
                     Span::styled("  Auth Status:  ", Style::default().fg(palette.muted)),
-                    Span::styled("⚡ Zero-Config Local Daemon (offline, private)", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "⚡ Zero-Config Local Daemon (offline, private)",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ])
             } else if is_free {
                 Line::from(vec![
                     Span::styled("  Auth Status:  ", Style::default().fg(palette.muted)),
-                    Span::styled("🎁 Free Gateway (no API key required)", Style::default().fg(palette.green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "🎁 Free Gateway (no API key required)",
+                        Style::default()
+                            .fg(palette.green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ])
             } else if has_auth {
                 Line::from(vec![
                     Span::styled("  Auth Status:  ", Style::default().fg(palette.muted)),
-                    Span::styled("✓ Configured (in ~/.pi/config.json or ENV)", Style::default().fg(palette.green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "✓ Configured (in ~/.pi/config.json or ENV)",
+                        Style::default()
+                            .fg(palette.green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ])
             } else {
                 Line::from(vec![
                     Span::styled("  Auth Status:  ", Style::default().fg(palette.muted)),
-                    Span::styled("🔑 API Key Required (will prompt upon selection)", Style::default().fg(palette.yellow).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "🔑 API Key Required (will prompt upon selection)",
+                        Style::default()
+                            .fg(palette.yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ])
             };
 
@@ -366,28 +429,49 @@ impl ModelPickerWidget {
             };
 
             let active_badge = if is_active_model {
-                Span::styled(" [ACTIVE SESSION MODEL] ", Style::default().fg(Color::Black).bg(palette.green).add_modifier(Modifier::BOLD))
+                Span::styled(
+                    " [ACTIVE SESSION MODEL] ",
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(palette.green)
+                        .add_modifier(Modifier::BOLD),
+                )
             } else {
                 Span::raw("")
             };
 
             let card_lines = vec![
                 Line::from(vec![
-                    Span::styled(format!(" [{}] ", m.provider), Style::default().fg(p_color).add_modifier(Modifier::BOLD)),
-                    Span::styled(&m.id, Style::default().fg(palette.text).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!(" [{}] ", m.provider),
+                        Style::default().fg(p_color).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        &m.id,
+                        Style::default()
+                            .fg(palette.text)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     active_badge,
                 ]),
                 Line::from(""),
-                Line::from(vec![
-                    Span::styled("  Description:", Style::default().fg(palette.yellow).add_modifier(Modifier::BOLD)),
-                ]),
-                Line::from(vec![
-                    Span::styled(format!("  {}", m.description), Style::default().fg(palette.text)),
-                ]),
+                Line::from(vec![Span::styled(
+                    "  Description:",
+                    Style::default()
+                        .fg(palette.yellow)
+                        .add_modifier(Modifier::BOLD),
+                )]),
+                Line::from(vec![Span::styled(
+                    format!("  {}", m.description),
+                    Style::default().fg(palette.text),
+                )]),
                 Line::from(""),
-                Line::from(vec![
-                    Span::styled("  Technical Specifications:", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                ]),
+                Line::from(vec![Span::styled(
+                    "  Technical Specifications:",
+                    Style::default()
+                        .fg(palette.cyan)
+                        .add_modifier(Modifier::BOLD),
+                )]),
                 Line::from(vec![
                     Span::styled("  Context Window: ", Style::default().fg(palette.muted)),
                     Span::styled(ctx_tokens_str, Style::default().fg(palette.text)),
@@ -398,68 +482,139 @@ impl ModelPickerWidget {
                 ]),
                 Line::from(vec![
                     Span::styled("  Reasoning Mode: ", Style::default().fg(palette.muted)),
-                    Span::styled(reasoning_str, Style::default().fg(if m.supports_reasoning { palette.magenta } else { palette.muted })),
+                    Span::styled(
+                        reasoning_str,
+                        Style::default().fg(if m.supports_reasoning {
+                            palette.magenta
+                        } else {
+                            palette.muted
+                        }),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::styled("  Multimodal:     ", Style::default().fg(palette.muted)),
-                    Span::styled(vision_str, Style::default().fg(if m.supports_vision { palette.green } else { palette.muted })),
+                    Span::styled(
+                        vision_str,
+                        Style::default().fg(if m.supports_vision {
+                            palette.green
+                        } else {
+                            palette.muted
+                        }),
+                    ),
                 ]),
                 auth_status_line,
                 Line::from(""),
+                Line::from(vec![Span::styled(
+                    "  Quick Actions:",
+                    Style::default()
+                        .fg(palette.yellow)
+                        .add_modifier(Modifier::BOLD),
+                )]),
                 Line::from(vec![
-                    Span::styled("  Quick Actions:", Style::default().fg(palette.yellow).add_modifier(Modifier::BOLD)),
-                ]),
-                Line::from(vec![
-                    Span::styled("  ↵ Enter: ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                    Span::styled("Switch active model  |  ", Style::default().fg(palette.muted)),
-                    Span::styled("⇥ Tab: ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "  ↵ Enter: ",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        "Switch active model  |  ",
+                        Style::default().fg(palette.muted),
+                    ),
+                    Span::styled(
+                        "⇥ Tab: ",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled("Filter tabs", Style::default().fg(palette.muted)),
                 ]),
                 Line::from(vec![
-                    Span::styled("  Ctrl+R: ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "  Ctrl+R: ",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled("Live refresh  |  ", Style::default().fg(palette.muted)),
-                    Span::styled("Esc: ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Esc: ",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled("Close modal", Style::default().fg(palette.muted)),
                 ]),
             ];
 
-            Paragraph::new(card_lines)
-                .wrap(Wrap { trim: true })
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_type(BorderType::Rounded)
-                        .border_style(Style::default().fg(palette.border))
-                        .title(" Model Inspector & Specs ")
-                        .title_alignment(Alignment::Center),
-                )
+            Paragraph::new(card_lines).wrap(Wrap { trim: true }).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(palette.border))
+                    .title(" Model Inspector & Specs ")
+                    .title_alignment(Alignment::Center),
+            )
         } else if !query.trim().is_empty() {
-            let (cw, max_out) = pi_providers::ModelCatalogLoader::infer_model_limits(query.trim(), "");
-            let (prov, _) = query.trim().split_once('/').unwrap_or(("custom", query.trim()));
+            let (cw, max_out) =
+                pi_providers::ModelCatalogLoader::infer_model_limits(query.trim(), "");
+            let (prov, _) = query
+                .trim()
+                .split_once('/')
+                .unwrap_or(("custom", query.trim()));
             let custom_lines = vec![
                 Line::from(vec![
-                    Span::styled(format!(" [{}] ", prov), Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                    Span::styled(query.trim(), Style::default().fg(palette.text).add_modifier(Modifier::BOLD)),
-                    Span::styled(" [CUSTOM MODEL INPUT] ", Style::default().fg(Color::Black).bg(palette.cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!(" [{}] ", prov),
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        query.trim(),
+                        Style::default()
+                            .fg(palette.text)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        " [CUSTOM MODEL INPUT] ",
+                        Style::default()
+                            .fg(Color::Black)
+                            .bg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]),
                 Line::from(""),
-                Line::from(vec![
-                    Span::styled("  Custom Model Direct Activation:", Style::default().fg(palette.yellow).add_modifier(Modifier::BOLD)),
-                ]),
-                Line::from(vec![
-                    Span::styled(format!("  Press Enter to activate '{}' immediately.", query.trim()), Style::default().fg(palette.text)),
-                ]),
+                Line::from(vec![Span::styled(
+                    "  Custom Model Direct Activation:",
+                    Style::default()
+                        .fg(palette.yellow)
+                        .add_modifier(Modifier::BOLD),
+                )]),
+                Line::from(vec![Span::styled(
+                    format!("  Press Enter to activate '{}' immediately.", query.trim()),
+                    Style::default().fg(palette.text),
+                )]),
                 Line::from(""),
-                Line::from(vec![
-                    Span::styled("  Inferred Specifications:", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                ]),
+                Line::from(vec![Span::styled(
+                    "  Inferred Specifications:",
+                    Style::default()
+                        .fg(palette.cyan)
+                        .add_modifier(Modifier::BOLD),
+                )]),
                 Line::from(vec![
                     Span::styled("  Context Window: ", Style::default().fg(palette.muted)),
-                    Span::styled(format!("{} tokens", Self::format_number(cw)), Style::default().fg(palette.text)),
+                    Span::styled(
+                        format!("{} tokens", Self::format_number(cw)),
+                        Style::default().fg(palette.text),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::styled("  Max Output:     ", Style::default().fg(palette.muted)),
-                    Span::styled(format!("{} tokens", Self::format_number(max_out)), Style::default().fg(palette.text)),
+                    Span::styled(
+                        format!("{} tokens", Self::format_number(max_out)),
+                        Style::default().fg(palette.text),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::styled("  Provider:       ", Style::default().fg(palette.muted)),
@@ -467,11 +622,24 @@ impl ModelPickerWidget {
                 ]),
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled("  ↵ Enter: ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                    Span::styled("Connect and activate this custom model", Style::default().fg(palette.text)),
+                    Span::styled(
+                        "  ↵ Enter: ",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        "Connect and activate this custom model",
+                        Style::default().fg(palette.text),
+                    ),
                 ]),
                 Line::from(vec![
-                    Span::styled("  Esc: ", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "  Esc: ",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled("Close modal", Style::default().fg(palette.muted)),
                 ]),
             ];
@@ -487,24 +655,46 @@ impl ModelPickerWidget {
         } else {
             let empty_text = vec![
                 Line::from(""),
-                Line::from(vec![
-                    Span::styled("  No models matching current filter.", Style::default().fg(palette.muted)),
-                ]),
+                Line::from(vec![Span::styled(
+                    "  No models matching current filter.",
+                    Style::default().fg(palette.muted),
+                )]),
                 Line::from(""),
                 Line::from(vec![
                     Span::styled("  • Press ", Style::default().fg(palette.muted)),
-                    Span::styled("Tab", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                    Span::styled(" to switch category view (All, Reasoning, Local, Free)", Style::default().fg(palette.muted)),
+                    Span::styled(
+                        "Tab",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        " to switch category view (All, Reasoning, Local, Free)",
+                        Style::default().fg(palette.muted),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::styled("  • Press ", Style::default().fg(palette.muted)),
-                    Span::styled("Ctrl+C", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "Ctrl+C",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(" to clear search query", Style::default().fg(palette.muted)),
                 ]),
                 Line::from(vec![
                     Span::styled("  • Press ", Style::default().fg(palette.muted)),
-                    Span::styled("Ctrl+R", Style::default().fg(palette.cyan).add_modifier(Modifier::BOLD)),
-                    Span::styled(" to scan for online & local daemon updates", Style::default().fg(palette.muted)),
+                    Span::styled(
+                        "Ctrl+R",
+                        Style::default()
+                            .fg(palette.cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        " to scan for online & local daemon updates",
+                        Style::default().fg(palette.muted),
+                    ),
                 ]),
             ];
 
@@ -551,7 +741,12 @@ impl ModelPickerWidget {
         state.select(Some(next));
     }
 
-    pub fn handle_page_navigation(state: &mut ListState, total_items: usize, up: bool, page_size: usize) {
+    pub fn handle_page_navigation(
+        state: &mut ListState,
+        total_items: usize,
+        up: bool,
+        page_size: usize,
+    ) {
         if total_items == 0 {
             state.select(None);
             return;
@@ -562,7 +757,11 @@ impl ModelPickerWidget {
             current.saturating_sub(page_size)
         } else {
             let target = current + page_size;
-            if target < total_items { target } else { total_items - 1 }
+            if target < total_items {
+                target
+            } else {
+                total_items - 1
+            }
         };
 
         state.select(Some(next));

@@ -48,21 +48,26 @@ impl MermaidRenderer {
                     let left_part = parts[0].trim();
                     let right_raw = parts[1].trim();
 
-                    let (edge_label, right_part) = if let Some(stripped) = right_raw.strip_prefix('|') {
-                        if let Some(second_pipe) = stripped.find('|') {
-                            let safe_pipe = stripped.floor_char_boundary(second_pipe);
-                            let lbl = stripped[..safe_pipe].trim().to_string();
-                            let safe_rest = stripped.floor_char_boundary((safe_pipe + 1).min(stripped.len()));
-                            let rest = stripped[safe_rest..].trim();
-                            (Some(lbl), rest)
+                    let (edge_label, right_part) =
+                        if let Some(stripped) = right_raw.strip_prefix('|') {
+                            if let Some(second_pipe) = stripped.find('|') {
+                                let safe_pipe = stripped.floor_char_boundary(second_pipe);
+                                let lbl = stripped[..safe_pipe].trim().to_string();
+                                let safe_rest = stripped
+                                    .floor_char_boundary((safe_pipe + 1).min(stripped.len()));
+                                let rest = stripped[safe_rest..].trim();
+                                (Some(lbl), rest)
+                            } else {
+                                (None, right_raw)
+                            }
+                        } else if parts.len() > 2 {
+                            (
+                                Some(parts[1].trim().trim_matches('|').to_string()),
+                                parts[2].trim(),
+                            )
                         } else {
                             (None, right_raw)
-                        }
-                    } else if parts.len() > 2 {
-                        (Some(parts[1].trim().trim_matches('|').to_string()), parts[2].trim())
-                    } else {
-                        (None, right_raw)
-                    };
+                        };
 
                     let (left_id, left_label) = Self::parse_node(left_part);
                     let (right_id, right_label) = Self::parse_node(right_part);
@@ -105,18 +110,32 @@ impl MermaidRenderer {
         }
 
         if node_order.is_empty() {
-            return vec![Line::from(Span::styled("  [Empty Diagram]", Style::default().fg(Color::DarkGray)))];
+            return vec![Line::from(Span::styled(
+                "  [Empty Diagram]",
+                Style::default().fg(Color::DarkGray),
+            ))];
         }
 
         lines.push(Line::from(vec![
-            Span::styled("┌─── [Mermaid Flowchart] ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::styled("──────────────────────────────────┐", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "┌─── [Mermaid Flowchart] ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "──────────────────────────────────┐",
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
         lines.push(Line::from(""));
 
         // Render sequential nodes with boxes and connecting arrows
         for (i, node_id) in node_order.iter().enumerate() {
-            let label = nodes.get(node_id).cloned().unwrap_or_else(|| node_id.clone());
+            let label = nodes
+                .get(node_id)
+                .cloned()
+                .unwrap_or_else(|| node_id.clone());
             let label_len = label.chars().count();
             let box_width = label_len.max(12) + 4;
 
@@ -125,13 +144,29 @@ impl MermaidRenderer {
             let padding_right = box_width - label_len - padding_left;
             let bot_border = format!("  └{}┘", "─".repeat(box_width));
 
-            lines.push(Line::from(Span::styled(top_border, Style::default().fg(Color::Cyan))));
+            lines.push(Line::from(Span::styled(
+                top_border,
+                Style::default().fg(Color::Cyan),
+            )));
             lines.push(Line::from(vec![
                 Span::styled("  │", Style::default().fg(Color::Cyan)),
-                Span::styled(format!("{}{}{}", " ".repeat(padding_left), label, " ".repeat(padding_right)), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!(
+                        "{}{}{}",
+                        " ".repeat(padding_left),
+                        label,
+                        " ".repeat(padding_right)
+                    ),
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("│", Style::default().fg(Color::Cyan)),
             ]));
-            lines.push(Line::from(Span::styled(bot_border, Style::default().fg(Color::Cyan))));
+            lines.push(Line::from(Span::styled(
+                bot_border,
+                Style::default().fg(Color::Cyan),
+            )));
 
             // Draw outgoing arrow if there's a subsequent connection
             if i + 1 < node_order.len() {
@@ -142,22 +177,36 @@ impl MermaidRenderer {
                     .and_then(|(_, _, lbl)| lbl.clone());
 
                 let center_pad = box_width / 2 + 2;
-                lines.push(Line::from(Span::styled(format!("{}│", " ".repeat(center_pad)), Style::default().fg(Color::Yellow))));
+                lines.push(Line::from(Span::styled(
+                    format!("{}│", " ".repeat(center_pad)),
+                    Style::default().fg(Color::Yellow),
+                )));
 
                 if let Some(lbl) = edge_label_opt {
                     lines.push(Line::from(vec![
-                        Span::styled(format!("{}│ (", " ".repeat(center_pad)), Style::default().fg(Color::Yellow)),
+                        Span::styled(
+                            format!("{}│ (", " ".repeat(center_pad)),
+                            Style::default().fg(Color::Yellow),
+                        ),
                         Span::styled(lbl, Style::default().fg(Color::Green)),
                         Span::styled(")", Style::default().fg(Color::Yellow)),
                     ]));
                 }
 
-                lines.push(Line::from(Span::styled(format!("{}▼", " ".repeat(center_pad)), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))));
+                lines.push(Line::from(Span::styled(
+                    format!("{}▼", " ".repeat(center_pad)),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )));
             }
         }
 
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("└─────────────────────────────────────────────────────┘", Style::default().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            "└─────────────────────────────────────────────────────┘",
+            Style::default().fg(Color::DarkGray),
+        )));
 
         lines
     }
@@ -180,7 +229,13 @@ impl MermaidRenderer {
                 }
             } else if line.contains("->>") || line.contains("-->>") || line.contains("->") {
                 let is_reply = line.contains("-->>");
-                let arrow = if is_reply { "-->>" } else if line.contains("->>") { "->>" } else { "->" };
+                let arrow = if is_reply {
+                    "-->>"
+                } else if line.contains("->>") {
+                    "->>"
+                } else {
+                    "->"
+                };
                 let parts: Vec<&str> = line.split(arrow).collect();
                 if parts.len() == 2 {
                     let from = parts[0].trim();
@@ -207,8 +262,16 @@ impl MermaidRenderer {
         }
 
         lines.push(Line::from(vec![
-            Span::styled("┌─── [Mermaid Sequence Diagram] ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-            Span::styled("────────────────────────────┐", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "┌─── [Mermaid Sequence Diagram] ",
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "────────────────────────────┐",
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
         lines.push(Line::from(""));
 
@@ -216,32 +279,61 @@ impl MermaidRenderer {
         let mut header_spans = Vec::new();
         header_spans.push(Span::raw("  "));
         for p in &participants {
-            header_spans.push(Span::styled(format!(" ┌─── {} ───┐ ", p), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
+            header_spans.push(Span::styled(
+                format!(" ┌─── {} ───┐ ", p),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ));
             header_spans.push(Span::raw("     "));
         }
         lines.push(Line::from(header_spans));
 
         // Lifelines and messages
         for (_from, _to, msg, is_reply) in messages {
-            lines.push(Line::from(Span::styled("       │                     │", Style::default().fg(Color::DarkGray))));
+            lines.push(Line::from(Span::styled(
+                "       │                     │",
+                Style::default().fg(Color::DarkGray),
+            )));
 
             let arrow_line = if is_reply {
-                format!("  ◀─────── {} ─────────", if msg.is_empty() { "Response" } else { &msg })
+                format!(
+                    "  ◀─────── {} ─────────",
+                    if msg.is_empty() { "Response" } else { &msg }
+                )
             } else {
-                format!("  ──────── {} ─────────▶", if msg.is_empty() { "Request" } else { &msg })
+                format!(
+                    "  ──────── {} ─────────▶",
+                    if msg.is_empty() { "Request" } else { &msg }
+                )
             };
 
             lines.push(Line::from(vec![
                 Span::styled("       │", Style::default().fg(Color::DarkGray)),
-                Span::styled(arrow_line, Style::default().fg(if is_reply { Color::Green } else { Color::Yellow }).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    arrow_line,
+                    Style::default()
+                        .fg(if is_reply {
+                            Color::Green
+                        } else {
+                            Color::Yellow
+                        })
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("│", Style::default().fg(Color::DarkGray)),
             ]));
 
-            lines.push(Line::from(Span::styled("       │                     │", Style::default().fg(Color::DarkGray))));
+            lines.push(Line::from(Span::styled(
+                "       │                     │",
+                Style::default().fg(Color::DarkGray),
+            )));
         }
 
         lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled("└─────────────────────────────────────────────────────┘", Style::default().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            "└─────────────────────────────────────────────────────┘",
+            Style::default().fg(Color::DarkGray),
+        )));
 
         lines
     }
@@ -249,8 +341,16 @@ impl MermaidRenderer {
     fn render_generic_diagram(code: &str) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         lines.push(Line::from(vec![
-            Span::styled("┌─── [Mermaid Diagram] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-            Span::styled("──────────────────────────────────────┐", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "┌─── [Mermaid Diagram] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "──────────────────────────────────────┐",
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
 
         for line in code.lines() {
@@ -260,7 +360,10 @@ impl MermaidRenderer {
             ]));
         }
 
-        lines.push(Line::from(Span::styled("└─────────────────────────────────────────────────────┘", Style::default().fg(Color::DarkGray))));
+        lines.push(Line::from(Span::styled(
+            "└─────────────────────────────────────────────────────┘",
+            Style::default().fg(Color::DarkGray),
+        )));
         lines
     }
 
@@ -270,19 +373,28 @@ impl MermaidRenderer {
             let safe_pos = trimmed.floor_char_boundary(pos);
             let id = trimmed[..safe_pos].trim().to_string();
             let safe_rest = trimmed.floor_char_boundary((safe_pos + 1).min(trimmed.len()));
-            let label = trimmed[safe_rest..].trim_end_matches(']').trim_matches('"').to_string();
+            let label = trimmed[safe_rest..]
+                .trim_end_matches(']')
+                .trim_matches('"')
+                .to_string();
             (id, label)
         } else if let Some(pos) = trimmed.find('(') {
             let safe_pos = trimmed.floor_char_boundary(pos);
             let id = trimmed[..safe_pos].trim().to_string();
             let safe_rest = trimmed.floor_char_boundary((safe_pos + 1).min(trimmed.len()));
-            let label = trimmed[safe_rest..].trim_end_matches(')').trim_matches('"').to_string();
+            let label = trimmed[safe_rest..]
+                .trim_end_matches(')')
+                .trim_matches('"')
+                .to_string();
             (id, label)
         } else if let Some(pos) = trimmed.find('{') {
             let safe_pos = trimmed.floor_char_boundary(pos);
             let id = trimmed[..safe_pos].trim().to_string();
             let safe_rest = trimmed.floor_char_boundary((safe_pos + 1).min(trimmed.len()));
-            let label = trimmed[safe_rest..].trim_end_matches('}').trim_matches('"').to_string();
+            let label = trimmed[safe_rest..]
+                .trim_end_matches('}')
+                .trim_matches('"')
+                .to_string();
             (id, label)
         } else {
             (trimmed.to_string(), trimmed.to_string())
@@ -304,7 +416,11 @@ graph TD
 "#;
         let rendered = MermaidRenderer::render(code);
         assert!(!rendered.is_empty());
-        let full_text: String = rendered.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        let full_text: String = rendered
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(full_text.contains("Client Request"));
         assert!(full_text.contains("API Gateway"));
         assert!(full_text.contains("Database"));
@@ -321,7 +437,11 @@ sequenceDiagram
 "#;
         let rendered = MermaidRenderer::render(code);
         assert!(!rendered.is_empty());
-        let full_text: String = rendered.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        let full_text: String = rendered
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(full_text.contains("User"));
         assert!(full_text.contains("Agent"));
         assert!(full_text.contains("Send task prompt"));
@@ -347,8 +467,11 @@ pie title Pets
 "#;
         let rendered = MermaidRenderer::render(code);
         assert!(!rendered.is_empty());
-        let full_text: String = rendered.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        let full_text: String = rendered
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
         assert!(full_text.contains("Pets"));
     }
 }
-

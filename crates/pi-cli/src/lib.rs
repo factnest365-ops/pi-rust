@@ -109,7 +109,10 @@ pub async fn run_cli() -> Result<()> {
         println!("\n=== Tau Background Daemon (taud) Status ===");
         println!("Version:              {}", status.version);
         println!("Uptime:               {}s", status.uptime_secs);
-        println!("Active Specialist:    {}", status.active_specialist.display_name());
+        println!(
+            "Active Specialist:    {}",
+            status.active_specialist.display_name()
+        );
         println!("Memories in Vault:    {}", status.memory_count);
         println!("Reversible Actions:   {}", status.reversible_actions);
         println!("\nSpecialists:");
@@ -156,7 +159,10 @@ pub async fn run_cli() -> Result<()> {
         }
         let models = pi_providers::ModelCatalogLoader::fetch_all_models(cli.refresh_models).await;
         println!("\n=== Available Models ({} Discovered) ===", models.len());
-        println!("{:<32} {:<18} {:<10} {:<12} DESCRIPTION", "MODEL ID", "PROVIDER", "CONTEXT", "CAPABILITIES");
+        println!(
+            "{:<32} {:<18} {:<10} {:<12} DESCRIPTION",
+            "MODEL ID", "PROVIDER", "CONTEXT", "CAPABILITIES"
+        );
         println!("{}", "-".repeat(105));
         for m in &models {
             let ctx = if m.context_window >= 1_000_000 {
@@ -171,8 +177,15 @@ pub async fn run_cli() -> Result<()> {
             if m.supports_vision {
                 caps.push("Vision");
             }
-            let caps_str = if caps.is_empty() { "Standard".to_string() } else { caps.join("+") };
-            println!("{:<32} {:<18} {:<10} {:<12} {}", m.id, m.provider, ctx, caps_str, m.description);
+            let caps_str = if caps.is_empty() {
+                "Standard".to_string()
+            } else {
+                caps.join("+")
+            };
+            println!(
+                "{:<32} {:<18} {:<10} {:<12} {}",
+                m.id, m.provider, ctx, caps_str, m.description
+            );
         }
         println!("\nUse in interactive TUI via: tau --model <model-id> or hotkey Ctrl+L\n");
         return Ok(());
@@ -181,7 +194,10 @@ pub async fn run_cli() -> Result<()> {
     if let Some(opt_prov) = cli.login_provider {
         let provider = opt_prov.unwrap_or_else(|| "anthropic".to_string());
         println!("\n=== Tau Authentication & Login ===");
-        println!("{}", pi_providers::AuthResolver::get_login_instructions(&provider));
+        println!(
+            "{}",
+            pi_providers::AuthResolver::get_login_instructions(&provider)
+        );
         let prompt = format!("\nEnter API Key for [{}] (press Enter to skip): ", provider);
         let trimmed = onboarding::read_masked_key(&prompt)?;
         if !trimmed.is_empty() {
@@ -194,7 +210,10 @@ pub async fn run_cli() -> Result<()> {
                 Err(e) => println!("\x1b[33m⚠ Note: {} (saved anyway)\x1b[0m", e),
             }
             pi_providers::AuthResolver::save_key(&provider, &trimmed)?;
-            println!("✓ Successfully saved credentials for [{}] to ~/.pi/config.json & ~/.pi/agent/auth.json\n", provider);
+            println!(
+                "✓ Successfully saved credentials for [{}] to ~/.pi/config.json & ~/.pi/agent/auth.json\n",
+                provider
+            );
         } else {
             println!("No key entered. Login skipped.\n");
         }
@@ -233,9 +252,12 @@ pub async fn run_cli() -> Result<()> {
 
     // Default: Check first run without arguments in an interactive terminal and prompt onboarding
     use std::io::IsTerminal;
-    if std::env::args().len() == 1 && std::io::stdin().is_terminal() && !onboarding::config_exists() {
+    if std::env::args().len() == 1 && std::io::stdin().is_terminal() && !onboarding::config_exists()
+    {
         onboarding::render_welcome_banner();
-        print!("Welcome to τ Tau! No configuration found at ~/.pi/config.json.\nWould you like to run the first-run onboarding wizard now? [Y/n]: ");
+        print!(
+            "Welcome to τ Tau! No configuration found at ~/.pi/config.json.\nWould you like to run the first-run onboarding wizard now? [Y/n]: "
+        );
         use std::io::Write;
         std::io::stdout().flush()?;
         let mut answer = String::new();
@@ -264,10 +286,17 @@ pub async fn replay_session_from_path(replay_path: &str, delay_ms: u64) -> Resul
     let tree = pi_session::SessionTree::load_from_jsonl(path)?;
     let trajectory = tree.export_trajectory(None);
 
-    println!("\n╔════════════════════════════════════════════════════════════════════════════════╗");
+    println!(
+        "\n╔════════════════════════════════════════════════════════════════════════════════╗"
+    );
     println!("║ 🎬 REPLAYING SESSION: {:<56} ║", trajectory.session_id);
-    println!("║ Total Steps: {:<6} Estimated Tokens: {:<44} ║", trajectory.total_steps, trajectory.total_estimated_tokens);
-    println!("╚════════════════════════════════════════════════════════════════════════════════╝\n");
+    println!(
+        "║ Total Steps: {:<6} Estimated Tokens: {:<44} ║",
+        trajectory.total_steps, trajectory.total_estimated_tokens
+    );
+    println!(
+        "╚════════════════════════════════════════════════════════════════════════════════╝\n"
+    );
 
     for step in &trajectory.steps {
         let role_label = match step.role {
@@ -277,12 +306,20 @@ pub async fn replay_session_from_path(replay_path: &str, delay_ms: u64) -> Resul
             pi_session::Role::Tool => "\x1b[1;35m[TOOL OUTPUT]\x1b[0m",
         };
 
-        println!("─ Step {} ── {} ({}) ─────────────────────────────", step.step_index + 1, role_label, step.timestamp);
+        println!(
+            "─ Step {} ── {} ({}) ─────────────────────────────",
+            step.step_index + 1,
+            role_label,
+            step.timestamp
+        );
         if let Some(ref tname) = step.tool_name {
             println!("  🔧 Executed Tool: \x1b[1m{}\x1b[0m", tname);
         }
         if let Some(ref tcalls) = step.tool_calls {
-            println!("  🛠️  Tool Calls: {}", serde_json::to_string_pretty(tcalls).unwrap_or_default());
+            println!(
+                "  🛠️  Tool Calls: {}",
+                serde_json::to_string_pretty(tcalls).unwrap_or_default()
+            );
         }
         println!("{}\n", step.content);
 
@@ -291,7 +328,10 @@ pub async fn replay_session_from_path(replay_path: &str, delay_ms: u64) -> Resul
         }
     }
 
-    println!("✓ Replay completed successfully ({} steps streamed).", trajectory.total_steps);
+    println!(
+        "✓ Replay completed successfully ({} steps streamed).",
+        trajectory.total_steps
+    );
     Ok(())
 }
 
@@ -303,7 +343,10 @@ mod tests {
     fn test_cli_parse_print_mode() {
         let args = ["tau", "-p", "Write a fibonacci function in Rust"];
         let cli = Cli::try_parse_from(args).expect("should parse -p");
-        assert_eq!(cli.print_query, Some("Write a fibonacci function in Rust".to_string()));
+        assert_eq!(
+            cli.print_query,
+            Some("Write a fibonacci function in Rust".to_string())
+        );
         assert!(!cli.rpc_mode);
     }
 
@@ -312,12 +355,21 @@ mod tests {
         let args = ["tau", "--rpc", "-m", "anthropic/claude-3-7-sonnet-latest"];
         let cli = Cli::try_parse_from(args).expect("should parse --rpc with --model");
         assert!(cli.rpc_mode);
-        assert_eq!(cli.model, Some("anthropic/claude-3-7-sonnet-latest".to_string()));
+        assert_eq!(
+            cli.model,
+            Some("anthropic/claude-3-7-sonnet-latest".to_string())
+        );
     }
 
     #[test]
     fn test_cli_parse_replay_and_delay() {
-        let args = ["tau", "--replay", "sample.jsonl", "--replay-delay-ms", "100"];
+        let args = [
+            "tau",
+            "--replay",
+            "sample.jsonl",
+            "--replay-delay-ms",
+            "100",
+        ];
         let cli = Cli::try_parse_from(args).expect("should parse --replay");
         assert_eq!(cli.replay_session, Some("sample.jsonl".to_string()));
         assert_eq!(cli.replay_delay_ms, 100);
@@ -365,7 +417,12 @@ mod tests {
     async fn test_replay_session_from_path_missing_file() {
         let result = replay_session_from_path("/non/existent/path/session.jsonl", 0).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Session file not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Session file not found")
+        );
     }
 
     #[tokio::test]
@@ -380,7 +437,10 @@ mod tests {
         );
 
         tree.append_child(pi_session::Role::User, "Hello assistant".to_string());
-        tree.append_child(pi_session::Role::Assistant, "Hello user, how can I help?".to_string());
+        tree.append_child(
+            pi_session::Role::Assistant,
+            "Hello user, how can I help?".to_string(),
+        );
 
         let result = replay_session_from_path(session_file.to_str().unwrap(), 0).await;
         assert!(result.is_ok());
@@ -388,7 +448,16 @@ mod tests {
 
     #[test]
     fn test_cli_parse_daemon_and_jarvis_flags() {
-        let args = ["tau", "--daemon-ping", "--daemon-status", "-s", "jarvis", "--undo", "--alfred-check", "rm -rf /"];
+        let args = [
+            "tau",
+            "--daemon-ping",
+            "--daemon-status",
+            "-s",
+            "jarvis",
+            "--undo",
+            "--alfred-check",
+            "rm -rf /",
+        ];
         let cli = Cli::try_parse_from(args).expect("should parse daemon and jarvis flags");
         assert!(cli.daemon_ping);
         assert!(cli.daemon_status);
@@ -397,4 +466,3 @@ mod tests {
         assert_eq!(cli.alfred_check, Some("rm -rf /".to_string()));
     }
 }
-

@@ -23,14 +23,22 @@ impl MarkdownRenderer {
                         let mermaid_code = code_lines.join("\n");
                         lines.extend(MermaidRenderer::render(&mermaid_code));
                     } else {
-                        let label = if code_lang.is_empty() { "code" } else { &code_lang };
-                        lines.push(Line::from(vec![
-                            Span::styled(format!(" ── [{}] ──", label), theme.code_border()),
-                        ]));
+                        let label = if code_lang.is_empty() {
+                            "code"
+                        } else {
+                            &code_lang
+                        };
+                        lines.push(Line::from(vec![Span::styled(
+                            format!(" ── [{}] ──", label),
+                            theme.code_border(),
+                        )]));
                         for cl in &code_lines {
                             lines.push(Self::highlight_code_line_styled(cl, &code_lang, theme));
                         }
-                        lines.push(Line::from(Span::styled(" ────────────", theme.code_border())));
+                        lines.push(Line::from(Span::styled(
+                            " ────────────",
+                            theme.code_border(),
+                        )));
                     }
                     in_code_block = false;
                     code_lang.clear();
@@ -53,7 +61,9 @@ impl MarkdownRenderer {
             if let Some(rest) = raw_line.strip_prefix("### ") {
                 lines.push(Line::from(Span::styled(
                     format!("■ {}", rest.trim()),
-                    Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.yellow)
+                        .add_modifier(Modifier::BOLD),
                 )));
                 continue;
             }
@@ -67,7 +77,9 @@ impl MarkdownRenderer {
             if let Some(rest) = raw_line.strip_prefix("# ") {
                 lines.push(Line::from(Span::styled(
                     format!("● {}", rest.trim()),
-                    Style::default().fg(theme.green).add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                    Style::default()
+                        .fg(theme.green)
+                        .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
                 )));
                 continue;
             }
@@ -76,13 +88,21 @@ impl MarkdownRenderer {
             if let Some(rest) = raw_line.strip_prefix("> ") {
                 lines.push(Line::from(vec![
                     Span::styled(" │ ", Style::default().fg(theme.cyan)),
-                    Span::styled(rest.to_string(), Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC)),
+                    Span::styled(
+                        rest.to_string(),
+                        Style::default()
+                            .fg(theme.muted)
+                            .add_modifier(Modifier::ITALIC),
+                    ),
                 ]));
                 continue;
             }
 
             // Bullet points
-            if let Some(rest) = raw_line.strip_prefix("- ").or_else(|| raw_line.strip_prefix("* ")) {
+            if let Some(rest) = raw_line
+                .strip_prefix("- ")
+                .or_else(|| raw_line.strip_prefix("* "))
+            {
                 let mut spans = vec![Span::styled("  • ", Style::default().fg(theme.cyan))];
                 spans.extend(Self::parse_inline_spans_styled(rest, theme));
                 lines.push(Line::from(spans));
@@ -99,10 +119,15 @@ impl MarkdownRenderer {
                 let mermaid_code = code_lines.join("\n");
                 lines.extend(MermaidRenderer::render(&mermaid_code));
             } else {
-                let label = if code_lang.is_empty() { "code (streaming...)" } else { &code_lang };
-                lines.push(Line::from(vec![
-                    Span::styled(format!(" ── [{}] ──", label), theme.code_border()),
-                ]));
+                let label = if code_lang.is_empty() {
+                    "code (streaming...)"
+                } else {
+                    &code_lang
+                };
+                lines.push(Line::from(vec![Span::styled(
+                    format!(" ── [{}] ──", label),
+                    theme.code_border(),
+                )]));
                 for cl in &code_lines {
                     lines.push(Self::highlight_code_line_styled(cl, &code_lang, theme));
                 }
@@ -185,7 +210,11 @@ impl MarkdownRenderer {
         Self::highlight_code_line_styled(line, lang, &ThemePalette::default_pi())
     }
 
-    pub fn highlight_code_line_styled(line: &str, _lang: &str, theme: &ThemePalette) -> Line<'static> {
+    pub fn highlight_code_line_styled(
+        line: &str,
+        _lang: &str,
+        theme: &ThemePalette,
+    ) -> Line<'static> {
         let mut spans = Vec::new();
         let trimmed = line.trim_start();
         let indent_len = line.len() - trimmed.len();
@@ -199,19 +228,46 @@ impl MarkdownRenderer {
         }
 
         let words: Vec<&str> = trimmed
-            .split_inclusive(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' || c == ';' || c == ',' || c == ':')
+            .split_inclusive(|c: char| {
+                c.is_whitespace()
+                    || c == '('
+                    || c == ')'
+                    || c == '{'
+                    || c == '}'
+                    || c == '['
+                    || c == ']'
+                    || c == ';'
+                    || c == ','
+                    || c == ':'
+            })
             .collect();
 
         for word in words {
-            let clean = word.trim_matches(|c: char| c.is_whitespace() || c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']' || c == ';' || c == ',' || c == ':');
+            let clean = word.trim_matches(|c: char| {
+                c.is_whitespace()
+                    || c == '('
+                    || c == ')'
+                    || c == '{'
+                    || c == '}'
+                    || c == '['
+                    || c == ']'
+                    || c == ';'
+                    || c == ','
+                    || c == ':'
+            });
             let style = match clean {
-                "fn" | "let" | "mut" | "pub" | "struct" | "enum" | "trait" | "impl" | "async" | "await" | "match" | "if" | "else" | "return" | "use" | "mod" | "type" | "const" | "static" | "self" | "Self" | "def" | "class" | "import" | "from" | "function" | "export" => {
-                    theme.highlight_keyword()
-                }
-                "String" | "str" | "i32" | "i64" | "u32" | "u64" | "usize" | "f32" | "f64" | "bool" | "Option" | "Result" | "Vec" | "Some" | "None" | "Ok" | "Err" | "true" | "false" => {
-                    theme.highlight_type()
-                }
-                s if s.starts_with('"') || s.ends_with('"') || s.starts_with('\'') || s.ends_with('\'') => {
+                "fn" | "let" | "mut" | "pub" | "struct" | "enum" | "trait" | "impl" | "async"
+                | "await" | "match" | "if" | "else" | "return" | "use" | "mod" | "type"
+                | "const" | "static" | "self" | "Self" | "def" | "class" | "import" | "from"
+                | "function" | "export" => theme.highlight_keyword(),
+                "String" | "str" | "i32" | "i64" | "u32" | "u64" | "usize" | "f32" | "f64"
+                | "bool" | "Option" | "Result" | "Vec" | "Some" | "None" | "Ok" | "Err"
+                | "true" | "false" => theme.highlight_type(),
+                s if s.starts_with('"')
+                    || s.ends_with('"')
+                    || s.starts_with('\'')
+                    || s.ends_with('\'') =>
+                {
                     theme.highlight_string()
                 }
                 s if s.chars().all(|c| c.is_ascii_digit() || c == '_') && !s.is_empty() => {
@@ -254,4 +310,3 @@ mod tests {
         assert_eq!(lines.len(), 3);
     }
 }
-

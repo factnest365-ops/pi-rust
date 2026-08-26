@@ -100,7 +100,13 @@ impl CronContext {
         Ok(())
     }
 
-    pub fn mark_job_result(&self, jobs: &mut JobsFile, job_id: &str, status: &str, _output: impl Into<String>) {
+    pub fn mark_job_result(
+        &self,
+        jobs: &mut JobsFile,
+        job_id: &str,
+        status: &str,
+        _output: impl Into<String>,
+    ) {
         if let Some(job) = jobs.jobs.iter_mut().find(|j| j.id == job_id) {
             job.last_run = Some(Utc::now().to_rfc3339());
             job.last_status = Some(status.to_string());
@@ -118,7 +124,9 @@ impl CronContext {
 
         let last_run = DateTime::parse_from_rfc3339(last_run_str)?;
         let now = Utc::now();
-        let elapsed = (now - last_run.with_timezone(&Utc)).to_std().unwrap_or_default();
+        let elapsed = (now - last_run.with_timezone(&Utc))
+            .to_std()
+            .unwrap_or_default();
 
         let interval = match &job.schedule {
             JobSchedule::Natural { every } => natural::parse_duration(every)?,
@@ -150,7 +158,11 @@ impl CronContext {
         let mut status = "success";
         let output;
 
-        let tmp_dir = self.jobs_path().parent().map(|p| p.join("tmp")).unwrap_or_else(|| self.home.join(".pi").join("cron").join("tmp"));
+        let tmp_dir = self
+            .jobs_path()
+            .parent()
+            .map(|p| p.join("tmp"))
+            .unwrap_or_else(|| self.home.join(".pi").join("cron").join("tmp"));
         fs::create_dir_all(&tmp_dir)?;
         let script_path = tmp_dir.join(format!("{}-cron-runner.sh", job.id));
 
@@ -315,7 +327,9 @@ mod tests {
             id: "job-1".into(),
             name: "Test".into(),
             prompt: "hello".into(),
-            schedule: JobSchedule::Natural { every: "every 2h".into() },
+            schedule: JobSchedule::Natural {
+                every: "every 2h".into(),
+            },
             skills: Vec::new(),
             enabled: true,
             last_run: None,
@@ -341,7 +355,9 @@ mod tests {
             id: "job-1".into(),
             name: "Test".into(),
             prompt: "hello".into(),
-            schedule: JobSchedule::Natural { every: "every 2h".into() },
+            schedule: JobSchedule::Natural {
+                every: "every 2h".into(),
+            },
             skills: Vec::new(),
             enabled: true,
             last_run: None,
@@ -365,7 +381,9 @@ mod tests {
             id: "job-1".into(),
             name: "Test".into(),
             prompt: "hello".into(),
-            schedule: JobSchedule::Natural { every: "every 2h".into() },
+            schedule: JobSchedule::Natural {
+                every: "every 2h".into(),
+            },
             skills: Vec::new(),
             enabled: true,
             last_run: None,

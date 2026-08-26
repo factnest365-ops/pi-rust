@@ -1,10 +1,10 @@
 use crate::style::ThemePalette;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
-    Frame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -192,8 +192,18 @@ impl MemoryOverlayState {
                 item.topic.to_lowercase().contains(&q)
                     || item.content.to_lowercase().contains(&q)
                     || item.tags.iter().any(|t| t.to_lowercase().contains(&q))
-                    || item.counter_pattern.as_deref().unwrap_or("").to_lowercase().contains(&q)
-                    || item.correct_pattern.as_deref().unwrap_or("").to_lowercase().contains(&q)
+                    || item
+                        .counter_pattern
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&q)
+                    || item
+                        .correct_pattern
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&q)
             })
             .map(|(idx, _)| idx)
             .collect()
@@ -241,7 +251,10 @@ impl MemoryOverlayState {
         }
         let original_idx = indices[selected];
         let removed = self.items.remove(original_idx);
-        self.status_message = Some(format!("Deleted memory: [{}] {}", removed.id, removed.topic));
+        self.status_message = Some(format!(
+            "Deleted memory: [{}] {}",
+            removed.id, removed.topic
+        ));
 
         let new_total = self.filtered_indices().len();
         if new_total == 0 {
@@ -287,12 +300,7 @@ impl MemoryOverlayState {
 pub struct MemoryOverlayWidget;
 
 impl MemoryOverlayWidget {
-    pub fn render(
-        state: &MemoryOverlayState,
-        f: &mut Frame,
-        area: Rect,
-        theme: &ThemePalette,
-    ) {
+    pub fn render(state: &MemoryOverlayState, f: &mut Frame, area: Rect, theme: &ThemePalette) {
         f.render_widget(Clear, area);
 
         let block = Block::default()
@@ -324,21 +332,31 @@ impl MemoryOverlayWidget {
         };
 
         let header_spans = vec![
-            Span::styled(" Search: ", Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD)),
-            Span::styled(format!("> {}{} ", state.search_query, search_cursor), Style::default().fg(theme.text)),
-            Span::styled(format!("· Scope: [{}] ", scope_indicator), Style::default().fg(theme.cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Search: ",
+                Style::default()
+                    .fg(theme.yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("> {}{} ", state.search_query, search_cursor),
+                Style::default().fg(theme.text),
+            ),
+            Span::styled(
+                format!("· Scope: [{}] ", scope_indicator),
+                Style::default().fg(theme.cyan).add_modifier(Modifier::BOLD),
+            ),
             Span::styled(
                 format!("({} memories stored)", state.items.len()),
                 Style::default().fg(theme.muted),
             ),
         ];
 
-        let search_box = Paragraph::new(Line::from(header_spans))
-            .block(
-                Block::default()
-                    .borders(Borders::BOTTOM)
-                    .border_style(Style::default().fg(theme.border)),
-            );
+        let search_box = Paragraph::new(Line::from(header_spans)).block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(Style::default().fg(theme.border)),
+        );
         f.render_widget(search_box, chunks[0]);
 
         // 2. Main Content Split View (Left: List, Right: Memory Inspector)
@@ -371,9 +389,17 @@ impl MemoryOverlayWidget {
                 let conf_pct = (item.confidence * 100.0).round() as u8;
 
                 let line = Line::from(vec![
-                    Span::styled(format!("{} ", badge), Style::default().fg(scope_color).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("{} ", badge),
+                        Style::default()
+                            .fg(scope_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(topic_preview, Style::default().fg(theme.text)),
-                    Span::styled(format!(" ({}%)", conf_pct), Style::default().fg(theme.muted)),
+                    Span::styled(
+                        format!(" ({}%)", conf_pct),
+                        Style::default().fg(theme.muted),
+                    ),
                 ]);
 
                 ListItem::new(line)
@@ -404,14 +430,26 @@ impl MemoryOverlayWidget {
         let detail_block = Block::default()
             .borders(Borders::NONE)
             .title(" Memory Inspector ")
-            .title_style(Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD));
+            .title_style(
+                Style::default()
+                    .fg(theme.yellow)
+                    .add_modifier(Modifier::BOLD),
+            );
 
         if let Some(selected_item) = state.selected_memory() {
             let mut detail_lines = Vec::new();
 
             detail_lines.push(Line::from(vec![
-                Span::styled("Topic: ", Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(&selected_item.topic, Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Topic: ",
+                    Style::default()
+                        .fg(theme.yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    &selected_item.topic,
+                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                ),
             ]));
 
             let scope_color = match selected_item.scope {
@@ -423,14 +461,33 @@ impl MemoryOverlayWidget {
 
             detail_lines.push(Line::from(vec![
                 Span::styled("Scope: ", Style::default().fg(theme.muted)),
-                Span::styled(selected_item.scope.display_name(), Style::default().fg(scope_color).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("  ID: {}", selected_item.id), Style::default().fg(theme.muted)),
-                Span::styled(format!("  Recalls: {}", selected_item.access_count), Style::default().fg(theme.muted)),
-                Span::styled(format!("  Confidence: {:.0}%", selected_item.confidence * 100.0), Style::default().fg(theme.green)),
+                Span::styled(
+                    selected_item.scope.display_name(),
+                    Style::default()
+                        .fg(scope_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("  ID: {}", selected_item.id),
+                    Style::default().fg(theme.muted),
+                ),
+                Span::styled(
+                    format!("  Recalls: {}", selected_item.access_count),
+                    Style::default().fg(theme.muted),
+                ),
+                Span::styled(
+                    format!("  Confidence: {:.0}%", selected_item.confidence * 100.0),
+                    Style::default().fg(theme.green),
+                ),
             ]));
 
             if !selected_item.tags.is_empty() {
-                let tags_str = selected_item.tags.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(" ");
+                let tags_str = selected_item
+                    .tags
+                    .iter()
+                    .map(|t| format!("#{}", t))
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 detail_lines.push(Line::from(vec![
                     Span::styled("Tags: ", Style::default().fg(theme.muted)),
                     Span::styled(tags_str, Style::default().fg(theme.cyan)),
@@ -438,22 +495,36 @@ impl MemoryOverlayWidget {
             }
 
             detail_lines.push(Line::from(""));
-            detail_lines.push(Line::from(vec![
-                Span::styled("Rule / Insight:", Style::default().fg(theme.text).add_modifier(Modifier::UNDERLINED)),
-            ]));
-            detail_lines.push(Line::from(Span::styled(&selected_item.content, Style::default().fg(theme.text))));
+            detail_lines.push(Line::from(vec![Span::styled(
+                "Rule / Insight:",
+                Style::default()
+                    .fg(theme.text)
+                    .add_modifier(Modifier::UNDERLINED),
+            )]));
+            detail_lines.push(Line::from(Span::styled(
+                &selected_item.content,
+                Style::default().fg(theme.text),
+            )));
 
             if let Some(ref bad) = selected_item.counter_pattern {
                 detail_lines.push(Line::from(""));
                 detail_lines.push(Line::from(vec![
-                    Span::styled("✖ Anti-Pattern to Avoid: ", Style::default().fg(theme.red).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "✖ Anti-Pattern to Avoid: ",
+                        Style::default().fg(theme.red).add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(bad, Style::default().fg(theme.red)),
                 ]));
             }
 
             if let Some(ref good) = selected_item.correct_pattern {
                 detail_lines.push(Line::from(vec![
-                    Span::styled("✔ Verified Correct Pattern: ", Style::default().fg(theme.green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "✔ Verified Correct Pattern: ",
+                        Style::default()
+                            .fg(theme.green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(good, Style::default().fg(theme.green)),
                 ]));
             }
@@ -463,9 +534,10 @@ impl MemoryOverlayWidget {
                 .wrap(Wrap { trim: false });
             f.render_widget(detail_paragraph, main_chunks[1]);
         } else {
-            let empty_msg = Paragraph::new(Line::from(vec![
-                Span::styled("No memories match current search or filter.", Style::default().fg(theme.muted)),
-            ]))
+            let empty_msg = Paragraph::new(Line::from(vec![Span::styled(
+                "No memories match current search or filter.",
+                Style::default().fg(theme.muted),
+            )]))
             .block(detail_block);
             f.render_widget(empty_msg, main_chunks[1]);
         }
@@ -478,12 +550,19 @@ impl MemoryOverlayWidget {
         };
 
         let footer_spans = vec![
-            Span::styled("[↑/↓: Navigate · /: Search · d: Delete · t: Scope Filter · Esc: Close]", Style::default().fg(theme.accent)),
-            Span::styled(status_text, Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "[↑/↓: Navigate · /: Search · d: Delete · t: Scope Filter · Esc: Close]",
+                Style::default().fg(theme.accent),
+            ),
+            Span::styled(
+                status_text,
+                Style::default()
+                    .fg(theme.yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ];
 
-        let footer = Paragraph::new(Line::from(footer_spans))
-            .style(Style::default().bg(theme.bg));
+        let footer = Paragraph::new(Line::from(footer_spans)).style(Style::default().bg(theme.bg));
         f.render_widget(footer, chunks[2]);
     }
 }
@@ -516,7 +595,12 @@ mod tests {
         state.search_query = "slicing".to_string();
         let filtered = state.filtered_indices();
         assert!(!filtered.is_empty());
-        assert!(state.items[filtered[0]].topic.to_lowercase().contains("slicing"));
+        assert!(
+            state.items[filtered[0]]
+                .topic
+                .to_lowercase()
+                .contains("slicing")
+        );
 
         state.search_query = "nonexistent_query_xyz".to_string();
         assert!(state.filtered_indices().is_empty());
@@ -561,6 +645,12 @@ mod tests {
         state.list_state.select(Some(0));
         let added = state.add_tag_to_selected("verified");
         assert!(added);
-        assert!(state.selected_memory().unwrap().tags.contains(&"verified".to_string()));
+        assert!(
+            state
+                .selected_memory()
+                .unwrap()
+                .tags
+                .contains(&"verified".to_string())
+        );
     }
 }

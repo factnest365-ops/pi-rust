@@ -1,11 +1,15 @@
 use anyhow::Result;
 use clap::Parser;
-use pi_daemon::{DaemonServer, CronContext};
+use pi_daemon::{CronContext, DaemonServer};
 use std::sync::Arc;
 use tokio::sync::watch;
 
 #[derive(Parser, Debug)]
-#[command(name = "taud", about = "Tau Background Intelligence Daemon (100% Pure Rust)", version)]
+#[command(
+    name = "taud",
+    about = "Tau Background Intelligence Daemon (100% Pure Rust)",
+    version
+)]
 struct DaemonCli {
     /// Custom Unix domain socket path
     #[arg(short, long)]
@@ -20,9 +24,7 @@ struct DaemonCli {
 async fn main() -> Result<()> {
     let cli = DaemonCli::parse();
 
-    let socket_path = cli
-        .socket
-        .unwrap_or_else(DaemonServer::default_socket_path);
+    let socket_path = cli.socket.unwrap_or_else(DaemonServer::default_socket_path);
 
     eprintln!(
         "⚡ Starting Tau Background Daemon (taud) on Unix socket: {}",
@@ -41,7 +43,8 @@ async fn main() -> Result<()> {
     };
 
     let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel(1);
-    let (cron_notify_tx, _cron_notify_rx) = watch::channel(pi_daemon::cron::CronNotification::LoopStopped);
+    let (cron_notify_tx, _cron_notify_rx) =
+        watch::channel(pi_daemon::cron::CronNotification::LoopStopped);
 
     // Capture Ctrl+C / SIGINT
     let tx_clone = shutdown_tx.clone();

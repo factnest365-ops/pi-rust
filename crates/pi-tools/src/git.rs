@@ -17,8 +17,7 @@ pub struct WorktreeInfo {
 
 pub fn git_cmd() -> Command {
     let mut cmd = Command::new("git");
-    cmd.env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_PAGER", "cat");
+    cmd.env("GIT_TERMINAL_PROMPT", "0").env("GIT_PAGER", "cat");
     cmd
 }
 
@@ -76,7 +75,10 @@ impl GitTool {
                     .ok_or_else(|| anyhow::anyhow!("Missing 'task_id' for worktree removal"))?;
                 let force = args["force"].as_bool().unwrap_or(false);
                 git_worktree_remove(task_id, force)?;
-                Ok(format!("Successfully removed worktree for task '{}'", task_id))
+                Ok(format!(
+                    "Successfully removed worktree for task '{}'",
+                    task_id
+                ))
             }
             "worktree_list" => {
                 let worktrees = git_worktree_list()?;
@@ -157,7 +159,11 @@ impl GitTool {
         Self::git_diff_in_dir(staged, file, None)
     }
 
-    pub fn git_diff_in_dir(staged: bool, file: Option<&str>, base_dir: Option<&Path>) -> Result<String> {
+    pub fn git_diff_in_dir(
+        staged: bool,
+        file: Option<&str>,
+        base_dir: Option<&Path>,
+    ) -> Result<String> {
         let mut cmd = git_cmd();
         cmd.arg("diff");
 
@@ -307,9 +313,7 @@ impl GitTool {
         }
 
         let mut cmd = git_cmd();
-        cmd.arg("commit")
-            .arg("-m")
-            .arg(trimmed);
+        cmd.arg("commit").arg("-m").arg(trimmed);
 
         if let Some(d) = base_dir {
             cmd.current_dir(d);
@@ -789,8 +793,14 @@ locked
         let readme_path = repo_path.join("README.md");
         fs::write(&readme_path, "# Main Branch\nInitial content\n").unwrap();
 
-        let _ = Command::new("git").current_dir(repo_path).args(["add", "README.md"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["commit", "-m", "Initial commit"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["add", "README.md"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["commit", "-m", "Initial commit"])
+            .output();
 
         // 2. Create worktree for task-exp-1
         let wt_path = git_worktree_create_in_dir("main", "exp-1", Some(repo_path)).unwrap();
@@ -800,14 +810,25 @@ locked
         // 3. Verify worktree list includes both main and task worktree
         let worktrees = git_worktree_list_in_dir(Some(repo_path)).unwrap();
         assert_eq!(worktrees.len(), 2);
-        assert!(worktrees.iter().any(|w| w.branch.as_deref() == Some("pi-task-exp-1")));
+        assert!(
+            worktrees
+                .iter()
+                .any(|w| w.branch.as_deref() == Some("pi-task-exp-1"))
+        );
 
         // 4. Modify and commit files strictly inside worktree (isolated)
         let wt_file = wt_path.join("feature.txt");
         fs::write(&wt_file, "Worktree feature content").unwrap();
 
-        let _ = Command::new("git").current_dir(&wt_path).args(["add", "feature.txt"]).output();
-        let commit_res = Command::new("git").current_dir(&wt_path).args(["commit", "-m", "Add feature in worktree"]).output().unwrap();
+        let _ = Command::new("git")
+            .current_dir(&wt_path)
+            .args(["add", "feature.txt"])
+            .output();
+        let commit_res = Command::new("git")
+            .current_dir(&wt_path)
+            .args(["commit", "-m", "Add feature in worktree"])
+            .output()
+            .unwrap();
         assert!(commit_res.status.success());
 
         // 5. Verify isolation: feature.txt must NOT exist in main repo dir before merge
@@ -819,7 +840,10 @@ locked
 
         // 7. Verify merged changes now exist on main
         assert!(repo_path.join("feature.txt").exists());
-        assert_eq!(fs::read_to_string(repo_path.join("feature.txt")).unwrap(), "Worktree feature content");
+        assert_eq!(
+            fs::read_to_string(repo_path.join("feature.txt")).unwrap(),
+            "Worktree feature content"
+        );
 
         // 8. Remove worktree
         let remove_res = git_worktree_remove_in_dir("exp-1", true, Some(repo_path));
@@ -836,25 +860,50 @@ locked
         let tmp = tempfile::tempdir().unwrap();
         let repo_path = tmp.path();
 
-        let _ = Command::new("git").current_dir(repo_path).args(["init", "-b", "main"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["config", "user.name", "Pi Test"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["config", "user.email", "test@pi.rs"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["init", "-b", "main"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["config", "user.name", "Pi Test"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["config", "user.email", "test@pi.rs"])
+            .output();
 
         let file_path = repo_path.join("conflict.txt");
         fs::write(&file_path, "base line\n").unwrap();
-        let _ = Command::new("git").current_dir(repo_path).args(["add", "conflict.txt"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["commit", "-m", "base commit"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["add", "conflict.txt"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["commit", "-m", "base commit"])
+            .output();
 
         // Create worktree
         let wt_path = git_worktree_create_in_dir("main", "conflict-task", Some(repo_path)).unwrap();
 
         // Make change on main
         fs::write(&file_path, "main branch modification\n").unwrap();
-        let _ = Command::new("git").current_dir(repo_path).args(["commit", "-am", "main mod"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["commit", "-am", "main mod"])
+            .output();
 
         // Make conflicting change in worktree
-        fs::write(wt_path.join("conflict.txt"), "worktree conflicting modification\n").unwrap();
-        let _ = Command::new("git").current_dir(&wt_path).args(["commit", "-am", "worktree mod"]).output();
+        fs::write(
+            wt_path.join("conflict.txt"),
+            "worktree conflicting modification\n",
+        )
+        .unwrap();
+        let _ = Command::new("git")
+            .current_dir(&wt_path)
+            .args(["commit", "-am", "worktree mod"])
+            .output();
 
         // Merge should fail and provide conflict diagnostics
         let merge_res = git_worktree_merge_in_dir("conflict-task", "main", Some(repo_path));
@@ -872,19 +921,37 @@ locked
         let tmp = tempfile::tempdir().unwrap();
         let repo_path = tmp.path();
 
-        let _ = Command::new("git").current_dir(repo_path).args(["init", "-b", "main"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["config", "user.name", "Pi Test"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["config", "user.email", "test@pi.rs"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["init", "-b", "main"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["config", "user.name", "Pi Test"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["config", "user.email", "test@pi.rs"])
+            .output();
 
         let f1 = repo_path.join("file1.txt");
         fs::write(&f1, "Initial text\n").unwrap();
-        let _ = Command::new("git").current_dir(repo_path).args(["add", "file1.txt"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["commit", "-m", "chore: initial"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["add", "file1.txt"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["commit", "-m", "chore: initial"])
+            .output();
 
         // Add a new file and stage it
         let f2 = repo_path.join("file2.txt");
         fs::write(&f2, "New file content\n").unwrap();
-        let _ = Command::new("git").current_dir(repo_path).args(["add", "file2.txt"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["add", "file2.txt"])
+            .output();
 
         // Staged diff
         let diff_out = GitTool::git_diff_in_dir(true, None, Some(repo_path)).unwrap();
@@ -892,10 +959,13 @@ locked
 
         // Commit proposal
         let proposal = GitTool::synthesize_commit_message_in_dir(Some(repo_path)).unwrap();
-        assert!(proposal.contains("feat: add") || proposal.contains("Conventional Commit Proposal"));
+        assert!(
+            proposal.contains("feat: add") || proposal.contains("Conventional Commit Proposal")
+        );
 
         // Commit in dir
-        let commit_res = GitTool::git_commit_in_dir("feat: add file2.txt", Some(repo_path)).unwrap();
+        let commit_res =
+            GitTool::git_commit_in_dir("feat: add file2.txt", Some(repo_path)).unwrap();
         assert!(commit_res.contains("Commit successful"));
 
         // Log in dir

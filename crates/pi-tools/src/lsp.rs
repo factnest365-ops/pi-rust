@@ -69,19 +69,41 @@ impl LspTool {
             if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
                 match ext {
                     "py" => {
-                        let out = Command::new("python3").arg("-m").arg("py_compile").arg(path).output();
+                        let out = Command::new("python3")
+                            .arg("-m")
+                            .arg("py_compile")
+                            .arg(path)
+                            .output();
                         return match out {
-                            Ok(res) if res.status.success() => Ok(format!("Diagnostics for {}: Syntax clean", path)),
-                            Ok(res) => Ok(format!("Diagnostics for {}: Syntax error:\n{}", path, String::from_utf8_lossy(&res.stderr))),
-                            Err(_) => Ok(format!("Diagnostics for {}: Python syntax checker not available", path)),
+                            Ok(res) if res.status.success() => {
+                                Ok(format!("Diagnostics for {}: Syntax clean", path))
+                            }
+                            Ok(res) => Ok(format!(
+                                "Diagnostics for {}: Syntax error:\n{}",
+                                path,
+                                String::from_utf8_lossy(&res.stderr)
+                            )),
+                            Err(_) => Ok(format!(
+                                "Diagnostics for {}: Python syntax checker not available",
+                                path
+                            )),
                         };
                     }
                     "js" | "ts" => {
                         let out = Command::new("node").arg("--check").arg(path).output();
                         return match out {
-                            Ok(res) if res.status.success() => Ok(format!("Diagnostics for {}: Syntax clean", path)),
-                            Ok(res) => Ok(format!("Diagnostics for {}: Syntax error:\n{}", path, String::from_utf8_lossy(&res.stderr))),
-                            Err(_) => Ok(format!("Diagnostics for {}: Node syntax checker not available", path)),
+                            Ok(res) if res.status.success() => {
+                                Ok(format!("Diagnostics for {}: Syntax clean", path))
+                            }
+                            Ok(res) => Ok(format!(
+                                "Diagnostics for {}: Syntax error:\n{}",
+                                path,
+                                String::from_utf8_lossy(&res.stderr)
+                            )),
+                            Err(_) => Ok(format!(
+                                "Diagnostics for {}: Node syntax checker not available",
+                                path
+                            )),
                         };
                     }
                     _ => {}
@@ -100,13 +122,22 @@ impl LspTool {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if output.status.success() {
                 if stderr.contains("warning:") {
-                    let warnings: Vec<&str> = stderr.lines().filter(|l| l.contains("warning:") || l.contains("-->")).collect();
-                    Ok(format!("Diagnostics: Build successful with warnings:\n{}", warnings.join("\n")))
+                    let warnings: Vec<&str> = stderr
+                        .lines()
+                        .filter(|l| l.contains("warning:") || l.contains("-->"))
+                        .collect();
+                    Ok(format!(
+                        "Diagnostics: Build successful with warnings:\n{}",
+                        warnings.join("\n")
+                    ))
                 } else {
                     Ok("Diagnostics: Clean build (0 errors, 0 warnings)".to_string())
                 }
             } else {
-                Ok(format!("Diagnostics: Build errors detected:\n{}", stderr.trim()))
+                Ok(format!(
+                    "Diagnostics: Build errors detected:\n{}",
+                    stderr.trim()
+                ))
             }
         } else if let Some(path) = target_path {
             Ok(format!("Diagnostics: Checked {}", path))
@@ -131,7 +162,11 @@ impl LspTool {
             }
 
             // Rust patterns
-            if trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ") || trimmed.starts_with("async fn ") || trimmed.starts_with("pub async fn ") {
+            if trimmed.starts_with("pub fn ")
+                || trimmed.starts_with("fn ")
+                || trimmed.starts_with("async fn ")
+                || trimmed.starts_with("pub async fn ")
+            {
                 let name = Self::extract_ident(trimmed, "fn ");
                 symbols.push(LspSymbol {
                     name,
@@ -190,8 +225,15 @@ impl LspTool {
                 });
             }
             // JS / TS patterns
-            else if trimmed.starts_with("export function ") || trimmed.starts_with("function ") || trimmed.starts_with("export const ") {
-                let kw = if trimmed.contains("function ") { "function " } else { "const " };
+            else if trimmed.starts_with("export function ")
+                || trimmed.starts_with("function ")
+                || trimmed.starts_with("export const ")
+            {
+                let kw = if trimmed.contains("function ") {
+                    "function "
+                } else {
+                    "const "
+                };
                 let name = Self::extract_ident(trimmed, kw);
                 symbols.push(LspSymbol {
                     name,
@@ -207,7 +249,10 @@ impl LspTool {
         } else {
             let mut out = format!("Symbols in {} ({} found):\n", file_path, symbols.len());
             for sym in symbols {
-                out.push_str(&format!("  line {:4} | [{}] {}\n", sym.line_number, sym.kind, sym.signature));
+                out.push_str(&format!(
+                    "  line {:4} | [{}] {}\n",
+                    sym.line_number, sym.kind, sym.signature
+                ));
             }
             Ok(out)
         }
@@ -215,7 +260,8 @@ impl LspTool {
 
     pub fn matches_exact_symbol(line: &str, symbol: &str) -> bool {
         let keywords = [
-            "fn ", "struct ", "enum ", "trait ", "impl ", "impl<", "def ", "class ", "let ", "const ", "type ",
+            "fn ", "struct ", "enum ", "trait ", "impl ", "impl<", "def ", "class ", "let ",
+            "const ", "type ",
         ];
         for kw in keywords {
             if let Some(pos) = line.find(kw) {
@@ -271,7 +317,10 @@ impl LspTool {
             }
         }
 
-        Ok(format!("Definition of '{}' not found in {}", symbol, file_path))
+        Ok(format!(
+            "Definition of '{}' not found in {}",
+            symbol, file_path
+        ))
     }
 
     pub fn hover_info(file_path: &str, symbol: &str) -> Result<String> {
@@ -284,7 +333,11 @@ impl LspTool {
             let line = line_res?;
             let trimmed = line.trim();
 
-            if trimmed.starts_with("///") || trimmed.starts_with("/**") || trimmed.starts_with('*') || trimmed.starts_with("//") {
+            if trimmed.starts_with("///")
+                || trimmed.starts_with("/**")
+                || trimmed.starts_with('*')
+                || trimmed.starts_with("//")
+            {
                 doc_comments.push(trimmed.to_string());
             } else if trimmed.starts_with("#[") || trimmed.starts_with('@') || trimmed.is_empty() {
                 // Skip attributes, annotations, and blank lines without clearing accumulated doc comments
@@ -297,14 +350,21 @@ impl LspTool {
 
                 return Ok(format!(
                     "--- Hover Info for '{}' ({}:{}) ---\nSignature: {}\n\nDocumentation:\n{}",
-                    symbol, file_path, line_num, line.trim(), docs
+                    symbol,
+                    file_path,
+                    line_num,
+                    line.trim(),
+                    docs
                 ));
             } else {
                 doc_comments.clear();
             }
         }
 
-        Ok(format!("No hover/symbol information found for '{}' in {}", symbol, file_path))
+        Ok(format!(
+            "No hover/symbol information found for '{}' in {}",
+            symbol, file_path
+        ))
     }
 
     fn extract_ident(line: &str, keyword: &str) -> String {
@@ -363,8 +423,16 @@ impl Greeter {
         let py_path = tmp.path().join("service.py");
         let js_path = tmp.path().join("client.js");
 
-        fs::write(&py_path, "class UserService:\n    def get_user(self, uid):\n        pass\n").unwrap();
-        fs::write(&js_path, "export function fetchData() {}\nexport const API_URL = 'http://api';\n").unwrap();
+        fs::write(
+            &py_path,
+            "class UserService:\n    def get_user(self, uid):\n        pass\n",
+        )
+        .unwrap();
+        fs::write(
+            &js_path,
+            "export function fetchData() {}\nexport const API_URL = 'http://api';\n",
+        )
+        .unwrap();
 
         let py_symbols = LspTool::extract_symbols(py_path.to_str().unwrap()).unwrap();
         assert!(py_symbols.contains("[Class] class UserService"));

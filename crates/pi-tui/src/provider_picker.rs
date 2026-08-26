@@ -1,4 +1,7 @@
-use pi_providers::{AuthResolver, LLAMACPP_DEFAULT_ENDPOINT, LMSTUDIO_DEFAULT_ENDPOINT, OLLAMA_DEFAULT_ENDPOINT, VLLM_DEFAULT_ENDPOINT};
+use pi_providers::{
+    AuthResolver, LLAMACPP_DEFAULT_ENDPOINT, LMSTUDIO_DEFAULT_ENDPOINT, OLLAMA_DEFAULT_ENDPOINT,
+    VLLM_DEFAULT_ENDPOINT,
+};
 use ratatui::layout::Alignment;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -13,31 +16,156 @@ pub struct ProviderEntry {
 }
 
 pub const ALL_PROVIDERS: &[ProviderEntry] = &[
-    ProviderEntry { id: "anthropic", name: "Anthropic Claude", endpoint: "https://api.anthropic.com/v1", is_local: false },
-    ProviderEntry { id: "openai", name: "OpenAI Frontier", endpoint: "https://api.openai.com/v1", is_local: false },
-    ProviderEntry { id: "gemini", name: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com", is_local: false },
-    ProviderEntry { id: "deepseek", name: "DeepSeek AI", endpoint: "https://api.deepseek.com/v1", is_local: false },
-    ProviderEntry { id: "groq", name: "Groq LPU Engine", endpoint: "https://api.groq.com/openai/v1", is_local: false },
-    ProviderEntry { id: "openrouter", name: "OpenRouter (250+ Models)", endpoint: "https://openrouter.ai/api/v1", is_local: false },
-    ProviderEntry { id: "mistral", name: "Mistral & Codestral", endpoint: "https://api.mistral.ai/v1", is_local: false },
-    ProviderEntry { id: "cerebras", name: "Cerebras CS-3 Wafer", endpoint: "https://api.cerebras.ai/v1", is_local: false },
-    ProviderEntry { id: "copilot", name: "GitHub Copilot", endpoint: "https://api.githubcopilot.com", is_local: false },
-    ProviderEntry { id: "bedrock", name: "Amazon Bedrock", endpoint: "https://bedrock-runtime.amazonaws.com", is_local: false },
-    ProviderEntry { id: "xai", name: "xAI Grok", endpoint: "https://api.x.ai/v1", is_local: false },
-    ProviderEntry { id: "together", name: "Together AI", endpoint: "https://api.together.xyz/v1", is_local: false },
-    ProviderEntry { id: "fireworks", name: "Fireworks AI", endpoint: "https://api.fireworks.ai/inference/v1", is_local: false },
-    ProviderEntry { id: "perplexity", name: "Perplexity AI", endpoint: "https://api.perplexity.ai", is_local: false },
-    ProviderEntry { id: "qwen", name: "Qwen Token Plan (Alibaba)", endpoint: "https://dashscope-intl.aliyuncs.com", is_local: false },
-    ProviderEntry { id: "xiaomi", name: "Xiaomi MiMo", endpoint: "https://api.mimo.xiaomi.com/v1", is_local: false },
-    ProviderEntry { id: "moonshot", name: "Moonshot AI / Kimi", endpoint: "https://api.moonshot.cn/v1", is_local: false },
-    ProviderEntry { id: "huggingface", name: "Hugging Face Hub", endpoint: "https://api-inference.huggingface.co", is_local: false },
-    ProviderEntry { id: "opencode", name: "OpenCode Zen Gateway", endpoint: "https://opencode.ai/zen/v1", is_local: false },
-    ProviderEntry { id: "kilo", name: "Kilo Gateway", endpoint: "https://api.kilo.ai/v1", is_local: false },
-    ProviderEntry { id: "agnes", name: "Agnes Orchestrator", endpoint: "https://api.agnes.ai/v1", is_local: false },
-    ProviderEntry { id: "ollama", name: "Ollama (Local :11434)", endpoint: OLLAMA_DEFAULT_ENDPOINT, is_local: true },
-    ProviderEntry { id: "lmstudio", name: "LM Studio (Local :1234)", endpoint: LMSTUDIO_DEFAULT_ENDPOINT, is_local: true },
-    ProviderEntry { id: "llamacpp", name: "llama.cpp (Local :8080)", endpoint: LLAMACPP_DEFAULT_ENDPOINT, is_local: true },
-    ProviderEntry { id: "vllm", name: "vLLM (Local :8000)", endpoint: VLLM_DEFAULT_ENDPOINT, is_local: true },
+    ProviderEntry {
+        id: "anthropic",
+        name: "Anthropic Claude",
+        endpoint: "https://api.anthropic.com/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "openai",
+        name: "OpenAI Frontier",
+        endpoint: "https://api.openai.com/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "gemini",
+        name: "Google Gemini",
+        endpoint: "https://generativelanguage.googleapis.com",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "deepseek",
+        name: "DeepSeek AI",
+        endpoint: "https://api.deepseek.com/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "groq",
+        name: "Groq LPU Engine",
+        endpoint: "https://api.groq.com/openai/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "openrouter",
+        name: "OpenRouter (250+ Models)",
+        endpoint: "https://openrouter.ai/api/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "mistral",
+        name: "Mistral & Codestral",
+        endpoint: "https://api.mistral.ai/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "cerebras",
+        name: "Cerebras CS-3 Wafer",
+        endpoint: "https://api.cerebras.ai/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "copilot",
+        name: "GitHub Copilot",
+        endpoint: "https://api.githubcopilot.com",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "bedrock",
+        name: "Amazon Bedrock",
+        endpoint: "https://bedrock-runtime.amazonaws.com",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "xai",
+        name: "xAI Grok",
+        endpoint: "https://api.x.ai/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "together",
+        name: "Together AI",
+        endpoint: "https://api.together.xyz/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "fireworks",
+        name: "Fireworks AI",
+        endpoint: "https://api.fireworks.ai/inference/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "perplexity",
+        name: "Perplexity AI",
+        endpoint: "https://api.perplexity.ai",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "qwen",
+        name: "Qwen Token Plan (Alibaba)",
+        endpoint: "https://dashscope-intl.aliyuncs.com",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "xiaomi",
+        name: "Xiaomi MiMo",
+        endpoint: "https://api.mimo.xiaomi.com/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "moonshot",
+        name: "Moonshot AI / Kimi",
+        endpoint: "https://api.moonshot.cn/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "huggingface",
+        name: "Hugging Face Hub",
+        endpoint: "https://api-inference.huggingface.co",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "opencode",
+        name: "OpenCode Zen Gateway",
+        endpoint: "https://opencode.ai/zen/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "kilo",
+        name: "Kilo Gateway",
+        endpoint: "https://api.kilo.ai/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "agnes",
+        name: "Agnes Orchestrator",
+        endpoint: "https://api.agnes.ai/v1",
+        is_local: false,
+    },
+    ProviderEntry {
+        id: "ollama",
+        name: "Ollama (Local :11434)",
+        endpoint: OLLAMA_DEFAULT_ENDPOINT,
+        is_local: true,
+    },
+    ProviderEntry {
+        id: "lmstudio",
+        name: "LM Studio (Local :1234)",
+        endpoint: LMSTUDIO_DEFAULT_ENDPOINT,
+        is_local: true,
+    },
+    ProviderEntry {
+        id: "llamacpp",
+        name: "llama.cpp (Local :8080)",
+        endpoint: LLAMACPP_DEFAULT_ENDPOINT,
+        is_local: true,
+    },
+    ProviderEntry {
+        id: "vllm",
+        name: "vLLM (Local :8000)",
+        endpoint: VLLM_DEFAULT_ENDPOINT,
+        is_local: true,
+    },
 ];
 
 pub struct ProviderPickerWidget;
@@ -49,9 +177,21 @@ impl ProviderPickerWidget {
     ) -> (Paragraph<'a>, List<'a>, Block<'a>) {
         let search_display = format!("> {}▏", query);
         let search_bar = Paragraph::new(Line::from(vec![
-            Span::styled(" Filter: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                " Filter: ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
             Span::styled(search_display, Style::default().fg(Color::White)),
-            Span::styled(format!(" (Showing {} of {} providers)", filtered_providers.len(), ALL_PROVIDERS.len()), Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                format!(
+                    " (Showing {} of {} providers)",
+                    filtered_providers.len(),
+                    ALL_PROVIDERS.len()
+                ),
+                Style::default().fg(Color::DarkGray),
+            ),
         ]))
         .block(
             Block::default()
@@ -64,17 +204,35 @@ impl ProviderPickerWidget {
             .map(|p| {
                 let has_auth = AuthResolver::resolve_key(p.id).is_some();
                 let status_badge = if p.is_local {
-                    Span::styled(" [⚡ Local Zero-Config] ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    Span::styled(
+                        " [⚡ Local Zero-Config] ",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else if has_auth {
-                    Span::styled(" [✓ Configured] ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+                    Span::styled(
+                        " [✓ Configured] ",
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    )
                 } else {
                     Span::styled(" [🔑 Key Needed] ", Style::default().fg(Color::Yellow))
                 };
 
                 let spans = vec![
-                    Span::styled(format!(" {:<20} ", p.name), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!(" {:<20} ", p.name),
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     status_badge,
-                    Span::styled(format!("({})", p.endpoint), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("({})", p.endpoint),
+                        Style::default().fg(Color::DarkGray),
+                    ),
                 ];
 
                 ListItem::new(Line::from(spans))

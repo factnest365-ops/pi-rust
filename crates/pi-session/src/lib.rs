@@ -307,7 +307,11 @@ impl SessionTree {
             }
 
             // Extract node ID
-            let id = val.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let id = val
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             if id.is_empty() {
                 continue;
             }
@@ -871,9 +875,10 @@ mod tests {
         assert_eq!(history[2].id, fork_id);
 
         // Fork from invalid node returns None
-        assert!(tree
-            .fork_from_with_message("non_existent", Role::User, "msg".to_string())
-            .is_none());
+        assert!(
+            tree.fork_from_with_message("non_existent", Role::User, "msg".to_string())
+                .is_none()
+        );
     }
 
     #[test]
@@ -1139,8 +1144,11 @@ GARBAGE_LINE_NOT_JSON
         assert_eq!(children_a2[1].id, u5);
 
         // Leaves are a3, a4, u5
-        let leaf_ids: HashSet<String> =
-            tree.get_leaf_nodes().into_iter().map(|n| n.id.clone()).collect();
+        let leaf_ids: HashSet<String> = tree
+            .get_leaf_nodes()
+            .into_iter()
+            .map(|n| n.id.clone())
+            .collect();
         assert_eq!(leaf_ids.len(), 3);
         assert!(leaf_ids.contains(&a3));
         assert!(leaf_ids.contains(&a4));

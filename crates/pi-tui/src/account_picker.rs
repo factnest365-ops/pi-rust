@@ -18,18 +18,34 @@ impl AccountPicker {
 
         let text = vec![
             Line::from(vec![
-                Span::styled("Provider: ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
-                Span::styled(provider.to_string(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Provider: ",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    provider.to_string(),
+                    Style::default()
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(""),
             Line::from(vec![
-                Span::styled("API Key: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "API Key: ",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 input_display_span,
             ]),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("💾 Enter: Save to ~/.pi/config.json  |  Esc: Skip", Style::default().fg(Color::DarkGray)),
-            ]),
+            Line::from(vec![Span::styled(
+                "💾 Enter: Save to ~/.pi/config.json  |  Esc: Skip",
+                Style::default().fg(Color::DarkGray),
+            )]),
         ];
 
         Paragraph::new(text).block(

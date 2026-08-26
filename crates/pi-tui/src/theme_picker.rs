@@ -58,7 +58,11 @@ impl ThemePickerWidget {
 
                 let mut spans = vec![
                     Span::styled(
-                        if is_active { " [Active] " } else { "          " },
+                        if is_active {
+                            " [Active] "
+                        } else {
+                            "          "
+                        },
                         if is_active {
                             Style::default()
                                 .fg(current_palette.green)
@@ -127,11 +131,7 @@ impl ThemePickerWidget {
         let next = match state.selected() {
             Some(i) => {
                 if up {
-                    if i == 0 {
-                        total_items - 1
-                    } else {
-                        i - 1
-                    }
+                    if i == 0 { total_items - 1 } else { i - 1 }
                 } else if i >= total_items - 1 {
                     0
                 } else {

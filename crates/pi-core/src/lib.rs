@@ -27,6 +27,7 @@ pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
 };
 pub use herdr::{HerdrAgentState, HerdrEnvironment, HerdrProtocol};
+pub use pi_tools::{Hook, HookRegistry, LifecycleEvent, set_global_hook_registry};
 pub use pi_tools::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
 pub use plan::{ExecutionPlan, PlanExecutor, PlanTask, TaskStatus};
 pub use skills::{SkillDefinition, SkillRegistry};
@@ -41,7 +42,6 @@ pub use subagents::{
 pub use sync::StateSynchronizer;
 pub use undo::{ActionSnapshot, ActionSnapshotKind, UndoEngine};
 pub use vault::{MemoryEntry, ReflexionEngine, TauVault};
-pub use pi_tools::{set_global_hook_registry, Hook, HookRegistry, LifecycleEvent};
 
 pub const DEFAULT_PI_SYSTEM_PROMPT: &str = r#"You are Pi, a minimal, fast, and capable AI coding agent.
 Your primary goal is to help the user write, debug, refactor, and maintain code cleanly.
@@ -428,9 +428,11 @@ impl AgentLoop {
         self.session_tree
             .append_child(Role::User, user_input.to_string());
 
-        let _ = self.emit_hook_event(LifecycleEvent::TurnStarted {
-            prompt: user_input.to_string(),
-        }).await;
+        let _ = self
+            .emit_hook_event(LifecycleEvent::TurnStarted {
+                prompt: user_input.to_string(),
+            })
+            .await;
 
         let _ = self.compact_history_if_needed(&mut event_tx).await;
 
@@ -608,9 +610,11 @@ impl AgentLoop {
             &self.model_config.model_id,
         );
         event_tx(TurnEvent::TurnCompleted { total_tokens });
-        let _ = self.emit_hook_event(LifecycleEvent::TurnFinished {
-            ok: final_response.is_empty(),
-        }).await;
+        let _ = self
+            .emit_hook_event(LifecycleEvent::TurnFinished {
+                ok: final_response.is_empty(),
+            })
+            .await;
         HerdrProtocol::emit_state(HerdrAgentState::Done);
         HerdrProtocol::emit_state(HerdrAgentState::Idle);
         Ok(final_response)
