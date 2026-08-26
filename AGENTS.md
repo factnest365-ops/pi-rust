@@ -156,19 +156,6 @@ All registered tools must be defined in both:
 - **Pattern Matching**: Prefer expressive pattern matching (`let ... else`, `if ... && let Ok(...)`) over deeply nested blocks.
 - **Memory Safety**: 100% safe Rust. No `unsafe` blocks without documented safety proofs.
 
-### The Ladder (anti-bloat rule - mandatory before writing any code)
-
-Be the laziest senior dev in the room. The best code is code you never wrote. Before implementing, stop at the first rung that holds:
-
-1. **Does this need to exist?** No: skip it (YAGNI).
-2. **Already in this codebase?** Reuse it, don't rewrite it. Grep before you write.
-3. **Stdlib does it?** Use it - no new crate for what `std`/`serde`/`tokio`/`anyhow` already cover.
-4. **Existing workspace dependency covers it?** Use it; never add a dependency for a one-liner.
-5. **One line?** One line.
-6. **Only then:** write the minimum that works - nothing speculative, no "might need later" abstractions, no wrapper-of-a-wrapper.
-
-Lazy about the solution, never about reading: read the code the change touches and trace the real flow before picking a rung. Never on the chopping block: trust-boundary validation, error handling, data-loss prevention, security, and test coverage of observable behavior. Code ends up small because it is necessary, not golfed.
-
 ---
 
 ## 5. Verification Checklist for All Changes
