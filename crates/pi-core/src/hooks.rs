@@ -87,12 +87,7 @@ impl HookRegistry {
         self.hooks.retain(|(n, _, _)| n != name);
     }
 
-    pub async fn fire(
-        &self,
-        point: HookPoint,
-        tool_name: Option<&str>,
-        summary: Option<&str>,
-    ) {
+    pub async fn fire(&self, point: HookPoint, tool_name: Option<&str>, summary: Option<&str>) {
         let owned = OwnedContext {
             point,
             tool_name: tool_name.map(str::to_string),
@@ -103,7 +98,6 @@ impl HookRegistry {
             if points.contains(&point) {
                 let owned = owned.clone();
                 let hook = hook.clone();
-                let point = point;
                 tokio::spawn(async move {
                     let ctx = HookContext::new(point)
                         .with_tool_name(owned.tool_name.as_deref())
@@ -138,7 +132,6 @@ impl HookRegistry {
 
 #[derive(Debug, Clone)]
 struct OwnedContext {
-    point: HookPoint,
     tool_name: Option<String>,
     summary: Option<String>,
     payload: serde_json::Value,
@@ -167,8 +160,8 @@ impl Hook for LoggingHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct CountingHook {
         point: HookPoint,
@@ -215,7 +208,9 @@ mod tests {
         ) -> std::pin::Pin<
             Box<dyn std::future::Future<Output = anyhow::Result<()>> + Send + Sync + 'a>,
         > {
-            Box::pin(async move { panic!("hook panicked"); })
+            Box::pin(async move {
+                panic!("hook panicked");
+            })
         }
     }
 
@@ -232,7 +227,12 @@ mod tests {
             vec![HookPoint::TurnStart],
         );
         assert_eq!(registry.len(), 1);
-        assert!(registry.points("counting").unwrap().contains(&HookPoint::TurnStart));
+        assert!(
+            registry
+                .points("counting")
+                .unwrap()
+                .contains(&HookPoint::TurnStart)
+        );
         registry.deregister("counting");
         assert!(registry.is_empty());
     }
@@ -263,8 +263,7 @@ mod tests {
             .await;
         let mut attempts = 0;
         while first.load(Ordering::SeqCst) == 0
-            || second.load(Ordering::SeqCst) == 0
-            && attempts < 200
+            || second.load(Ordering::SeqCst) == 0 && attempts < 200
         {
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             attempts += 1;
@@ -285,7 +284,11 @@ mod tests {
             }),
             vec![HookPoint::ToolCallEnd],
         );
-        registry.register("failing", Arc::new(FailingHook), vec![HookPoint::ToolCallEnd]);
+        registry.register(
+            "failing",
+            Arc::new(FailingHook),
+            vec![HookPoint::ToolCallEnd],
+        );
         registry
             .fire(HookPoint::ToolCallEnd, Some("write"), Some("end"))
             .await;

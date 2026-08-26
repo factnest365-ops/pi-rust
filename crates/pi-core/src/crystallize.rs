@@ -441,23 +441,23 @@ impl SkillCrystallizer {
         };
 
         let trimmed = content.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("---") {
-            if let Some(end_idx) = rest.find("\n---") {
-                let front = &rest[..end_idx];
-                let body = &rest[end_idx + 4..];
-                let mut out = String::from("---\n");
-                for line in front.lines() {
-                    if line.trim_start().starts_with("success_rate:") {
-                        continue;
-                    }
-                    out.push_str(line);
-                    out.push('\n');
+        if let Some(rest) = trimmed.strip_prefix("---")
+            && let Some(end_idx) = rest.find("\n---")
+        {
+            let front = &rest[..end_idx];
+            let body = &rest[end_idx + 4..];
+            let mut out = String::from("---\n");
+            for line in front.lines() {
+                if line.trim_start().starts_with("success_rate:") {
+                    continue;
                 }
-                out.push_str(&format!("success_rate: {:.2}\n", rate));
-                out.push_str("---\n");
-                out.push_str(body);
-                return Ok(out);
+                out.push_str(line);
+                out.push('\n');
             }
+            out.push_str(&format!("success_rate: {:.2}\n", rate));
+            out.push_str("---\n");
+            out.push_str(body);
+            return Ok(out);
         }
         Ok(content.to_string())
     }

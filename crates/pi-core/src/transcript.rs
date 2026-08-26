@@ -1,8 +1,7 @@
-use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
@@ -136,7 +135,10 @@ impl AgentMailbox {
 
     pub fn receive(&self, agent: &str, unread_only: bool) -> Vec<&AgentMessage> {
         if unread_only {
-            self.inbox.iter().filter(|message| message.to == agent).collect()
+            self.inbox
+                .iter()
+                .filter(|message| message.to == agent)
+                .collect()
         } else {
             self.inbox.iter().collect()
         }
@@ -156,7 +158,10 @@ impl AgentMailbox {
     }
 
     pub fn sent_by(&self, agent: &str) -> Vec<&AgentMessage> {
-        self.sent.iter().filter(|message| message.from == agent).collect()
+        self.sent
+            .iter()
+            .filter(|message| message.from == agent)
+            .collect()
     }
 }
 
@@ -193,8 +198,9 @@ mod tests {
 
     #[test]
     fn test_subagent_transcript_roundtrip() {
-        let mut transcript = SubagentTranscript::new("sub-1".into(), "Reviewer".into(), "Review PR".into());
-        let user_id = transcript.push_user("Please review src/lib.rs");
+        let mut transcript =
+            SubagentTranscript::new("sub-1".into(), "Reviewer".into(), "Review PR".into());
+        let _user_id = transcript.push_user("Please review src/lib.rs");
         transcript.push_assistant("I will inspect the file.");
         transcript.finish();
 

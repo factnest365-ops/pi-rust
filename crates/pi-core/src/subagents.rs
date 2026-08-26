@@ -2,13 +2,16 @@ use crate::AgentLoop;
 use anyhow::{Result, anyhow};
 use chrono::{Duration, Utc};
 use dirs::home_dir;
+use pi_providers::ModelConfig;
 use pi_session::SessionTree;
 use pi_tools::{InvokeSubagentArgs, ManageSubagentsArgs, SubagentToolHandler};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::fs::{self, OpenOptions};
+use std::fs;
+use std::future::Future;
 use std::io::Write;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -170,14 +173,15 @@ impl SubagentManager {
             return Ok(None);
         }
         let content = std::fs::read_to_string(registry_path)?;
+        let mut latest: Option<PersistentSubagentRecord> = None;
         for line in content.lines() {
-            if let Ok(record) = serde_json::from_str::<PersistentSubagentRecord>(line) {
-                if record.name == name {
-                    return Ok(Some(record));
-                }
+            if let Ok(record) = serde_json::from_str::<PersistentSubagentRecord>(line)
+                && record.name == name
+            {
+                latest = Some(record);
             }
         }
-        Ok(None)
+        Ok(latest)
     }
 
     async fn append_registry_entry(
@@ -289,15 +293,35 @@ impl SubagentManager {
         if let Some(record) = existing {
             match record.status {
                 SubagentStatus::Finished(_) | SubagentStatus::Errored(_) => {
-                    if let Some(ref p) = record.session_path {
-                        if p.exists() {
-                            agent_loop = self.build_agent_loop(config.clone())?;
-                            agent_loop.session_tree = SessionTree::load_from_jsonl(p)?;
-                        }
+                    if let Some(ref p) = record.session_path
+                        && p.exists()
+                    {
+                        agent_loop = self.build_agent_loop(config.clone())?;
+                        agent_loop.session_tree = SessionTree::load_from_jsonl(p)?;
                     }
                 }
                 SubagentStatus::Running => {
-                    return Err(anyhow!("Persistent subagent '{}' is already running", name));
+                    let stale_ids: Vec<String> = {
+                        let guard = self.instances.read().await;
+                        guard
+                            .values()
+                            .filter(|inst| inst.persistent_name.as_deref() == Some(&name))
+                            .map(|inst| inst.id.to_string())
+                            .collect()
+                    };
+                    // Cancel any prior turn(s) for this persistent name; a
+                    // repeated spawn_persistent is an intentional continuation.
+                    let mut guard = self.instances.write().await;
+                    for id in &stale_ids {
+                        if let Some(inst) = guard.get_mut(id) {
+                            inst.cancellation_token.cancel();
+                            inst.status =
+                                SubagentStatus::Errored("superseded by newer spawn".to_string());
+                            inst.finished_at = Some(Utc::now());
+                        }
+                    }
+                    // Registry line still says Running from the old turn; the
+                    // new record appended below supersedes it (load takes latest).
                 }
                 _ => {}
             }
@@ -343,6 +367,7 @@ impl SubagentManager {
         let config_clone = config.clone();
         let registry_path_clone = registry_path.clone();
         let persistent_name_clone = name.clone();
+        let manager_self = self.clone();
 
         tokio::spawn(async move {
             let result =
@@ -365,7 +390,9 @@ impl SubagentManager {
                     finished_at: inst.finished_at.map(|t| t.to_rfc3339()),
                     updated_at: Utc::now().to_rfc3339(),
                 };
-                let _ = Self::append_registry_entry(&registry_path_clone, &updated).await;
+                let _ = manager_self
+                    .append_registry_entry(&registry_path_clone, &updated)
+                    .await;
             }
         });
 
@@ -422,20 +449,23 @@ impl SubagentManager {
             }
         }
 
-        if messages.is_empty() {
-            let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
-            let inbox_path = persist_dir
-                .join(Self::sanitize_name(name))
-                .join("inbox.jsonl");
-            if inbox_path.exists() {
-                let content = std::fs::read_to_string(&inbox_path)?;
-                for line in content.lines() {
-                    if let Ok(msg) = serde_json::from_str::<SubagentMessage>(line) {
-                        messages.push(msg);
-                    }
+        // Always consume the on-disk inbox too; it may hold messages written
+        // by other processes or before this instance was registered. Clearing
+        // it here prevents redelivery on the next drain.
+        let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
+        let inbox_path = persist_dir
+            .join(Self::sanitize_name(name))
+            .join("inbox.jsonl");
+        if inbox_path.exists() {
+            let content = std::fs::read_to_string(&inbox_path)?;
+            for line in content.lines() {
+                if let Ok(msg) = serde_json::from_str::<SubagentMessage>(line)
+                    && !messages.iter().any(|m| m.id == msg.id)
+                {
+                    messages.push(msg);
                 }
-                let _ = std::fs::write(&inbox_path, "");
             }
+            let _ = std::fs::write(&inbox_path, "");
         }
 
         Ok(messages)
@@ -464,10 +494,30 @@ impl SubagentManager {
     /// view. Returns the number of non-running records recovered.
     pub async fn recover(&self) -> Result<usize> {
         let records = self.list_persistent().await?;
+        let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
+        let registry_path = persist_dir.join("registry.jsonl");
         let mut count = 0usize;
         for record in records {
-            if !matches!(record.status, SubagentStatus::Running) {
-                count += 1;
+            match record.status {
+                SubagentStatus::Running => {
+                    // A Running record with no live in-memory instance is a
+                    // leftover from a dead process: mark it Errored on disk.
+                    let live = self
+                        .instances
+                        .read()
+                        .await
+                        .values()
+                        .any(|inst| inst.persistent_name.as_deref() == Some(&record.name));
+                    if !live {
+                        let mut updated = record.clone();
+                        updated.status =
+                            SubagentStatus::Errored("recovered from interrupted run".to_string());
+                        updated.updated_at = Utc::now().to_rfc3339();
+                        self.append_registry_entry(&registry_path, &updated).await?;
+                        count += 1;
+                    }
+                }
+                _ => count += 1,
             }
         }
         Ok(count)
@@ -484,15 +534,15 @@ impl SubagentManager {
         let mut kept = Vec::new();
 
         for record in records {
-            if let Some(finished_at) = record.finished_at.as_ref() {
-                if let Ok(time) = chrono::DateTime::parse_from_rfc3339(finished_at) {
-                    let time = time.with_timezone(&Utc);
-                    if time < cutoff {
-                        let inbox_dir = persist_dir.join(Self::sanitize_name(&record.name));
-                        let _ = std::fs::remove_dir_all(&inbox_dir);
-                        pruned += 1;
-                        continue;
-                    }
+            if let Some(finished_at) = record.finished_at.as_ref()
+                && let Ok(time) = chrono::DateTime::parse_from_rfc3339(finished_at)
+            {
+                let time = time.with_timezone(&Utc);
+                if time < cutoff {
+                    let inbox_dir = persist_dir.join(Self::sanitize_name(&record.name));
+                    let _ = std::fs::remove_dir_all(&inbox_dir);
+                    pruned += 1;
+                    continue;
                 }
             }
             kept.push(record);
@@ -688,6 +738,15 @@ impl SubagentToolHandler for SubagentToolHandlerBridge {
                 other => Err(anyhow!("Unknown manage_subagents action: {}", other)),
             }
         })
+    }
+}
+
+impl SubagentManager {
+    /// Creates a manager pre-configured with a persistence directory.
+    pub fn with_persist_dir(mut self, dir: PathBuf) -> Self {
+        let _ = std::fs::create_dir_all(&dir);
+        self.persist_dir = Some(dir);
+        self
     }
 }
 
@@ -944,14 +1003,5 @@ mod tests {
         for i in 0..20 {
             assert!(bodies.contains(&format!("msg-{}", i)));
         }
-    }
-}
-
-impl SubagentManager {
-    /// Creates a manager pre-configured with a persistence directory.
-    pub fn with_persist_dir(mut self, dir: PathBuf) -> Self {
-        let _ = std::fs::create_dir_all(&dir);
-        self.persist_dir = Some(dir);
-        self
     }
 }

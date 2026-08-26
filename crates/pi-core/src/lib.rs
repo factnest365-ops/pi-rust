@@ -15,15 +15,15 @@ pub mod crystallize;
 pub mod federation;
 pub mod firstmate;
 pub mod herdr;
-pub mod permissions;
 pub mod mailbox;
+pub mod permissions;
 pub mod plan;
 pub mod skills;
 pub mod speculate;
-pub mod subagents;
 pub mod subagent_persistence;
-pub mod transcript;
+pub mod subagents;
 pub mod sync;
+pub mod transcript;
 pub mod undo;
 pub mod vault;
 
@@ -42,12 +42,10 @@ pub use speculate::{
     ArbitrationDecision, SpeculativeBranchResult, SpeculativeEngine, SpeculativeRaceResult,
     SpeculativeStatus, SpeculativeStrategy,
 };
+pub use subagent_persistence::{ModelConfigSnapshot, PersistedSubagent, SubagentPersistence};
 pub use subagents::{
     SubagentConfig, SubagentInstance, SubagentManager, SubagentRunner, SubagentStatus,
     SubagentSummary,
-};
-pub use subagent_persistence::{
-    ModelConfigSnapshot, PersistedSubagent, SubagentPersistence,
 };
 pub use sync::StateSynchronizer;
 pub use undo::{ActionSnapshot, ActionSnapshotKind, UndoEngine};
@@ -451,12 +449,6 @@ impl AgentLoop {
         self.session_tree
             .append_child(Role::User, user_input.to_string());
 
-        let _ = self
-            .emit_hook_event(LifecycleEvent::TurnStarted {
-                prompt: user_input.to_string(),
-            })
-            .await;
-
         let _ = self.compact_history_if_needed(&mut event_tx).await;
 
         let mut full_system_prompt = self.system_engine.build_prompt_for_turn(user_input);
@@ -672,13 +664,6 @@ impl AgentLoop {
         HerdrProtocol::emit_state(HerdrAgentState::Done);
         HerdrProtocol::emit_state(HerdrAgentState::Idle);
         Ok(final_response)
-    }
-
-    async fn emit_hook_event(&self, event: LifecycleEvent) {
-        let registry = pi_tools::global_hook_registry();
-        if let Some(registry) = registry {
-            registry.emit(&event).await;
-        }
     }
 
     pub fn tokenize_args(input: &str) -> Vec<String> {

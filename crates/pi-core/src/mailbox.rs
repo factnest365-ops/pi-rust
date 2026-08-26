@@ -25,7 +25,7 @@ impl MailboxRegistry {
             .read()
             .ok()
             .and_then(|guard| guard.clone())
-            .unwrap_or_else(|| Self::init())
+            .unwrap_or_else(Self::init)
     }
 }
 
@@ -34,24 +34,26 @@ pub struct MailboxTool;
 impl MailboxTool {
     pub fn send(to: impl Into<String>, from: impl Into<String>, payload: Value) -> AgentMessage {
         let message = AgentMessage::new(from, to, payload);
-        match MailboxRegistry::get().lock() {
-            Ok(mut mb) => mb.send(message.clone()),
-            Err(_) => {}
+        if let Ok(mut mb) = MailboxRegistry::get().lock() {
+            mb.send(message.clone())
         }
         message
     }
 
     pub fn receive(agent: &str, unread_only: bool) -> Vec<AgentMessage> {
         match MailboxRegistry::get().lock() {
-            Ok(mb) => mb.receive(agent, unread_only).into_iter().cloned().collect(),
+            Ok(mb) => mb
+                .receive(agent, unread_only)
+                .into_iter()
+                .cloned()
+                .collect(),
             Err(_) => Vec::new(),
         }
     }
 
     pub fn mark_read(agent: &str, ids: &[String]) {
-        match MailboxRegistry::get().lock() {
-            Ok(mut mb) => mb.mark_read(agent, ids),
-            Err(_) => {}
+        if let Ok(mut mb) = MailboxRegistry::get().lock() {
+            mb.mark_read(agent, ids)
         }
     }
 

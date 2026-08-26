@@ -4,10 +4,10 @@
 //! A JSONL-backed shared store lives at <data_dir>/mailboxes/mailbox.jsonl;
 //! tests can inject a custom path via `set_store_path`.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MailMessage {
@@ -77,12 +77,18 @@ fn rewrite_store(msgs: &[MailMessage]) {
 
 fn persist(msg: &MailMessage) {
     use std::io::Write;
-    MAILBOX.write().ok().map(|mut guard| guard.push(msg.clone()));
+    if let Ok(mut guard) = MAILBOX.write() {
+        guard.push(msg.clone())
+    }
     if let Some(path) = store_path() {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
             let _ = writeln!(f, "{}", serde_json::to_string(msg).unwrap_or_default());
         }
     }
@@ -92,10 +98,14 @@ pub struct MailboxTools;
 
 impl MailboxTools {
     pub fn execute_send(args: &Value) -> Result<Value, anyhow::Error> {
-        let to = args.get("to").and_then(Value::as_str)
+        let to = args
+            .get("to")
+            .and_then(Value::as_str)
             .ok_or_else(|| anyhow::anyhow!("agent_send requires {{to}}"))?;
         let from = args.get("from").and_then(Value::as_str).unwrap_or("main");
-        let content = args.get("content").cloned()
+        let content = args
+            .get("content")
+            .cloned()
             .ok_or_else(|| anyhow::anyhow!("agent_send requires {{content}}"))?;
         let msg = MailMessage {
             id: next_id(),
@@ -104,10 +114,13 @@ impl MailboxTools {
             content,
             read: false,
             created_at: {
-            let now: std::time::SystemTime = std::time::SystemTime::now();
-            let secs = now.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            format!("{secs}")
-        },
+                let now: std::time::SystemTime = std::time::SystemTime::now();
+                let secs = now
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                format!("{secs}")
+            },
         };
         persist(&msg);
         Ok(json!({ "sent": true, "id": msg.id }))
@@ -115,7 +128,10 @@ impl MailboxTools {
 
     pub fn execute_inbox(args: &Value) -> Result<Value, anyhow::Error> {
         let agent = args.get("agent").and_then(Value::as_str).unwrap_or("main");
-        let unread_only = args.get("unread_only").and_then(Value::as_bool).unwrap_or(true);
+        let unread_only = args
+            .get("unread_only")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
         let messages: Vec<MailMessage> = load_all()
             .into_iter()
             .filter(|m| m.to == agent && (!unread_only || !m.read))
@@ -125,11 +141,19 @@ impl MailboxTools {
 
     pub fn execute_mark_read(args: &Value) -> Result<Value, anyhow::Error> {
         let agent = args.get("agent").and_then(Value::as_str).unwrap_or("main");
-        let ids: Vec<String> = args.get("ids").and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        let ids: Vec<String> = args
+            .get("ids")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
         if ids.is_empty() {
-            return Err(anyhow::anyhow!("agent_mark_read requires non-empty {{ids}}"));
+            return Err(anyhow::anyhow!(
+                "agent_mark_read requires non-empty {{ids}}"
+            ));
         }
         let mut count = 0;
         let mut all = load_all();
@@ -156,7 +180,10 @@ mod tests {
     #[test]
     fn send_inbox_markread_roundtrip() {
         set_store_path(std::env::temp_dir().join(format!("tau-mb-test-{}", std::process::id())));
-        let r = MailboxTools::execute_send(&json!({"to":"scout","from":"planner","content":{"task":"go"}})).unwrap();
+        let r = MailboxTools::execute_send(
+            &json!({"to":"scout","from":"planner","content":{"task":"go"}}),
+        )
+        .unwrap();
         assert_eq!(r["sent"], true);
         let inbox = MailboxTools::execute_inbox(&json!({"agent":"scout"})).unwrap();
         assert_eq!(inbox["messages"].as_array().unwrap().len(), 1);

@@ -63,9 +63,12 @@ impl SubagentPersistence {
 
     pub async fn save(&self, persisted: &PersistedSubagent) -> Result<()> {
         let path = self.subagents_dir.join(format!("{}.json", persisted.id));
-        let tmp_path = self.subagents_dir.join(format!("{}.json.tmp", persisted.id));
+        let tmp_path = self
+            .subagents_dir
+            .join(format!("{}.json.tmp", persisted.id));
 
-        let json = serde_json::to_string_pretty(persisted).context("Failed to serialize subagent")?;
+        let json =
+            serde_json::to_string_pretty(persisted).context("Failed to serialize subagent")?;
         fs::write(&tmp_path, json).context("Failed to write temporary subagent file")?;
         fs::rename(&tmp_path, &path).context("Failed to atomically rename subagent file")?;
 
@@ -124,14 +127,11 @@ impl SubagentPersistence {
                 let mut guard = instances.write().await;
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                        if let Ok(content) = fs::read_to_string(&path) {
-                            if let Ok(persisted) =
-                                serde_json::from_str::<PersistedSubagent>(&content)
-                            {
-                                guard.insert(persisted.id.clone(), persisted);
-                            }
-                        }
+                    if path.extension().and_then(|e| e.to_str()) == Some("json")
+                        && let Ok(content) = fs::read_to_string(&path)
+                        && let Ok(persisted) = serde_json::from_str::<PersistedSubagent>(&content)
+                    {
+                        guard.insert(persisted.id.clone(), persisted);
                     }
                 }
             }
@@ -161,12 +161,11 @@ impl SubagentPersistence {
         if let Ok(entries) = std::fs::read_dir(&self.subagents_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("json") {
-                    if let Ok(text) = std::fs::read_to_string(&path) {
-                        if let Ok(persisted) = serde_json::from_str::<PersistedSubagent>(&text) {
-                            out.push(persisted);
-                        }
-                    }
+                if path.extension().and_then(|e| e.to_str()) == Some("json")
+                    && let Ok(text) = std::fs::read_to_string(&path)
+                    && let Ok(persisted) = serde_json::from_str::<PersistedSubagent>(&text)
+                {
+                    out.push(persisted);
                 }
             }
         }

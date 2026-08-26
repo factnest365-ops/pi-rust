@@ -10,14 +10,13 @@ pub mod git;
 pub mod github;
 pub mod hooks;
 pub mod lsp;
-pub mod mcp;
 pub mod mailbox;
+pub mod mcp;
 pub mod plugins;
 pub mod speculate;
 pub mod subagents;
 pub mod web;
 
-pub use hooks::{global_hook_registry, set_global_hook_registry, Hook, HookRegistry, LifecycleEvent};
 pub use ast::AstTool;
 pub use crew::{
     CrewDispatchArgs, CrewMergeArgs, CrewStatusArgs, CrewToolHandler, CrewTools,
@@ -30,9 +29,12 @@ pub use git::{
     git_worktree_remove_path,
 };
 pub use github::GithubTool;
+pub use hooks::{
+    Hook, HookRegistry, LifecycleEvent, global_hook_registry, set_global_hook_registry,
+};
 pub use lsp::LspTool;
-pub use mailbox::{set_store_path, MailboxTools};
-pub use mcp::{get_mcp_manager, McpManager, McpServerConfig, McpToolDefinition};
+pub use mailbox::{MailboxTools, set_store_path};
+pub use mcp::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
 pub use plugins::ToolPlugin;
 pub use speculate::{
     SpeculateArgs, SpeculateTool, SpeculateToolHandler, register_speculate_handler,
@@ -93,12 +95,11 @@ impl ToolExecutor {
             "crew_status" => CrewTools::execute_status_async(&call.arguments).await,
             "crew_merge" => CrewTools::execute_merge_async(&call.arguments).await,
             "speculate" | "speculative_race" => SpeculateTool::execute_async(&call.arguments).await,
-            "agent_send" => MailboxTools::execute_send(&call.arguments)
-                .map(|v| v.to_string()),
-            "agent_inbox" => MailboxTools::execute_inbox(&call.arguments)
-                .map(|v| v.to_string()),
-            "agent_mark_read" => MailboxTools::execute_mark_read(&call.arguments)
-                .map(|v| v.to_string()),
+            "agent_send" => MailboxTools::execute_send(&call.arguments).map(|v| v.to_string()),
+            "agent_inbox" => MailboxTools::execute_inbox(&call.arguments).map(|v| v.to_string()),
+            "agent_mark_read" => {
+                MailboxTools::execute_mark_read(&call.arguments).map(|v| v.to_string())
+            }
             mcp_tool_name => {
                 let mcp_mgr = get_mcp_manager();
                 let mgr = mcp_mgr.lock().await;
@@ -458,7 +459,7 @@ impl ToolExecutor {
                     },
                     "required": ["agent_name", "message_ids"]
                 }
-            })
+            }),
         ];
 
         let mcp_mgr = get_mcp_manager();
