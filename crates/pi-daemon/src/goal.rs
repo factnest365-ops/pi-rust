@@ -275,7 +275,9 @@ mod tests {
                 }
                 return Ok(q.pop_front().unwrap());
             }
-            let _ = self.answers.lock();
+            // Deliberately hold the lock for the remainder of this call to
+            // simulate a busy worker in the deadlock-detection test.
+            let _guard = self.answers.lock();
             Ok(("work step done".to_string(), 10))
         }
     }

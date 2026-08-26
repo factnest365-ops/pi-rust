@@ -14,13 +14,13 @@ pub fn global_hook_registry() -> Option<Arc<HookRegistry>> {
     GLOBAL_HOOK_REGISTRY
         .get_or_init(|| Mutex::new(None))
         .lock()
-        .expect("global hook registry lock poisoned")
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone()
 }
 
 pub fn set_global_hook_registry(registry: Option<Arc<HookRegistry>>) {
     let lock = GLOBAL_HOOK_REGISTRY.get_or_init(|| Mutex::new(None));
-    *lock.lock().expect("global hook registry lock poisoned") = registry;
+    *lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = registry;
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -71,12 +71,12 @@ impl HookRegistry {
     }
 
     pub fn register(&self, hook: Arc<dyn Hook>) -> usize {
-        let mut next = self.next_id.lock().expect("hook id lock poisoned");
+        let mut next = self.next_id.lock().unwrap_or_else(|p| p.into_inner());
         let id = *next;
         *next += 1;
         self.hooks
             .lock()
-            .expect("hook list lock poisoned")
+            .unwrap_or_else(|p| p.into_inner())
             .push((id, hook));
         id
     }
@@ -87,7 +87,7 @@ impl HookRegistry {
         }
 
         let hooks: Vec<(usize, Arc<dyn Hook>)> = {
-            let guard = self.hooks.lock().expect("hook list lock poisoned");
+            let guard = self.hooks.lock().unwrap_or_else(|p| p.into_inner());
             guard.clone()
         };
         if hooks.is_empty() {
