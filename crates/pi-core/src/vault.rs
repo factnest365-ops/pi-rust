@@ -669,9 +669,8 @@ impl TauVault {
             .lock()
             .map_err(|e| anyhow::anyhow!("SQLite lock error: {e}"))?;
 
-        let mut stmt = conn.prepare(
-            "SELECT content FROM skill_versions WHERE skill_name = ? AND version = ?",
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT content FROM skill_versions WHERE skill_name = ? AND version = ?")?;
         let mut rows = stmt.query(rusqlite::params![skill_name, version])?;
         match rows.next()? {
             Some(row) => Ok(Some(row.get(0)?)),
@@ -1196,12 +1195,21 @@ mod tests {
         assert_eq!(versions[0].version, 1);
         assert_eq!(versions[0].content, "v1");
         assert_eq!(versions[1].content, "v2");
-        assert_eq!(vault.get_skill_version("deploy", 1).unwrap(), Some("v1".to_string()));
+        assert_eq!(
+            vault.get_skill_version("deploy", 1).unwrap(),
+            Some("v1".to_string())
+        );
         assert_eq!(vault.get_skill_version("deploy", 9).unwrap(), None);
 
-        vault.record_skill_outcome("deploy", "k8s", "success", None).unwrap();
-        vault.record_skill_outcome("deploy", "argo", "failure", Some("manual rollback")).unwrap();
-        vault.record_skill_outcome("deploy", "ship", "SUCCESS", None).unwrap();
+        vault
+            .record_skill_outcome("deploy", "k8s", "success", None)
+            .unwrap();
+        vault
+            .record_skill_outcome("deploy", "argo", "failure", Some("manual rollback"))
+            .unwrap();
+        vault
+            .record_skill_outcome("deploy", "ship", "SUCCESS", None)
+            .unwrap();
 
         let rate = vault.skill_success_rate("deploy").unwrap();
         assert!((rate.unwrap() - 2.0 / 3.0).abs() < 1e-9);

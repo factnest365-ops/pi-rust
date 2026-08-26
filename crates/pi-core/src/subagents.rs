@@ -503,17 +503,19 @@ impl SubagentManager {
 
         let registry_path = persist_dir.join("registry.jsonl");
         let mut file = std::fs::File::create(&registry_path)?;
-        for record in kept {
-            if let Ok(json) = serde_json::to_string(&record) {
+        for record in kept.iter() {
+            if let Ok(json) = serde_json::to_string(record) {
                 writeln!(file, "{}", json)?;
             }
         }
 
+        let kept_names: std::collections::HashSet<_> =
+            kept.iter().map(|r| r.name.clone()).collect();
         let mut guard = self.instances.write().await;
         guard.retain(|_, inst| {
             inst.persistent_name
                 .as_ref()
-                .map(|n| !kept.iter().any(|r| r.name == *n))
+                .map(|n| !kept_names.contains(n.as_str()))
                 .unwrap_or(true)
         });
 

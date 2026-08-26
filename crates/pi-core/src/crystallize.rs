@@ -357,7 +357,13 @@ impl SkillCrystallizer {
     ) -> Result<(PathBuf, String)> {
         let content = Self::crystallize_from_ref_trajectory(trajectory, skill_name, description)?;
         let saved = Self::save_skill_with_versioning(vault, skill_name, &content, base_dir)?;
-        Self::register_skill(registry, skill_name, description, &content, saved.path.clone());
+        Self::register_skill(
+            registry,
+            skill_name,
+            description,
+            &content,
+            saved.path.clone(),
+        );
         Ok((saved.path, saved.content))
     }
 
@@ -384,7 +390,9 @@ impl SkillCrystallizer {
         let file_path = skill_dir.join("SKILL.md");
         let restored = vault
             .get_skill_version(&sanitized, to_version)?
-            .ok_or_else(|| anyhow::anyhow!("Missing skill version {to_version} for {skill_name}"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("Missing skill version {to_version} for {skill_name}")
+            })?;
         let final_content = Self::apply_success_rate_frontmatter(&restored, vault, &sanitized)?;
         fs::create_dir_all(&skill_dir)
             .with_context(|| format!("Failed to create skill directory: {skill_dir:?}"))?;
@@ -416,7 +424,10 @@ impl SkillCrystallizer {
             .with_context(|| format!("Failed to write skill file: {file_path:?}"))?;
 
         vault.record_skill_version(&sanitized, &final_content)?;
-        Ok(SavedSkill { path: file_path, content: final_content })
+        Ok(SavedSkill {
+            path: file_path,
+            content: final_content,
+        })
     }
 
     fn apply_success_rate_frontmatter(
@@ -425,7 +436,9 @@ impl SkillCrystallizer {
         skill_name: &str,
     ) -> Result<String> {
         let rate = vault.skill_success_rate(skill_name)?;
-        let Some(rate) = rate else { return Ok(content.to_string()); };
+        let Some(rate) = rate else {
+            return Ok(content.to_string());
+        };
 
         let trimmed = content.trim_start();
         if let Some(rest) = trimmed.strip_prefix("---") {
@@ -668,11 +681,21 @@ mod tests {
             }],
             "Versioned Skill",
             "Tracks versions",
-        ).unwrap();
+        )
+        .unwrap();
 
-        let saved = SkillCrystallizer::save_skill_with_versioning(&vault, "Versioned Skill", &first, tmp.path()).unwrap();
+        let saved = SkillCrystallizer::save_skill_with_versioning(
+            &vault,
+            "Versioned Skill",
+            &first,
+            tmp.path(),
+        )
+        .unwrap();
         assert!(saved.path.ends_with("versioned-skill/SKILL.md"));
-        assert_eq!(vault.list_skill_versions("versioned-skill").unwrap().len(), 1);
+        assert_eq!(
+            vault.list_skill_versions("versioned-skill").unwrap().len(),
+            1
+        );
 
         let second = SkillCrystallizer::distill_manual(
             "Versioned Skill",
@@ -680,8 +703,17 @@ mod tests {
             &["Updated".to_string()],
             &Vec::<String>::new(),
         );
-        let saved2 = SkillCrystallizer::save_skill_with_versioning(&vault, "Versioned Skill", &second, tmp.path()).unwrap();
-        assert_eq!(vault.list_skill_versions("versioned-skill").unwrap().len(), 3);
+        let saved2 = SkillCrystallizer::save_skill_with_versioning(
+            &vault,
+            "Versioned Skill",
+            &second,
+            tmp.path(),
+        )
+        .unwrap();
+        assert_eq!(
+            vault.list_skill_versions("versioned-skill").unwrap().len(),
+            3
+        );
         assert_eq!(saved2.path, saved.path);
     }
 
@@ -690,9 +722,24 @@ mod tests {
         let vault = TauVault::open_in_memory().unwrap();
         let tmp = tempfile::tempdir().unwrap();
 
-        SkillCrystallizer::save_skill_with_versioning(&vault, "Rollback Skill", "v1-content", tmp.path()).unwrap();
-        SkillCrystallizer::save_skill_with_versioning(&vault, "Rollback Skill", "v2-content", tmp.path()).unwrap();
-        assert_eq!(vault.list_skill_versions("rollback-skill").unwrap().len(), 3);
+        SkillCrystallizer::save_skill_with_versioning(
+            &vault,
+            "Rollback Skill",
+            "v1-content",
+            tmp.path(),
+        )
+        .unwrap();
+        SkillCrystallizer::save_skill_with_versioning(
+            &vault,
+            "Rollback Skill",
+            "v2-content",
+            tmp.path(),
+        )
+        .unwrap();
+        assert_eq!(
+            vault.list_skill_versions("rollback-skill").unwrap().len(),
+            3
+        );
 
         SkillCrystallizer::rollback_skill(&vault, "Rollback Skill", 1, tmp.path()).unwrap();
         let versions = vault.list_skill_versions("rollback-skill").unwrap();

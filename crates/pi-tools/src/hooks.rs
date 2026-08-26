@@ -2,8 +2,8 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
     },
 };
 use tokio::task::JoinSet;
@@ -138,10 +138,7 @@ mod tests {
                     }
                 }
                 counter.fetch_add(1, Ordering::SeqCst);
-                events
-                    .lock()
-                    .expect("events lock poisoned")
-                    .push(event);
+                events.lock().expect("events lock poisoned").push(event);
             })
         }
     }
@@ -184,7 +181,9 @@ mod tests {
         let events = events.lock().expect("events lock poisoned");
         assert_eq!(
             events[0],
-            LifecycleEvent::TurnStarted { prompt: "hello".into() }
+            LifecycleEvent::TurnStarted {
+                prompt: "hello".into()
+            }
         );
         assert_eq!(
             events[1],

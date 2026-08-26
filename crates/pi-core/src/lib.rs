@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+pub mod hooks;
+
 pub mod alfred;
 pub mod ckg;
 pub mod coedit;
@@ -13,6 +15,7 @@ pub mod crystallize;
 pub mod federation;
 pub mod firstmate;
 pub mod herdr;
+pub mod permissions;
 pub mod plan;
 pub mod skills;
 pub mod speculate;
@@ -28,7 +31,11 @@ pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
 };
 pub use herdr::{HerdrAgentState, HerdrEnvironment, HerdrProtocol};
+<<<<<<< Updated upstream
 pub use pi_tools::{Hook, HookRegistry, LifecycleEvent, set_global_hook_registry};
+=======
+pub use hooks::{Hook, HookContext, HookPoint, HookRegistry, LoggingHook};
+>>>>>>> Stashed changes
 pub use pi_tools::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
 pub use plan::{ExecutionPlan, PlanExecutor, PlanTask, TaskStatus};
 pub use skills::{SkillDefinition, SkillRegistry};
@@ -167,6 +174,8 @@ pub struct AgentLoop {
     pub max_tool_iterations: usize,
     pub allowed_tools: Option<Vec<String>>,
     pub execution_plan: Option<ExecutionPlan>,
+    pub hooks: HookRegistry,
+    pub permission_bridge: crate::permissions::PermissionBridge,
 }
 
 impl AgentLoop {
@@ -184,6 +193,8 @@ impl AgentLoop {
             max_tool_iterations: 5,
             allowed_tools: None,
             execution_plan: None,
+            hooks: HookRegistry::new(),
+            permission_bridge: crate::permissions::PermissionBridge::default(),
         }
     }
 
@@ -422,6 +433,10 @@ impl AgentLoop {
             old_turns,
             new_summary_len: summary_len,
         });
+        let _ = self
+            .hooks
+            .fire(HookPoint::Compaction, None, Some("context compaction"))
+            .await;
 
         Ok(())
     }
@@ -449,6 +464,11 @@ impl AgentLoop {
         }
         let mut turn_iteration = 0;
         let mut final_response = String::new();
+
+        let _ = self
+            .hooks
+            .fire(HookPoint::TurnStart, None, Some("turn start"))
+            .await;
 
         while turn_iteration < self.max_tool_iterations {
             turn_iteration += 1;
@@ -497,6 +517,10 @@ impl AgentLoop {
                         user_input,
                         &e.to_string(),
                     );
+                    let _ = self
+                        .hooks
+                        .fire(HookPoint::Error, None, Some("provider error"))
+                        .await;
                     return Err(e);
                 }
             };
@@ -567,13 +591,36 @@ impl AgentLoop {
                         tool_call_id: call.id.clone(),
                     });
                     HerdrProtocol::emit_state(HerdrAgentState::Working);
+                    let _ = self
+                        .hooks
+                        .fire(
+                            HookPoint::ToolCallStart,
+                            Some(call.name.as_str()),
+                            Some("tool call start"),
+                        )
+                        .await;
 
-                    let tool_res: ToolResult = ToolExecutor::execute(&call).await;
+                    let tool_res: ToolResult = match self.permission_bridge.check(&call) {
+                        Ok(()) => ToolExecutor::execute(&call).await,
+                        Err(reason) => ToolResult {
+                            tool_call_id: call.id.clone(),
+                            output: format!("Permission denied: {}", reason),
+                            is_error: true,
+                        },
+                    };
 
                     event_tx(TurnEvent::ToolCompleted {
                         tool_name: call.name.clone(),
                         is_error: tool_res.is_error,
                     });
+                    let _ = self
+                        .hooks
+                        .fire(
+                            HookPoint::ToolCallEnd,
+                            Some(call.name.as_str()),
+                            Some("tool call end"),
+                        )
+                        .await;
 
                     if tool_res.is_error {
                         ReflexionEngine::distill_tool_failure(
@@ -617,9 +664,14 @@ impl AgentLoop {
         );
         event_tx(TurnEvent::TurnCompleted { total_tokens });
         let _ = self
+<<<<<<< Updated upstream
             .emit_hook_event(LifecycleEvent::TurnFinished {
                 ok: final_response.is_empty(),
             })
+=======
+            .hooks
+            .fire(HookPoint::TurnEnd, None, Some("turn end"))
+>>>>>>> Stashed changes
             .await;
         HerdrProtocol::emit_state(HerdrAgentState::Done);
         HerdrProtocol::emit_state(HerdrAgentState::Idle);

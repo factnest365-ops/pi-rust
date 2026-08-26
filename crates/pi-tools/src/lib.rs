@@ -19,25 +19,25 @@ pub mod web;
 pub use hooks::{global_hook_registry, set_global_hook_registry, Hook, HookRegistry, LifecycleEvent};
 pub use ast::AstTool;
 pub use crew::{
-    register_crew_handler, CrewDispatchArgs, CrewMergeArgs, CrewStatusArgs, CrewToolHandler,
-    CrewTools,
+    CrewDispatchArgs, CrewMergeArgs, CrewStatusArgs, CrewToolHandler, CrewTools,
+    register_crew_handler,
 };
 pub use git::{
-    git_merge_branch_in_dir, git_worktree_create, git_worktree_create_at,
+    GitTool, WorktreeInfo, git_merge_branch_in_dir, git_worktree_create, git_worktree_create_at,
     git_worktree_create_in_dir, git_worktree_list, git_worktree_list_in_dir, git_worktree_merge,
     git_worktree_merge_in_dir, git_worktree_remove, git_worktree_remove_in_dir,
-    git_worktree_remove_path, GitTool, WorktreeInfo,
+    git_worktree_remove_path,
 };
 pub use github::GithubTool;
 pub use lsp::LspTool;
-pub use mcp::{get_mcp_manager, McpManager, McpServerConfig, McpToolDefinition};
+pub use mcp::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
 pub use plugins::ToolPlugin;
 pub use speculate::{
-    register_speculate_handler, SpeculateArgs, SpeculateTool, SpeculateToolHandler,
+    SpeculateArgs, SpeculateTool, SpeculateToolHandler, register_speculate_handler,
 };
 pub use subagents::{
-    register_subagent_handler, InvokeSubagentArgs, ManageSubagentsArgs, SubagentToolHandler,
-    SubagentTools,
+    InvokeSubagentArgs, ManageSubagentsArgs, SubagentToolHandler, SubagentTools,
+    register_subagent_handler,
 };
 pub use web::WebTool;
 
@@ -413,7 +413,7 @@ impl ToolExecutor {
                     },
                     "required": ["goal"]
                 }
-            })
+            }),
         ];
 
         let mcp_mgr = get_mcp_manager();
@@ -490,12 +490,19 @@ impl ToolExecutor {
             .or_else(|| args["text"].as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'content'"))?;
 
-        if let Some(parent) = std::path::Path::new(path).parent().filter(|p| !p.as_os_str().is_empty()) {
+        if let Some(parent) = std::path::Path::new(path)
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+        {
             fs::create_dir_all(parent)?;
         }
 
         fs::write(path, content)?;
-        Ok(format!("Successfully wrote {} bytes to {}", content.len(), path))
+        Ok(format!(
+            "Successfully wrote {} bytes to {}",
+            content.len(),
+            path
+        ))
     }
 
     fn execute_edit(args: &serde_json::Value) -> Result<String> {
@@ -577,7 +584,11 @@ impl ToolExecutor {
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
-        if let Some(cwd) = args["cwd"].as_str().or_else(|| args["working_dir"].as_str()).or_else(|| args["dir"].as_str()) {
+        if let Some(cwd) = args["cwd"]
+            .as_str()
+            .or_else(|| args["working_dir"].as_str())
+            .or_else(|| args["dir"].as_str())
+        {
             cmd.current_dir(cwd);
         }
 
@@ -630,7 +641,9 @@ impl ToolExecutor {
             Err(_) => {
                 let _ = child.kill().await;
                 let _ = child.wait().await;
-                Err(anyhow::anyhow!("Command execution timed out after 120 seconds"))
+                Err(anyhow::anyhow!(
+                    "Command execution timed out after 120 seconds"
+                ))
             }
         }
     }
@@ -675,7 +688,11 @@ impl ToolExecutor {
             .or_else(|| args["directory"].as_str())
             .unwrap_or(".");
 
-        let match_flag = if pattern.contains('/') { "-path" } else { "-name" };
+        let match_flag = if pattern.contains('/') {
+            "-path"
+        } else {
+            "-name"
+        };
 
         let output = Command::new("find")
             .arg(search_path)
@@ -710,7 +727,8 @@ impl ToolExecutor {
 
         // Sort directories first, then alphabetical by name
         items.sort_by(|a, b| {
-            b.0.cmp(&a.0).then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
+            b.0.cmp(&a.0)
+                .then_with(|| a.1.to_lowercase().cmp(&b.1.to_lowercase()))
         });
 
         let mut output = String::new();
@@ -867,7 +885,10 @@ mod tests {
         };
         let res = ToolExecutor::execute(&bash_call).await;
         assert!(!res.is_error);
-        assert!(res.output.contains(tmp.path().file_name().unwrap().to_str().unwrap()));
+        assert!(
+            res.output
+                .contains(tmp.path().file_name().unwrap().to_str().unwrap())
+        );
     }
 
     #[tokio::test]
@@ -958,7 +979,11 @@ mod tests {
         let file_str = file_path.to_str().unwrap();
 
         // Write CRLF file
-        fs::write(&file_path, "header\r\nold_line_1\r\nold_line_2\r\nfooter\r\n").unwrap();
+        fs::write(
+            &file_path,
+            "header\r\nold_line_1\r\nold_line_2\r\nfooter\r\n",
+        )
+        .unwrap();
 
         // Edit with LF target
         let call = ToolCall {
@@ -985,7 +1010,11 @@ mod tests {
         let file_path = tmp.path().join("code.rs");
         let file_str = file_path.to_str().unwrap();
 
-        fs::write(&file_path, "pub fn compute_sum(a: i32, b: i32) -> i32 {\n    a + b\n}\n").unwrap();
+        fs::write(
+            &file_path,
+            "pub fn compute_sum(a: i32, b: i32) -> i32 {\n    a + b\n}\n",
+        )
+        .unwrap();
 
         let ast_call = ToolCall {
             id: "call-ast".to_string(),
@@ -1006,14 +1035,29 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo_path = tmp.path();
 
-        let _ = Command::new("git").current_dir(repo_path).args(["init", "-b", "main"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["config", "user.name", "Pi Test"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["config", "user.email", "test@pi.rs"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["init", "-b", "main"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["config", "user.name", "Pi Test"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["config", "user.email", "test@pi.rs"])
+            .output();
 
         let readme = repo_path.join("README.md");
         fs::write(&readme, "# Init\n").unwrap();
-        let _ = Command::new("git").current_dir(repo_path).args(["add", "README.md"]).output();
-        let _ = Command::new("git").current_dir(repo_path).args(["commit", "-m", "Initial commit"]).output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["add", "README.md"])
+            .output();
+        let _ = Command::new("git")
+            .current_dir(repo_path)
+            .args(["commit", "-m", "Initial commit"])
+            .output();
 
         // 1. Create worktree via direct helper
         let wt = git_worktree_create_in_dir("main", "wt-exec-1", Some(repo_path)).unwrap();
@@ -1035,7 +1079,10 @@ mod tests {
         };
         let res = ToolExecutor::execute(&call).await;
         assert!(!res.is_error);
-        assert!(res.output.contains("Active Git Worktrees") || res.output.contains("No active worktrees"));
+        assert!(
+            res.output.contains("Active Git Worktrees")
+                || res.output.contains("No active worktrees")
+        );
     }
 
     #[tokio::test]
@@ -1119,7 +1166,12 @@ mod tests {
     #[tokio::test]
     async fn test_write_nested_directory_creation() {
         let tmp = tempfile::tempdir().unwrap();
-        let nested_file = tmp.path().join("deep").join("nested").join("dir").join("file.rs");
+        let nested_file = tmp
+            .path()
+            .join("deep")
+            .join("nested")
+            .join("dir")
+            .join("file.rs");
 
         let call = ToolCall {
             id: "call-write-nest".to_string(),
@@ -1132,7 +1184,10 @@ mod tests {
         let res = ToolExecutor::execute(&call).await;
         assert!(!res.is_error);
         assert!(nested_file.exists());
-        assert_eq!(fs::read_to_string(&nested_file).unwrap(), "pub fn hello() {}\n");
+        assert_eq!(
+            fs::read_to_string(&nested_file).unwrap(),
+            "pub fn hello() {}\n"
+        );
     }
 
     #[tokio::test]
