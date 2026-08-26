@@ -12,10 +12,13 @@ pub mod crystallize;
 pub mod federation;
 pub mod firstmate;
 pub mod herdr;
+pub mod mailbox;
 pub mod plan;
 pub mod skills;
 pub mod speculate;
 pub mod subagents;
+pub mod subagent_persistence;
+pub mod transcript;
 pub mod sync;
 pub mod undo;
 pub mod vault;
@@ -27,6 +30,7 @@ pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
 };
 pub use herdr::{HerdrAgentState, HerdrEnvironment, HerdrProtocol};
+
 pub use pi_tools::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
 pub use plan::{ExecutionPlan, PlanExecutor, PlanTask, TaskStatus};
 pub use skills::{SkillDefinition, SkillRegistry};
@@ -37,6 +41,9 @@ pub use speculate::{
 pub use subagents::{
     SubagentConfig, SubagentInstance, SubagentManager, SubagentRunner, SubagentStatus,
     SubagentSummary,
+};
+pub use subagent_persistence::{
+    ModelConfigSnapshot, PersistedSubagent, SubagentPersistence,
 };
 pub use sync::StateSynchronizer;
 pub use undo::{ActionSnapshot, ActionSnapshotKind, UndoEngine};
