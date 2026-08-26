@@ -2,15 +2,13 @@ use crate::AgentLoop;
 use anyhow::{Result, anyhow};
 use chrono::{Duration, Utc};
 use dirs::home_dir;
-use pi_providers::ModelConfig;
 use pi_session::SessionTree;
 use pi_tools::{InvokeSubagentArgs, ManageSubagentsArgs, SubagentToolHandler};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::future::Future;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
@@ -182,7 +180,7 @@ impl SubagentManager {
         Ok(None)
     }
 
-    async fn save_registry_entry(
+    async fn append_registry_entry(
         &self,
         registry_path: &PathBuf,
         record: &PersistentSubagentRecord,
@@ -197,16 +195,15 @@ impl SubagentManager {
         Ok(())
     }
 
-    async fn save_registry_entry_sync(
+    async fn overwrite_registry(
         registry_path: &PathBuf,
-        record: &PersistentSubagentRecord,
+        records: &[PersistentSubagentRecord],
     ) -> Result<()> {
-        if let Ok(json) = serde_json::to_string(record) {
-            std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(registry_path)?
-                .write_all(format!("{}\n", json).as_bytes())?;
+        let mut file = std::fs::File::create(registry_path)?;
+        for record in records {
+            if let Ok(json) = serde_json::to_string(record) {
+                writeln!(file, "{}", json)?;
+            }
         }
         Ok(())
     }
@@ -282,7 +279,7 @@ impl SubagentManager {
         let persist_dir = self.persist_dir.clone().unwrap_or_else(Self::tau_state_dir);
         let registry_path = persist_dir.join("registry.jsonl");
         let inbox_dir = persist_dir.join(Self::sanitize_name(&name));
-        let _ = std::fs::create_dir_all(&inbox_dir);
+        let _ = fs::create_dir_all(&inbox_dir);
 
         let existing = self.load_registry_entry(&registry_path, &name).await?;
 
@@ -338,7 +335,7 @@ impl SubagentManager {
             finished_at: None,
             updated_at: now.to_rfc3339(),
         };
-        self.save_registry_entry(&registry_path, &record).await?;
+        self.append_registry_entry(&registry_path, &record).await?;
 
         let instances_clone = self.instances.clone();
         let id_clone = id_str.clone();
@@ -368,7 +365,7 @@ impl SubagentManager {
                     finished_at: inst.finished_at.map(|t| t.to_rfc3339()),
                     updated_at: Utc::now().to_rfc3339(),
                 };
-                let _ = Self::save_registry_entry_sync(&registry_path_clone, &updated).await;
+                let _ = Self::append_registry_entry(&registry_path_clone, &updated).await;
             }
         });
 
@@ -501,16 +498,10 @@ impl SubagentManager {
             kept.push(record);
         }
 
-        let registry_path = persist_dir.join("registry.jsonl");
-        let mut file = std::fs::File::create(&registry_path)?;
-        for record in kept.iter() {
-            if let Ok(json) = serde_json::to_string(record) {
-                writeln!(file, "{}", json)?;
-            }
-        }
-
         let kept_names: std::collections::HashSet<_> =
             kept.iter().map(|r| r.name.clone()).collect();
+        Self::overwrite_registry(&persist_dir.join("registry.jsonl"), &kept).await?;
+
         let mut guard = self.instances.write().await;
         guard.retain(|_, inst| {
             inst.persistent_name

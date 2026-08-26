@@ -16,10 +16,13 @@ pub mod federation;
 pub mod firstmate;
 pub mod herdr;
 pub mod permissions;
+pub mod mailbox;
 pub mod plan;
 pub mod skills;
 pub mod speculate;
 pub mod subagents;
+pub mod subagent_persistence;
+pub mod transcript;
 pub mod sync;
 pub mod undo;
 pub mod vault;
@@ -31,11 +34,7 @@ pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
 };
 pub use herdr::{HerdrAgentState, HerdrEnvironment, HerdrProtocol};
-<<<<<<< Updated upstream
-pub use pi_tools::{Hook, HookRegistry, LifecycleEvent, set_global_hook_registry};
-=======
 pub use hooks::{Hook, HookContext, HookPoint, HookRegistry, LoggingHook};
->>>>>>> Stashed changes
 pub use pi_tools::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
 pub use plan::{ExecutionPlan, PlanExecutor, PlanTask, TaskStatus};
 pub use skills::{SkillDefinition, SkillRegistry};
@@ -46,6 +45,9 @@ pub use speculate::{
 pub use subagents::{
     SubagentConfig, SubagentInstance, SubagentManager, SubagentRunner, SubagentStatus,
     SubagentSummary,
+};
+pub use subagent_persistence::{
+    ModelConfigSnapshot, PersistedSubagent, SubagentPersistence,
 };
 pub use sync::StateSynchronizer;
 pub use undo::{ActionSnapshot, ActionSnapshotKind, UndoEngine};
@@ -664,14 +666,8 @@ impl AgentLoop {
         );
         event_tx(TurnEvent::TurnCompleted { total_tokens });
         let _ = self
-<<<<<<< Updated upstream
-            .emit_hook_event(LifecycleEvent::TurnFinished {
-                ok: final_response.is_empty(),
-            })
-=======
             .hooks
             .fire(HookPoint::TurnEnd, None, Some("turn end"))
->>>>>>> Stashed changes
             .await;
         HerdrProtocol::emit_state(HerdrAgentState::Done);
         HerdrProtocol::emit_state(HerdrAgentState::Idle);

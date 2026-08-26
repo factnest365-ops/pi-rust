@@ -11,6 +11,7 @@ pub mod github;
 pub mod hooks;
 pub mod lsp;
 pub mod mcp;
+pub mod mailbox;
 pub mod plugins;
 pub mod speculate;
 pub mod subagents;
@@ -30,7 +31,8 @@ pub use git::{
 };
 pub use github::GithubTool;
 pub use lsp::LspTool;
-pub use mcp::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
+pub use mailbox::{set_store_path, MailboxTools};
+pub use mcp::{get_mcp_manager, McpManager, McpServerConfig, McpToolDefinition};
 pub use plugins::ToolPlugin;
 pub use speculate::{
     SpeculateArgs, SpeculateTool, SpeculateToolHandler, register_speculate_handler,
@@ -91,6 +93,12 @@ impl ToolExecutor {
             "crew_status" => CrewTools::execute_status_async(&call.arguments).await,
             "crew_merge" => CrewTools::execute_merge_async(&call.arguments).await,
             "speculate" | "speculative_race" => SpeculateTool::execute_async(&call.arguments).await,
+            "agent_send" => MailboxTools::execute_send(&call.arguments)
+                .map(|v| v.to_string()),
+            "agent_inbox" => MailboxTools::execute_inbox(&call.arguments)
+                .map(|v| v.to_string()),
+            "agent_mark_read" => MailboxTools::execute_mark_read(&call.arguments)
+                .map(|v| v.to_string()),
             mcp_tool_name => {
                 let mcp_mgr = get_mcp_manager();
                 let mgr = mcp_mgr.lock().await;
@@ -414,6 +422,43 @@ impl ToolExecutor {
                     "required": ["goal"]
                 }
             }),
+            serde_json::json!({
+                "name": "agent_send",
+                "description": "Send a message to another agent or subagent via A2A mailbox",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "to": { "type": "string", "description": "Recipient agent or subagent name" },
+                        "from": { "type": "string", "description": "Sender name (defaults to system)" },
+                        "content": { "type": "string", "description": "Message content" }
+                    },
+                    "required": ["to", "content"]
+                }
+            }),
+            serde_json::json!({
+                "name": "agent_inbox",
+                "description": "Check inbox for messages sent to an agent or subagent",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "agent_name": { "type": "string", "description": "Agent or subagent name" },
+                        "unread_only": { "type": "boolean", "description": "Only return unread messages (default: true)" }
+                    },
+                    "required": ["agent_name"]
+                }
+            }),
+            serde_json::json!({
+                "name": "agent_mark_read",
+                "description": "Mark A2A messages as read",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "agent_name": { "type": "string", "description": "Agent or subagent name" },
+                        "message_ids": { "type": "array", "items": { "type": "string" }, "description": "Message IDs to mark as read" }
+                    },
+                    "required": ["agent_name", "message_ids"]
+                }
+            })
         ];
 
         let mcp_mgr = get_mcp_manager();
