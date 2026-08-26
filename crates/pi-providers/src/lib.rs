@@ -7,13 +7,17 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 pub mod auth;
+pub mod constants;
 pub mod models;
 pub mod tokens;
-pub mod constants;
 pub use auth::{AuthCredential, AuthResolver, AuthStore};
+pub use constants::{
+    DEFAULT_MODEL, LLAMACPP_DEFAULT_ENDPOINT, LLAMACPP_DEFAULT_HOST, LMSTUDIO_DEFAULT_ENDPOINT,
+    LMSTUDIO_DEFAULT_HOST, OLLAMA_API_TAGS, OLLAMA_DEFAULT_ENDPOINT, OLLAMA_DEFAULT_HOST,
+    OLLAMA_V1_PATH, VLLM_DEFAULT_ENDPOINT, VLLM_DEFAULT_HOST,
+};
 pub use models::{ModelCatalogLoader, ModelInfo};
 pub use tokens::{ContextBudget, TokenProfiler};
-pub use constants::{DEFAULT_MODEL, LLAMACPP_DEFAULT_ENDPOINT, LLAMACPP_DEFAULT_HOST, LMSTUDIO_DEFAULT_ENDPOINT, LMSTUDIO_DEFAULT_HOST, OLLAMA_API_TAGS, OLLAMA_DEFAULT_ENDPOINT, OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH, VLLM_DEFAULT_ENDPOINT, VLLM_DEFAULT_HOST};
 
 #[derive(Debug, Clone)]
 pub struct LocalDaemonInfo {
@@ -117,7 +121,8 @@ pub async fn discover_local_providers(client: &reqwest::Client) -> Vec<LocalDaem
         d
     };
 
-    let (ollama, llamacpp, lmstudio, vllm) = tokio::join!(probe_ollama, probe_llamacpp, probe_lmstudio, probe_vllm);
+    let (ollama, llamacpp, lmstudio, vllm) =
+        tokio::join!(probe_ollama, probe_llamacpp, probe_lmstudio, probe_vllm);
     vec![ollama, llamacpp, lmstudio, vllm]
 }
 
@@ -189,25 +194,72 @@ impl PiConfig {
         // Automatically load existing keys from standard Pi Agent auth store (~/.pi/agent/auth.json)
         if let Ok(json) = fs::read_to_string(Self::agent_auth_path())
             .map_err(anyhow::Error::from)
-            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).map_err(anyhow::Error::from))
+            .and_then(|c| {
+                serde_json::from_str::<serde_json::Value>(&c).map_err(anyhow::Error::from)
+            })
             && let Some(obj) = json.as_object()
         {
             for (prov, val) in obj {
-                let key = val.get("key").and_then(|k| k.as_str()).map(ToString::to_string);
+                let key = val
+                    .get("key")
+                    .and_then(|k| k.as_str())
+                    .map(ToString::to_string);
                 if let Some(k) = key {
                     match prov.as_str() {
-                        "opencode" => if cfg.opencode_api_key.is_none() { cfg.opencode_api_key = Some(k); },
-                        "kilo" => if cfg.kilo_api_key.is_none() { cfg.kilo_api_key = Some(k); },
-                        "anthropic" => if cfg.anthropic_api_key.is_none() { cfg.anthropic_api_key = Some(k); },
-                        "openai" => if cfg.openai_api_key.is_none() { cfg.openai_api_key = Some(k); },
-                        "gemini" | "google" => if cfg.gemini_api_key.is_none() { cfg.gemini_api_key = Some(k); },
-                        "openrouter" => if cfg.openrouter_api_key.is_none() { cfg.openrouter_api_key = Some(k); },
-                        "deepseek" => if cfg.deepseek_api_key.is_none() { cfg.deepseek_api_key = Some(k); },
-                        "groq" => if cfg.groq_api_key.is_none() { cfg.groq_api_key = Some(k); },
-                        "cerebras" => if cfg.cerebras_api_key.is_none() { cfg.cerebras_api_key = Some(k); },
-                        "mistral" => if cfg.mistral_api_key.is_none() { cfg.mistral_api_key = Some(k); },
+                        "opencode" => {
+                            if cfg.opencode_api_key.is_none() {
+                                cfg.opencode_api_key = Some(k);
+                            }
+                        }
+                        "kilo" => {
+                            if cfg.kilo_api_key.is_none() {
+                                cfg.kilo_api_key = Some(k);
+                            }
+                        }
+                        "anthropic" => {
+                            if cfg.anthropic_api_key.is_none() {
+                                cfg.anthropic_api_key = Some(k);
+                            }
+                        }
+                        "openai" => {
+                            if cfg.openai_api_key.is_none() {
+                                cfg.openai_api_key = Some(k);
+                            }
+                        }
+                        "gemini" | "google" => {
+                            if cfg.gemini_api_key.is_none() {
+                                cfg.gemini_api_key = Some(k);
+                            }
+                        }
+                        "openrouter" => {
+                            if cfg.openrouter_api_key.is_none() {
+                                cfg.openrouter_api_key = Some(k);
+                            }
+                        }
+                        "deepseek" => {
+                            if cfg.deepseek_api_key.is_none() {
+                                cfg.deepseek_api_key = Some(k);
+                            }
+                        }
+                        "groq" => {
+                            if cfg.groq_api_key.is_none() {
+                                cfg.groq_api_key = Some(k);
+                            }
+                        }
+                        "cerebras" => {
+                            if cfg.cerebras_api_key.is_none() {
+                                cfg.cerebras_api_key = Some(k);
+                            }
+                        }
+                        "mistral" => {
+                            if cfg.mistral_api_key.is_none() {
+                                cfg.mistral_api_key = Some(k);
+                            }
+                        }
                         _ => {
-                            cfg.custom_keys.entry(format!("{}_api_key", prov)).or_insert(serde_json::Value::String(k));
+                            cfg.custom_keys
+                                .entry(format!("{}_api_key", prov))
+                                .or_insert(serde_json::Value::String(k));
                         }
                     }
                 }
@@ -248,7 +300,8 @@ impl PiConfig {
             "cerebras" => self.cerebras_api_key = Some(key),
             "mistral" => self.mistral_api_key = Some(key),
             _ => {
-                self.custom_keys.insert(format!("{}_api_key", norm), serde_json::Value::String(key));
+                self.custom_keys
+                    .insert(format!("{}_api_key", norm), serde_json::Value::String(key));
             }
         }
         self.save()
@@ -389,7 +442,11 @@ impl ModelConfig {
             ("groq", raw_model)
         } else if raw_model.contains("openrouter") {
             ("openrouter", raw_model)
-        } else if raw_model.contains("openai") || raw_model.starts_with("gpt-") || raw_model.starts_with("o1") || raw_model.starts_with("o3") {
+        } else if raw_model.contains("openai")
+            || raw_model.starts_with("gpt-")
+            || raw_model.starts_with("o1")
+            || raw_model.starts_with("o3")
+        {
             ("openai", raw_model)
         } else if raw_model.contains("agnes") {
             ("agnes", raw_model)
@@ -438,38 +495,61 @@ impl ModelConfig {
         };
 
         let mut resolved_key = AuthResolver::resolve_key(norm_provider).unwrap_or_default();
-        if resolved_key.is_empty() && (norm_provider == "opencode" || norm_provider == "openrouter") {
+        if resolved_key.is_empty() && (norm_provider == "opencode" || norm_provider == "openrouter")
+        {
             // Free tier models work with empty or public bearer token
             resolved_key = String::new();
         }
 
-        let custom_base_url = std::env::var(format!("{}_BASE_URL", norm_provider.replace(['-', '.'], "_").to_uppercase()))
-            .ok()
-            .or_else(|| Self::lookup_models_json_base_url(norm_provider));
+        let custom_base_url = std::env::var(format!(
+            "{}_BASE_URL",
+            norm_provider.replace(['-', '.'], "_").to_uppercase()
+        ))
+        .ok()
+        .or_else(|| Self::lookup_models_json_base_url(norm_provider));
 
         let (api_key, default_base_url) = match norm_provider {
             "opencode" => (resolved_key, "https://opencode.ai/zen/v1".to_string()),
             "agnes" => (resolved_key, "https://api.agnes.ai/v1".to_string()),
             "kilo" => (resolved_key, "https://api.kilo.ai/api/gateway".to_string()),
             "ollama" => (
-                if resolved_key.is_empty() { "ollama".to_string() } else { resolved_key },
+                if resolved_key.is_empty() {
+                    "ollama".to_string()
+                } else {
+                    resolved_key
+                },
                 format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH),
             ),
             "llamacpp" => (
-                if resolved_key.is_empty() { "llamacpp".to_string() } else { resolved_key },
+                if resolved_key.is_empty() {
+                    "llamacpp".to_string()
+                } else {
+                    resolved_key
+                },
                 format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH),
             ),
             "lmstudio" => (
-                if resolved_key.is_empty() { "lmstudio".to_string() } else { resolved_key },
+                if resolved_key.is_empty() {
+                    "lmstudio".to_string()
+                } else {
+                    resolved_key
+                },
                 format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH),
             ),
             "vllm" => (
-                if resolved_key.is_empty() { "vllm".to_string() } else { resolved_key },
+                if resolved_key.is_empty() {
+                    "vllm".to_string()
+                } else {
+                    resolved_key
+                },
                 format!("{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH),
             ),
             "anthropic" => (resolved_key, "https://api.anthropic.com/v1".to_string()),
             "openai" => (resolved_key, "https://api.openai.com/v1".to_string()),
-            "gemini" => (resolved_key, "https://generativelanguage.googleapis.com/v1beta/openai".to_string()),
+            "gemini" => (
+                resolved_key,
+                "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+            ),
             "openrouter" => (resolved_key, "https://openrouter.ai/api/v1".to_string()),
             "deepseek" => (resolved_key, "https://api.deepseek.com/v1".to_string()),
             "groq" => (resolved_key, "https://api.groq.com/openai/v1".to_string()),
@@ -477,17 +557,38 @@ impl ModelConfig {
             "mistral" => (resolved_key, "https://api.mistral.ai/v1".to_string()),
             "xai" => (resolved_key, "https://api.x.ai/v1".to_string()),
             "together" => (resolved_key, "https://api.together.xyz/v1".to_string()),
-            "fireworks" => (resolved_key, "https://api.fireworks.ai/inference/v1".to_string()),
+            "fireworks" => (
+                resolved_key,
+                "https://api.fireworks.ai/inference/v1".to_string(),
+            ),
             "perplexity" => (resolved_key, "https://api.perplexity.ai".to_string()),
             "copilot" => (resolved_key, "https://api.githubcopilot.com".to_string()),
-            "qwen" => (resolved_key, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1".to_string()),
+            "qwen" => (
+                resolved_key,
+                "https://dashscope-intl.aliyuncs.com/compatible-mode/v1".to_string(),
+            ),
             "xiaomi" => (resolved_key, "https://api.mimo.xiaomi.com/v1".to_string()),
             "moonshot" => (resolved_key, "https://api.moonshot.cn/v1".to_string()),
-            "huggingface" => (resolved_key, "https://api-inference.huggingface.co/v1".to_string()),
-            "azure" => (resolved_key, "https://models.inference.ai.azure.com".to_string()),
-            "nvidia" => (resolved_key, "https://integrate.api.nvidia.com/v1".to_string()),
-            "bedrock" => (resolved_key, "https://bedrock-runtime.us-east-1.amazonaws.com".to_string()),
-            "cloudflare" => (resolved_key, "https://gateway.ai.cloudflare.com/v1".to_string()),
+            "huggingface" => (
+                resolved_key,
+                "https://api-inference.huggingface.co/v1".to_string(),
+            ),
+            "azure" => (
+                resolved_key,
+                "https://models.inference.ai.azure.com".to_string(),
+            ),
+            "nvidia" => (
+                resolved_key,
+                "https://integrate.api.nvidia.com/v1".to_string(),
+            ),
+            "bedrock" => (
+                resolved_key,
+                "https://bedrock-runtime.us-east-1.amazonaws.com".to_string(),
+            ),
+            "cloudflare" => (
+                resolved_key,
+                "https://gateway.ai.cloudflare.com/v1".to_string(),
+            ),
             "vercel" => (resolved_key, "https://ai-gateway.vercel.sh/v1".to_string()),
             "zai" => (resolved_key, "https://api.zai.cn/v1".to_string()),
             "minimax" => (resolved_key, "https://api.minimax.chat/v1".to_string()),
@@ -496,7 +597,8 @@ impl ModelConfig {
         };
 
         let base_url = custom_base_url.or_else(|| Some(default_base_url.to_string()));
-        let (context_window, max_output) = ModelCatalogLoader::infer_model_limits(raw_model, norm_provider);
+        let (context_window, max_output) =
+            ModelCatalogLoader::infer_model_limits(raw_model, norm_provider);
 
         Self {
             provider: norm_provider.to_string(),
@@ -540,7 +642,10 @@ impl ChatMessage {
         Self::new("assistant", content)
     }
 
-    pub fn assistant_with_tool_calls(content: impl Into<String>, tool_calls: serde_json::Value) -> Self {
+    pub fn assistant_with_tool_calls(
+        content: impl Into<String>,
+        tool_calls: serde_json::Value,
+    ) -> Self {
         Self {
             role: "assistant".to_string(),
             content: content.into(),
@@ -558,7 +663,11 @@ impl ChatMessage {
         Self::new("tool", content)
     }
 
-    pub fn tool_result(tool_call_id: impl Into<String>, name: impl Into<String>, content: impl Into<String>) -> Self {
+    pub fn tool_result(
+        tool_call_id: impl Into<String>,
+        name: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
         Self {
             role: "tool".to_string(),
             content: content.into(),
@@ -652,27 +761,34 @@ impl OpenAiStreamState {
                         self.full_text.push_str(content);
                         on_chunk(content.to_string());
                     }
-                    if let Some(tool_calls_arr) = delta.get("tool_calls").and_then(|t| t.as_array()) {
+                    if let Some(tool_calls_arr) = delta.get("tool_calls").and_then(|t| t.as_array())
+                    {
                         if self.is_thinking {
                             self.is_thinking = false;
                             self.full_text.push_str("\n</thinking>\n\n");
                             on_chunk("\n</thinking>\n\n".to_string());
                         }
                         for tc in tool_calls_arr {
-                            let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
+                            let index =
+                                tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
                             let entry = self.tool_calls.entry(index).or_default();
                             if let Some(id) = tc.get("id").and_then(|i| i.as_str())
                                 && !id.is_empty()
                             {
                                 entry.id = id.to_string();
                             }
-                            if let Some(name) = tc.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str())
+                            if let Some(name) = tc
+                                .get("function")
+                                .and_then(|f| f.get("name"))
+                                .and_then(|n| n.as_str())
                                 && !name.is_empty()
                                 && entry.name.is_empty()
                             {
                                 entry.name = name.to_string();
                             }
-                            if let Some(args_val) = tc.get("function").and_then(|f| f.get("arguments")) {
+                            if let Some(args_val) =
+                                tc.get("function").and_then(|f| f.get("arguments"))
+                            {
                                 if let Some(args_str) = args_val.as_str() {
                                     entry.arguments_buf.push_str(args_str);
                                 } else if args_val.is_object() || args_val.is_array() {
@@ -775,12 +891,23 @@ impl AnthropicStreamState {
                             self.full_text.push_str("\n</thinking>\n\n");
                             on_chunk("\n</thinking>\n\n".to_string());
                         }
-                        let id = cb.get("id").and_then(|i| i.as_str()).unwrap_or("call_unknown").to_string();
-                        let name = cb.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                        let id = cb
+                            .get("id")
+                            .and_then(|i| i.as_str())
+                            .unwrap_or("call_unknown")
+                            .to_string();
+                        let name = cb
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         let entry = self.tool_calls.entry(index).or_default();
                         entry.id = id;
                         entry.name = name;
-                        if let Some(input_val) = cb.get("input") && input_val.is_object() && !input_val.as_object().unwrap().is_empty() {
+                        if let Some(input_val) = cb.get("input")
+                            && input_val.is_object()
+                            && matches!(input_val.as_object(), Some(m) if !m.is_empty())
+                        {
                             entry.arguments_buf = input_val.to_string();
                         }
                     } else if cb_type == "thinking" {
@@ -789,7 +916,9 @@ impl AnthropicStreamState {
                             self.full_text.push_str("<thinking>\n");
                             on_chunk("<thinking>\n".to_string());
                         }
-                        if let Some(th) = cb.get("thinking").and_then(|t| t.as_str()) && !th.is_empty() {
+                        if let Some(th) = cb.get("thinking").and_then(|t| t.as_str())
+                            && !th.is_empty()
+                        {
                             self.full_text.push_str(th);
                             on_chunk(th.to_string());
                         }
@@ -828,7 +957,9 @@ impl AnthropicStreamState {
                             }
                         }
                         "input_json_delta" => {
-                            if let Some(partial) = delta.get("partial_json").and_then(|p| p.as_str()) {
+                            if let Some(partial) =
+                                delta.get("partial_json").and_then(|p| p.as_str())
+                            {
                                 let entry = self.tool_calls.entry(index).or_default();
                                 entry.arguments_buf.push_str(partial);
                             }
@@ -909,7 +1040,10 @@ impl ProviderClient {
                         "content": vec![tool_result_block]
                     }));
                 }
-            } else if msg.role == "assistant" && let Some(ref tc) = msg.tool_calls && let Some(tc_arr) = tc.as_array() {
+            } else if msg.role == "assistant"
+                && let Some(ref tc) = msg.tool_calls
+                && let Some(tc_arr) = tc.as_array()
+            {
                 let mut content_blocks = Vec::new();
                 if !msg.content.is_empty() {
                     content_blocks.push(serde_json::json!({
@@ -918,14 +1052,22 @@ impl ProviderClient {
                     }));
                 }
                 for call in tc_arr {
-                    let id = call.get("id").and_then(|i| i.as_str()).unwrap_or("toolu_unknown");
-                    let name = call.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()).unwrap_or("");
+                    let id = call
+                        .get("id")
+                        .and_then(|i| i.as_str())
+                        .unwrap_or("toolu_unknown");
+                    let name = call
+                        .get("function")
+                        .and_then(|f| f.get("name"))
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("");
                     let parsed_args = if let Some(func) = call.get("function") {
                         if let Some(args_val) = func.get("arguments") {
                             if args_val.is_object() {
                                 args_val.clone()
                             } else if let Some(a_str) = args_val.as_str() {
-                                serde_json::from_str(a_str).unwrap_or_else(|_| serde_json::json!({}))
+                                serde_json::from_str(a_str)
+                                    .unwrap_or_else(|_| serde_json::json!({}))
                             } else {
                                 serde_json::json!({})
                             }
@@ -955,7 +1097,8 @@ impl ProviderClient {
                     && last["role"] == role
                 {
                     if let Some(prev_text) = last["content"].as_str() {
-                        last["content"] = serde_json::json!(format!("{}\n\n{}", prev_text, msg.content));
+                        last["content"] =
+                            serde_json::json!(format!("{}\n\n{}", prev_text, msg.content));
                     } else if let Some(arr) = last["content"].as_array_mut() {
                         arr.push(serde_json::json!({
                             "type": "text",
@@ -1009,7 +1152,10 @@ impl ProviderClient {
 
     /// Formats an array of ChatMessages into OpenAI Chat Completions API format
     /// Invariant: role "tool" always transmits "tool_call_id".
-    pub fn format_openai_messages(system_prompt: &str, messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+    pub fn format_openai_messages(
+        system_prompt: &str,
+        messages: &[ChatMessage],
+    ) -> Vec<serde_json::Value> {
         let mut openai_messages = Vec::new();
         if !system_prompt.is_empty() {
             openai_messages.push(serde_json::json!({
@@ -1116,7 +1262,8 @@ impl ProviderClient {
         if config.provider == "anthropic" {
             let anthropic_messages = Self::format_anthropic_messages(messages);
 
-            let is_claude_37 = config.model_id.contains("3-7") || config.model_id.contains("claude-3-7");
+            let is_claude_37 =
+                config.model_id.contains("3-7") || config.model_id.contains("claude-3-7");
             let max_tokens = if is_claude_37 {
                 32000
             } else if config.model_id.contains("3-5") || config.model_id.contains("claude") {
@@ -1179,7 +1326,11 @@ impl ProviderClient {
             let status = res.status();
             if !status.is_success() {
                 let err_text = res.text().await.unwrap_or_default();
-                return Err(anyhow::anyhow!("Anthropic API error ({}): {}", status, err_text));
+                return Err(anyhow::anyhow!(
+                    "Anthropic API error ({}): {}",
+                    status,
+                    err_text
+                ));
             }
 
             let mut stream = res.bytes_stream();
@@ -1192,14 +1343,18 @@ impl ProviderClient {
 
                 while let Some(pos) = byte_buf.iter().position(|&b| b == b'\n') {
                     let line_bytes = &byte_buf[..pos];
-                    let line_str = String::from_utf8_lossy(line_bytes).trim_end_matches('\r').to_string();
+                    let line_str = String::from_utf8_lossy(line_bytes)
+                        .trim_end_matches('\r')
+                        .to_string();
                     byte_buf.drain(..=pos);
                     state.process_line(&line_str, &mut on_chunk);
                 }
             }
 
             if !byte_buf.is_empty() {
-                let line_str = String::from_utf8_lossy(&byte_buf).trim_end_matches('\r').to_string();
+                let line_str = String::from_utf8_lossy(&byte_buf)
+                    .trim_end_matches('\r')
+                    .to_string();
                 if !line_str.is_empty() {
                     state.process_line(&line_str, &mut on_chunk);
                 }
@@ -1227,8 +1382,10 @@ impl ProviderClient {
             });
 
             // OpenAI o1 / o3-mini Reasoning Parameters
-            let is_o_series = config.model_id.starts_with("o1") || config.model_id.starts_with("o3")
-                || config.model_id.contains("/o1") || config.model_id.contains("/o3");
+            let is_o_series = config.model_id.starts_with("o1")
+                || config.model_id.starts_with("o3")
+                || config.model_id.contains("/o1")
+                || config.model_id.contains("/o3");
             if is_o_series {
                 body["reasoning_effort"] = serde_json::json!("medium");
             }
@@ -1242,7 +1399,8 @@ impl ProviderClient {
                 req = req.bearer_auth(&config.api_key);
             }
             if config.provider == "openrouter" {
-                req = req.header("HTTP-Referer", "https://pi.dev")
+                req = req
+                    .header("HTTP-Referer", "https://pi.dev")
                     .header("X-Title", "Tau Coding Agent 2026");
             }
 
@@ -1268,14 +1426,18 @@ impl ProviderClient {
 
                 while let Some(pos) = byte_buf.iter().position(|&b| b == b'\n') {
                     let line_bytes = &byte_buf[..pos];
-                    let line_str = String::from_utf8_lossy(line_bytes).trim_end_matches('\r').to_string();
+                    let line_str = String::from_utf8_lossy(line_bytes)
+                        .trim_end_matches('\r')
+                        .to_string();
                     byte_buf.drain(..=pos);
                     state.process_line(&line_str, &mut on_chunk);
                 }
             }
 
             if !byte_buf.is_empty() {
-                let line_str = String::from_utf8_lossy(&byte_buf).trim_end_matches('\r').to_string();
+                let line_str = String::from_utf8_lossy(&byte_buf)
+                    .trim_end_matches('\r')
+                    .to_string();
                 if !line_str.is_empty() {
                     state.process_line(&line_str, &mut on_chunk);
                 }
@@ -1295,12 +1457,18 @@ mod tests {
         let opencode = ModelConfig::resolve("opencode/zen-coder");
         assert_eq!(opencode.provider, "opencode");
         assert_eq!(opencode.model_id, "zen-coder");
-        assert_eq!(opencode.base_url.as_deref(), Some("https://opencode.ai/zen/v1"));
+        assert_eq!(
+            opencode.base_url.as_deref(),
+            Some("https://opencode.ai/zen/v1")
+        );
 
         let kilo = ModelConfig::resolve("kilo/deepseek-r1");
         assert_eq!(kilo.provider, "kilo");
         assert_eq!(kilo.model_id, "deepseek-r1");
-        assert_eq!(kilo.base_url.as_deref(), Some("https://api.kilo.ai/api/gateway"));
+        assert_eq!(
+            kilo.base_url.as_deref(),
+            Some("https://api.kilo.ai/api/gateway")
+        );
 
         let agnes = ModelConfig::resolve("agnes/agnes-core");
         assert_eq!(agnes.provider, "agnes");
@@ -1309,82 +1477,130 @@ mod tests {
             .ok()
             .or_else(|| ModelConfig::lookup_models_json_base_url("agnes"))
             .unwrap_or_else(|| "https://api.agnes.ai/v1".to_string());
-        assert_eq!(agnes.base_url.as_deref(), Some(expected_agnes_base.as_str()));
+        assert_eq!(
+            agnes.base_url.as_deref(),
+            Some(expected_agnes_base.as_str())
+        );
 
         let claude = ModelConfig::resolve("claude/claude-3-7-sonnet");
         assert_eq!(claude.provider, "anthropic");
         assert_eq!(claude.model_id, "claude-3-7-sonnet");
         let expected_anthropic_base = std::env::var("ANTHROPIC_BASE_URL")
             .unwrap_or_else(|_| "https://api.anthropic.com/v1".to_string());
-        assert_eq!(claude.base_url.as_deref(), Some(expected_anthropic_base.as_str()));
+        assert_eq!(
+            claude.base_url.as_deref(),
+            Some(expected_anthropic_base.as_str())
+        );
 
         let gemini = ModelConfig::resolve("google/gemini-2.0-flash");
         assert_eq!(gemini.provider, "gemini");
         assert_eq!(gemini.model_id, "gemini-2.0-flash");
-        assert_eq!(gemini.base_url.as_deref(), Some("https://generativelanguage.googleapis.com/v1beta/openai"));
+        assert_eq!(
+            gemini.base_url.as_deref(),
+            Some("https://generativelanguage.googleapis.com/v1beta/openai")
+        );
 
         let groq = ModelConfig::resolve("groq/llama-3.3-70b-versatile");
         assert_eq!(groq.provider, "groq");
-        assert_eq!(groq.base_url.as_deref(), Some("https://api.groq.com/openai/v1"));
+        assert_eq!(
+            groq.base_url.as_deref(),
+            Some("https://api.groq.com/openai/v1")
+        );
 
         let cerebras = ModelConfig::resolve("cerebras/llama-3.3-70b");
         assert_eq!(cerebras.provider, "cerebras");
-        assert_eq!(cerebras.base_url.as_deref(), Some("https://api.cerebras.ai/v1"));
+        assert_eq!(
+            cerebras.base_url.as_deref(),
+            Some("https://api.cerebras.ai/v1")
+        );
 
         let mistral = ModelConfig::resolve("mistral/codestral-latest");
         assert_eq!(mistral.provider, "mistral");
-        assert_eq!(mistral.base_url.as_deref(), Some("https://api.mistral.ai/v1"));
+        assert_eq!(
+            mistral.base_url.as_deref(),
+            Some("https://api.mistral.ai/v1")
+        );
 
         let deepseek = ModelConfig::resolve("deepseek/deepseek-reasoner");
         assert_eq!(deepseek.provider, "deepseek");
-        assert_eq!(deepseek.base_url.as_deref(), Some("https://api.deepseek.com/v1"));
+        assert_eq!(
+            deepseek.base_url.as_deref(),
+            Some("https://api.deepseek.com/v1")
+        );
 
         let copilot = ModelConfig::resolve("copilot/gpt-4o");
         assert_eq!(copilot.provider, "copilot");
-        assert_eq!(copilot.base_url.as_deref(), Some("https://api.githubcopilot.com"));
+        assert_eq!(
+            copilot.base_url.as_deref(),
+            Some("https://api.githubcopilot.com")
+        );
 
         let bedrock = ModelConfig::resolve("bedrock/anthropic.claude-3-5-sonnet");
         assert_eq!(bedrock.provider, "bedrock");
-        assert_eq!(bedrock.base_url.as_deref(), Some("https://bedrock-runtime.us-east-1.amazonaws.com"));
+        assert_eq!(
+            bedrock.base_url.as_deref(),
+            Some("https://bedrock-runtime.us-east-1.amazonaws.com")
+        );
 
         let ollama = ModelConfig::resolve("ollama/llama3");
         assert_eq!(ollama.provider, "ollama");
         assert_eq!(ollama.model_id, "llama3");
         assert_eq!(ollama.api_key, "ollama");
-        assert_eq!(ollama.base_url.as_deref(), Some(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
+        assert_eq!(
+            ollama.base_url.as_deref(),
+            Some(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH).as_str())
+        );
 
         let llamacpp = ModelConfig::resolve("llamacpp/llama-3.2-3b");
         assert_eq!(llamacpp.provider, "llamacpp");
         assert_eq!(llamacpp.model_id, "llama-3.2-3b");
         assert_eq!(llamacpp.api_key, "llamacpp");
-        assert_eq!(llamacpp.base_url.as_deref(), Some(format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
+        assert_eq!(
+            llamacpp.base_url.as_deref(),
+            Some(format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH).as_str())
+        );
 
         let lmstudio = ModelConfig::resolve("lmstudio/mistral-7b");
         assert_eq!(lmstudio.provider, "lmstudio");
         assert_eq!(lmstudio.model_id, "mistral-7b");
         assert_eq!(lmstudio.api_key, "lmstudio");
-        assert_eq!(lmstudio.base_url.as_deref(), Some(format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
+        assert_eq!(
+            lmstudio.base_url.as_deref(),
+            Some(format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH).as_str())
+        );
 
         let vllm = ModelConfig::resolve("vllm/qwen-2.5");
         assert_eq!(vllm.provider, "vllm");
         assert_eq!(vllm.api_key, "vllm");
-        assert_eq!(vllm.base_url.as_deref(), Some(format!("{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
+        assert_eq!(
+            vllm.base_url.as_deref(),
+            Some(format!("{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH).as_str())
+        );
 
         // Fallbacks without slash
         let ollama_fallback = ModelConfig::resolve("local-ollama-llama3");
         assert_eq!(ollama_fallback.provider, "ollama");
         assert_eq!(ollama_fallback.api_key, "ollama");
-        assert_eq!(ollama_fallback.base_url.as_deref(), Some(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
+        assert_eq!(
+            ollama_fallback.base_url.as_deref(),
+            Some(format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH).as_str())
+        );
 
         let llamacpp_fallback = ModelConfig::resolve("llamacpp-qwen");
         assert_eq!(llamacpp_fallback.provider, "llamacpp");
         assert_eq!(llamacpp_fallback.api_key, "llamacpp");
-        assert_eq!(llamacpp_fallback.base_url.as_deref(), Some(format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
+        assert_eq!(
+            llamacpp_fallback.base_url.as_deref(),
+            Some(format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH).as_str())
+        );
 
         let lmstudio_fallback = ModelConfig::resolve("lmstudio-hermes");
         assert_eq!(lmstudio_fallback.provider, "lmstudio");
         assert_eq!(lmstudio_fallback.api_key, "lmstudio");
-        assert_eq!(lmstudio_fallback.base_url.as_deref(), Some(format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH).as_str()));
+        assert_eq!(
+            lmstudio_fallback.base_url.as_deref(),
+            Some(format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH).as_str())
+        );
     }
 
     #[test]
@@ -1393,7 +1609,10 @@ mod tests {
             std::env::set_var("ZAI_BASE_URL", "https://custom-proxy.zai.com/v1");
         }
         let cfg = ModelConfig::resolve("zai/glm-4-flash");
-        assert_eq!(cfg.base_url.as_deref(), Some("https://custom-proxy.zai.com/v1"));
+        assert_eq!(
+            cfg.base_url.as_deref(),
+            Some("https://custom-proxy.zai.com/v1")
+        );
         unsafe {
             std::env::remove_var("ZAI_BASE_URL");
         }
@@ -1496,8 +1715,19 @@ mod tests {
             oai_state.process_line(line, |c| chunks.push(c));
         }
         let resp = oai_state.finish();
-        assert_eq!(chunks, vec!["<thinking>\n", "Thinking step 1... ", "\n</thinking>\n\n", "Final answer."]);
-        assert_eq!(resp.text, "<thinking>\nThinking step 1... \n</thinking>\n\nFinal answer.");
+        assert_eq!(
+            chunks,
+            vec![
+                "<thinking>\n",
+                "Thinking step 1... ",
+                "\n</thinking>\n\n",
+                "Final answer."
+            ]
+        );
+        assert_eq!(
+            resp.text,
+            "<thinking>\nThinking step 1... \n</thinking>\n\nFinal answer."
+        );
 
         // Test Anthropic thinking delta
         let anthropic_lines = vec![
@@ -1512,8 +1742,19 @@ mod tests {
             ant_state.process_line(line, |c| ant_chunks.push(c));
         }
         let ant_resp = ant_state.finish();
-        assert_eq!(ant_chunks, vec!["<thinking>\n", "Reasoning about code... ", "\n</thinking>\n\n", "Here is the solution."]);
-        assert_eq!(ant_resp.text, "<thinking>\nReasoning about code... \n</thinking>\n\nHere is the solution.");
+        assert_eq!(
+            ant_chunks,
+            vec![
+                "<thinking>\n",
+                "Reasoning about code... ",
+                "\n</thinking>\n\n",
+                "Here is the solution."
+            ]
+        );
+        assert_eq!(
+            ant_resp.text,
+            "<thinking>\nReasoning about code... \n</thinking>\n\nHere is the solution."
+        );
     }
 
     #[test]
@@ -1709,10 +1950,16 @@ mod tests {
         assert_eq!(resp.tool_calls.len(), 2);
         assert_eq!(resp.tool_calls[0].id, "call_0");
         assert_eq!(resp.tool_calls[0].name, "read");
-        assert_eq!(resp.tool_calls[0].arguments, serde_json::json!({"path": "a.rs"}));
+        assert_eq!(
+            resp.tool_calls[0].arguments,
+            serde_json::json!({"path": "a.rs"})
+        );
         assert_eq!(resp.tool_calls[1].id, "call_1");
         assert_eq!(resp.tool_calls[1].name, "edit");
-        assert_eq!(resp.tool_calls[1].arguments, serde_json::json!({"path": "b.rs"}));
+        assert_eq!(
+            resp.tool_calls[1].arguments,
+            serde_json::json!({"path": "b.rs"})
+        );
     }
 
     #[test]
@@ -1755,7 +2002,11 @@ mod tests {
             ant_state.process_line(line, |c| ant_chunks.push(c));
         }
         let ant_resp = ant_state.finish();
-        assert!(ant_resp.text.contains("<thinking>\nAnalyzing project...\n</thinking>\n\n"));
+        assert!(
+            ant_resp
+                .text
+                .contains("<thinking>\nAnalyzing project...\n</thinking>\n\n")
+        );
         assert_eq!(ant_resp.tool_calls.len(), 1);
         assert_eq!(ant_resp.tool_calls[0].name, "git");
     }

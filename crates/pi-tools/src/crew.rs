@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::future::Future;
@@ -73,7 +73,7 @@ pub trait CrewToolHandler: Send + Sync {
 static CREW_HANDLER: RwLock<Option<Arc<dyn CrewToolHandler>>> = RwLock::new(None);
 
 pub fn register_crew_handler(handler: Arc<dyn CrewToolHandler>) {
-    let mut guard = CREW_HANDLER.write().expect("Crew handler lock poisoned");
+    let mut guard = CREW_HANDLER.write().unwrap_or_else(|p| p.into_inner());
     *guard = Some(handler);
 }
 
@@ -85,7 +85,7 @@ impl CrewTools {
             .map_err(|e| anyhow!("Invalid arguments for crew_dispatch: {}", e))?;
 
         let handler = {
-            let guard = CREW_HANDLER.read().expect("Crew handler lock poisoned");
+            let guard = CREW_HANDLER.read().unwrap_or_else(|p| p.into_inner());
             guard.clone()
         };
 
@@ -104,7 +104,7 @@ impl CrewTools {
             .map_err(|e| anyhow!("Invalid arguments for crew_status: {}", e))?;
 
         let handler = {
-            let guard = CREW_HANDLER.read().expect("Crew handler lock poisoned");
+            let guard = CREW_HANDLER.read().unwrap_or_else(|p| p.into_inner());
             guard.clone()
         };
 
@@ -120,7 +120,7 @@ impl CrewTools {
             .map_err(|e| anyhow!("Invalid arguments for crew_merge: {}", e))?;
 
         let handler = {
-            let guard = CREW_HANDLER.read().expect("Crew handler lock poisoned");
+            let guard = CREW_HANDLER.read().unwrap_or_else(|p| p.into_inner());
             guard.clone()
         };
 
@@ -164,9 +164,7 @@ mod tests {
             &'a self,
             args: &'a CrewMergeArgs,
         ) -> Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
-            Box::pin(async move {
-                Ok(format!("Mock merged task {}", args.task_id))
-            })
+            Box::pin(async move { Ok(format!("Mock merged task {}", args.task_id)) })
         }
     }
 

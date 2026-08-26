@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::future::Future;
@@ -28,9 +28,7 @@ pub trait SpeculateToolHandler: Send + Sync {
 static SPECULATE_HANDLER: RwLock<Option<Arc<dyn SpeculateToolHandler>>> = RwLock::new(None);
 
 pub fn register_speculate_handler(handler: Arc<dyn SpeculateToolHandler>) {
-    let mut guard = SPECULATE_HANDLER
-        .write()
-        .expect("Speculate handler lock poisoned");
+    let mut guard = SPECULATE_HANDLER.write().unwrap_or_else(|p| p.into_inner());
     *guard = Some(handler);
 }
 
@@ -42,9 +40,7 @@ impl SpeculateTool {
             .map_err(|e| anyhow!("Invalid arguments for speculate: {}", e))?;
 
         let handler = {
-            let guard = SPECULATE_HANDLER
-                .read()
-                .expect("Speculate handler lock poisoned");
+            let guard = SPECULATE_HANDLER.read().unwrap_or_else(|p| p.into_inner());
             guard.clone()
         };
 

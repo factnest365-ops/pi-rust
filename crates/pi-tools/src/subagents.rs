@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::future::Future;
@@ -37,9 +37,7 @@ pub trait SubagentToolHandler: Send + Sync {
 static SUBAGENT_HANDLER: RwLock<Option<Arc<dyn SubagentToolHandler>>> = RwLock::new(None);
 
 pub fn register_subagent_handler(handler: Arc<dyn SubagentToolHandler>) {
-    let mut guard = SUBAGENT_HANDLER
-        .write()
-        .expect("Subagent handler lock poisoned");
+    let mut guard = SUBAGENT_HANDLER.write().unwrap_or_else(|p| p.into_inner());
     *guard = Some(handler);
 }
 
@@ -51,9 +49,7 @@ impl SubagentTools {
             .map_err(|e| anyhow!("Invalid arguments for invoke_subagent: {}", e))?;
 
         let handler = {
-            let guard = SUBAGENT_HANDLER
-                .read()
-                .expect("Subagent handler lock poisoned");
+            let guard = SUBAGENT_HANDLER.read().unwrap_or_else(|p| p.into_inner());
             guard.clone()
         };
 
@@ -73,9 +69,7 @@ impl SubagentTools {
             .map_err(|e| anyhow!("Invalid arguments for manage_subagents: {}", e))?;
 
         let handler = {
-            let guard = SUBAGENT_HANDLER
-                .read()
-                .expect("Subagent handler lock poisoned");
+            let guard = SUBAGENT_HANDLER.read().unwrap_or_else(|p| p.into_inner());
             guard.clone()
         };
 
