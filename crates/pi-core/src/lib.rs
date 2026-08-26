@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 
 pub mod alfred;
+pub mod ckg;
+pub mod coedit;
 pub mod crystallize;
 pub mod federation;
 pub mod firstmate;
@@ -25,7 +27,7 @@ pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
 };
 pub use herdr::{HerdrAgentState, HerdrEnvironment, HerdrProtocol};
-pub use pi_tools::{get_mcp_manager, McpManager, McpServerConfig, McpToolDefinition};
+pub use pi_tools::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
 pub use plan::{ExecutionPlan, PlanExecutor, PlanTask, TaskStatus};
 pub use skills::{SkillDefinition, SkillRegistry};
 pub use speculate::{
@@ -131,12 +133,27 @@ impl SystemPromptEngine {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TurnEvent {
-    ContextPrepared { token_estimate: usize },
-    ModelStreaming { chunk: String },
-    ToolExecuting { tool_name: String, tool_call_id: String },
-    ToolCompleted { tool_name: String, is_error: bool },
-    ContextCompacted { old_turns: usize, new_summary_len: usize },
-    TurnCompleted { total_tokens: usize },
+    ContextPrepared {
+        token_estimate: usize,
+    },
+    ModelStreaming {
+        chunk: String,
+    },
+    ToolExecuting {
+        tool_name: String,
+        tool_call_id: String,
+    },
+    ToolCompleted {
+        tool_name: String,
+        is_error: bool,
+    },
+    ContextCompacted {
+        old_turns: usize,
+        new_summary_len: usize,
+    },
+    TurnCompleted {
+        total_tokens: usize,
+    },
 }
 
 #[derive(Clone)]
@@ -191,7 +208,9 @@ impl AgentLoop {
     }
 
     pub fn format_plan_markdown(&self) -> Option<String> {
-        self.execution_plan.as_ref().map(ExecutionPlan::to_markdown_checklist)
+        self.execution_plan
+            .as_ref()
+            .map(ExecutionPlan::to_markdown_checklist)
     }
 
     pub fn crystallize_active_session(
@@ -225,13 +244,19 @@ impl AgentLoop {
                 }
                 Role::Assistant => {
                     if let Some(ref tc) = node.tool_calls {
-                        messages.push(ChatMessage::assistant_with_tool_calls(&node.content, tc.clone()));
+                        messages.push(ChatMessage::assistant_with_tool_calls(
+                            &node.content,
+                            tc.clone(),
+                        ));
                     } else {
                         messages.push(ChatMessage::assistant(&node.content));
                     }
                 }
                 Role::Tool => {
-                    let call_id = node.tool_call_id.clone().unwrap_or_else(|| "call_fallback".to_string());
+                    let call_id = node
+                        .tool_call_id
+                        .clone()
+                        .unwrap_or_else(|| "call_fallback".to_string());
                     let tool_name = node.tool_name.clone().unwrap_or_default();
                     messages.push(ChatMessage::tool_result(call_id, tool_name, &node.content));
                 }
@@ -313,12 +338,19 @@ impl AgentLoop {
         let mut transcript_to_summarize = String::new();
         for node in to_summarize {
             match node.role {
-                Role::User => transcript_to_summarize.push_str(&format!("User: {}\n\n", node.content)),
-                Role::Assistant => transcript_to_summarize.push_str(&format!("Assistant: {}\n\n", node.content)),
-                Role::Tool => transcript_to_summarize.push_str(&format!("Tool: {}\n\n", node.content)),
+                Role::User => {
+                    transcript_to_summarize.push_str(&format!("User: {}\n\n", node.content))
+                }
+                Role::Assistant => {
+                    transcript_to_summarize.push_str(&format!("Assistant: {}\n\n", node.content))
+                }
+                Role::Tool => {
+                    transcript_to_summarize.push_str(&format!("Tool: {}\n\n", node.content))
+                }
                 Role::System => {
                     if node.content.contains("Context Compaction Summary") {
-                        transcript_to_summarize.push_str(&format!("Previous History Summary:\n{}\n\n", node.content));
+                        transcript_to_summarize
+                            .push_str(&format!("Previous History Summary:\n{}\n\n", node.content));
                     }
                 }
             }
@@ -330,7 +362,8 @@ impl AgentLoop {
             transcript_to_summarize
         );
 
-        let summary_system = "You are a context compaction engine. Produce a dense, factual summary.";
+        let summary_system =
+            "You are a context compaction engine. Produce a dense, factual summary.";
         let summary_result = match ProviderClient::stream_messages_with_tools(
             &self.model_config,
             summary_system,
@@ -409,7 +442,8 @@ impl AgentLoop {
 
             let conversation_messages = self.build_conversation_messages();
             let conversation_prompt = self.build_conversation_prompt();
-            let token_estimate = TokenProfiler::estimate_tokens(&conversation_prompt, &self.model_config.model_id);
+            let token_estimate =
+                TokenProfiler::estimate_tokens(&conversation_prompt, &self.model_config.model_id);
             event_tx(TurnEvent::ContextPrepared { token_estimate });
 
             let tool_defs = {
@@ -564,7 +598,10 @@ impl AgentLoop {
             }
         }
 
-        let total_tokens = TokenProfiler::estimate_tokens(&self.build_conversation_prompt(), &self.model_config.model_id);
+        let total_tokens = TokenProfiler::estimate_tokens(
+            &self.build_conversation_prompt(),
+            &self.model_config.model_id,
+        );
         event_tx(TurnEvent::TurnCompleted { total_tokens });
         HerdrProtocol::emit_state(HerdrAgentState::Done);
         HerdrProtocol::emit_state(HerdrAgentState::Idle);
@@ -672,10 +709,7 @@ impl AgentLoop {
                 });
             }
         } else if trimmed_tag == "write" || trimmed_tag.starts_with("write ") {
-            let rest = trimmed_tag
-                .strip_prefix("write")
-                .unwrap()
-                .trim();
+            let rest = trimmed_tag.strip_prefix("write").unwrap().trim();
             let tokens = Self::tokenize_args(rest);
             let path = tokens.first().cloned().unwrap_or_default();
             if !path.is_empty() {
@@ -717,10 +751,7 @@ impl AgentLoop {
                 }
             }
         } else if trimmed_tag == "edit" || trimmed_tag.starts_with("edit ") {
-            let rest = trimmed_tag
-                .strip_prefix("edit")
-                .unwrap()
-                .trim();
+            let rest = trimmed_tag.strip_prefix("edit").unwrap().trim();
             let tokens = Self::tokenize_args(rest);
             let path = tokens.first().cloned().unwrap_or_default();
 
@@ -731,8 +762,7 @@ impl AgentLoop {
                 if !path.is_empty() && val.get("path").is_none() {
                     val["path"] = serde_json::Value::String(path.clone());
                 }
-                let has_target =
-                    val.get("target").is_some() || val.get("oldText").is_some();
+                let has_target = val.get("target").is_some() || val.get("oldText").is_some();
                 let has_replacement =
                     val.get("replacement").is_some() || val.get("newText").is_some();
                 if val.get("path").is_some() && has_target && has_replacement {
@@ -777,10 +807,7 @@ impl AgentLoop {
                 });
             }
         } else if trimmed_tag == "read" || trimmed_tag.starts_with("read ") {
-            let rest = trimmed_tag
-                .strip_prefix("read")
-                .unwrap()
-                .trim();
+            let rest = trimmed_tag.strip_prefix("read").unwrap().trim();
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("path").is_some()
@@ -857,7 +884,13 @@ impl AgentLoop {
             } else {
                 let trimmed_body = body.trim();
                 if !trimmed_body.is_empty() {
-                    let pattern = trimmed_body.lines().next().unwrap_or("").trim().trim_matches('"').trim_matches('\'');
+                    let pattern = trimmed_body
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'');
                     if !pattern.is_empty() {
                         return Some(ToolCall {
                             id: call_id,
@@ -892,7 +925,13 @@ impl AgentLoop {
             } else {
                 let trimmed_body = body.trim();
                 if !trimmed_body.is_empty() {
-                    let pattern = trimmed_body.lines().next().unwrap_or("").trim().trim_matches('"').trim_matches('\'');
+                    let pattern = trimmed_body
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'');
                     if !pattern.is_empty() {
                         return Some(ToolCall {
                             id: call_id,
@@ -939,7 +978,12 @@ impl AgentLoop {
             let url = if !rest.is_empty() {
                 rest.trim_matches('"').trim_matches('\'')
             } else {
-                body.lines().next().unwrap_or("").trim().trim_matches('"').trim_matches('\'')
+                body.lines()
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
             };
 
             if !url.is_empty() {
@@ -973,7 +1017,12 @@ impl AgentLoop {
             let query = if !rest.is_empty() {
                 rest.trim_matches('"').trim_matches('\'')
             } else {
-                body.lines().next().unwrap_or("").trim().trim_matches('"').trim_matches('\'')
+                body.lines()
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
             };
 
             if !query.is_empty() {
@@ -1060,7 +1109,11 @@ impl AgentLoop {
                 }
             } else {
                 let first_line = body.lines().next().unwrap_or("status").trim();
-                let action = if first_line.is_empty() { "status" } else { first_line };
+                let action = if first_line.is_empty() {
+                    "status"
+                } else {
+                    first_line
+                };
                 args["action"] = serde_json::json!(action);
             }
 
@@ -1070,10 +1123,7 @@ impl AgentLoop {
                 arguments: args,
             });
         } else if trimmed_tag == "github" || trimmed_tag.starts_with("github ") {
-            let rest = trimmed_tag
-                .strip_prefix("github")
-                .unwrap()
-                .trim();
+            let rest = trimmed_tag.strip_prefix("github").unwrap().trim();
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("action").is_some()
@@ -1097,10 +1147,7 @@ impl AgentLoop {
                 arguments: serde_json::json!({ "action": action }),
             });
         } else if trimmed_tag == "lsp" || trimmed_tag.starts_with("lsp ") {
-            let rest = trimmed_tag
-                .strip_prefix("lsp")
-                .unwrap()
-                .trim();
+            let rest = trimmed_tag.strip_prefix("lsp").unwrap().trim();
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("action").is_some()
@@ -1127,7 +1174,11 @@ impl AgentLoop {
                 name: "lsp".to_string(),
                 arguments: args,
             });
-        } else if trimmed_tag == "ast" || trimmed_tag.starts_with("ast ") || trimmed_tag == "ast_slice" || trimmed_tag.starts_with("ast_slice ") {
+        } else if trimmed_tag == "ast"
+            || trimmed_tag.starts_with("ast ")
+            || trimmed_tag == "ast_slice"
+            || trimmed_tag.starts_with("ast_slice ")
+        {
             let rest = if let Some(r) = trimmed_tag.strip_prefix("ast_slice") {
                 r.trim()
             } else {
@@ -1181,7 +1232,10 @@ impl AgentLoop {
             }
 
             let tokens = Self::tokenize_args(rest);
-            let name = tokens.first().cloned().unwrap_or_else(|| "Worker".to_string());
+            let name = tokens
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "Worker".to_string());
             let task = if !body.trim().is_empty() {
                 body.trim().to_string()
             } else if tokens.len() > 1 {
@@ -1198,11 +1252,9 @@ impl AgentLoop {
                     "task": task
                 }),
             });
-        } else if trimmed_tag == "manage_subagents" || trimmed_tag.starts_with("manage_subagents ") {
-            let rest = trimmed_tag
-                .strip_prefix("manage_subagents")
-                .unwrap()
-                .trim();
+        } else if trimmed_tag == "manage_subagents" || trimmed_tag.starts_with("manage_subagents ")
+        {
+            let rest = trimmed_tag.strip_prefix("manage_subagents").unwrap().trim();
 
             if let Ok(val) = serde_json::from_str::<serde_json::Value>(body.trim())
                 && val.get("action").is_some()
@@ -1431,7 +1483,8 @@ mod tests {
 
     #[test]
     fn test_extract_fallback_write() {
-        let text = "Creating file:\n```write src/main.rs\nfn main() {\n    println!(\"Hello\");\n}\n```";
+        let text =
+            "Creating file:\n```write src/main.rs\nfn main() {\n    println!(\"Hello\");\n}\n```";
         let calls = AgentLoop::extract_fallback_tool_calls(text);
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].name, "write");
@@ -1484,7 +1537,8 @@ mod tests {
         assert_eq!(calls_slice[0].arguments["start_line"], 10);
         assert_eq!(calls_slice[0].arguments["end_line"], 25);
 
-        let text_json = "```read\n{\"path\": \"src/lib.rs\", \"start_line\": 1, \"end_line\": 50}\n```";
+        let text_json =
+            "```read\n{\"path\": \"src/lib.rs\", \"start_line\": 1, \"end_line\": 50}\n```";
         let calls_json = AgentLoop::extract_fallback_tool_calls(text_json);
         assert_eq!(calls_json.len(), 1);
         assert_eq!(calls_json[0].name, "read");
@@ -1518,7 +1572,9 @@ cat test.txt
         assert_eq!(calls[1].arguments["command"], "cat test.txt");
     }
 
-    async fn start_mock_sse_server(responses: Vec<String>) -> (String, tokio::task::JoinHandle<()>) {
+    async fn start_mock_sse_server(
+        responses: Vec<String>,
+    ) -> (String, tokio::task::JoinHandle<()>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let base_url = format!("http://{}", addr);
@@ -1581,12 +1637,16 @@ cat test.txt
             .collect();
 
         assert_eq!(streaming_chunks, vec!["Hello ", "world!"]);
-        assert!(captured
-            .iter()
-            .any(|e| matches!(e, TurnEvent::ContextPrepared { .. })));
-        assert!(captured
-            .iter()
-            .any(|e| matches!(e, TurnEvent::TurnCompleted { .. })));
+        assert!(
+            captured
+                .iter()
+                .any(|e| matches!(e, TurnEvent::ContextPrepared { .. }))
+        );
+        assert!(
+            captured
+                .iter()
+                .any(|e| matches!(e, TurnEvent::TurnCompleted { .. }))
+        );
 
         let _ = server_handle.await;
     }
@@ -1615,13 +1675,15 @@ cat test.txt
                 }
             }]
         });
-        let turn1_sse = format!("data: {}\n\ndata: [DONE]\n\n", serde_json::to_string(&turn1_json).unwrap());
+        let turn1_sse = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            serde_json::to_string(&turn1_json).unwrap()
+        );
 
         // Turn 2: LLM provides final answer
         let turn2_sse = "data: {\"choices\":[{\"delta\":{\"content\":\"File written successfully.\"}}]}\n\ndata: [DONE]\n\n".to_string();
 
-        let (base_url, server_handle) =
-            start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
+        let (base_url, server_handle) = start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
 
         let model_config = ModelConfig {
             provider: "openai".to_string(),
@@ -1684,8 +1746,7 @@ cat test.txt
         // Turn 2: LLM provides final answer
         let turn2_sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Finished writing via markdown fallback.\"}}]}\n\ndata: [DONE]\n\n".to_string();
 
-        let (base_url, server_handle) =
-            start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
+        let (base_url, server_handle) = start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
 
         let model_config = ModelConfig {
             provider: "openai".to_string(),
@@ -1770,10 +1831,7 @@ cat test.txt
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
-        let res = agent_loop
-            .run_turn("Edit and read", |_| {})
-            .await
-            .unwrap();
+        let res = agent_loop.run_turn("Edit and read", |_| {}).await.unwrap();
 
         assert_eq!(res, "Edit and read completed.");
         assert_eq!(
@@ -1841,18 +1899,36 @@ cat test.txt
 
         // Populate history with several turns
         for i in 1..=8 {
-            agent_loop.session_tree.append_child(Role::User, format!("User turn {} with long contextual instructions and detailed tasks", i));
-            agent_loop.session_tree.append_child(Role::Assistant, format!("Assistant response {} detailing executed changes and completed steps", i));
+            agent_loop.session_tree.append_child(
+                Role::User,
+                format!(
+                    "User turn {} with long contextual instructions and detailed tasks",
+                    i
+                ),
+            );
+            agent_loop.session_tree.append_child(
+                Role::Assistant,
+                format!(
+                    "Assistant response {} detailing executed changes and completed steps",
+                    i
+                ),
+            );
         }
 
         let mut compacted = false;
-        let res = agent_loop.compact_history_if_needed(&mut |evt| {
-            if let TurnEvent::ContextCompacted { old_turns, new_summary_len } = evt {
-                assert!(old_turns > 0);
-                assert!(new_summary_len > 0);
-                compacted = true;
-            }
-        }).await;
+        let res = agent_loop
+            .compact_history_if_needed(&mut |evt| {
+                if let TurnEvent::ContextCompacted {
+                    old_turns,
+                    new_summary_len,
+                } = evt
+                {
+                    assert!(old_turns > 0);
+                    assert!(new_summary_len > 0);
+                    compacted = true;
+                }
+            })
+            .await;
 
         assert!(res.is_ok());
         assert!(compacted);
@@ -1872,8 +1948,10 @@ cat test.txt
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
-        agent_loop.session_tree.append_child(Role::User, "Run check".to_string());
-        
+        agent_loop
+            .session_tree
+            .append_child(Role::User, "Run check".to_string());
+
         let tool_call_json = serde_json::json!([{
             "id": "call_123",
             "type": "function",
@@ -2026,11 +2104,13 @@ Implement authentication wizard in pi-tui
                 }
             }]
         });
-        let turn1_sse = format!("data: {}\n\ndata: [DONE]\n\n", serde_json::to_string(&turn1_json).unwrap());
+        let turn1_sse = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            serde_json::to_string(&turn1_json).unwrap()
+        );
         let turn2_sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Completed allowed tool only.\"}}]}\n\ndata: [DONE]\n\n".to_string();
 
-        let (base_url, server_handle) =
-            start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
+        let (base_url, server_handle) = start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
 
         let model_config = ModelConfig {
             provider: "openai".to_string(),
@@ -2087,8 +2167,14 @@ Implement authentication wizard in pi-tui
 
         // Initial turns
         for i in 1..=6 {
-            agent_loop.session_tree.append_child(Role::User, format!("User message {} with significant context", i));
-            agent_loop.session_tree.append_child(Role::Assistant, format!("Assistant reply {} summarizing operations", i));
+            agent_loop.session_tree.append_child(
+                Role::User,
+                format!("User message {} with significant context", i),
+            );
+            agent_loop.session_tree.append_child(
+                Role::Assistant,
+                format!("Assistant reply {} summarizing operations", i),
+            );
         }
 
         // First compaction
@@ -2098,17 +2184,25 @@ Implement authentication wizard in pi-tui
 
         // Add more turns
         for i in 7..=12 {
-            agent_loop.session_tree.append_child(Role::User, format!("User message {} with further instructions", i));
-            agent_loop.session_tree.append_child(Role::Assistant, format!("Assistant reply {} confirming task", i));
+            agent_loop.session_tree.append_child(
+                Role::User,
+                format!("User message {} with further instructions", i),
+            );
+            agent_loop.session_tree.append_child(
+                Role::Assistant,
+                format!("Assistant reply {} confirming task", i),
+            );
         }
 
         // Second compaction
         let mut second_compacted = false;
-        let _ = agent_loop.compact_history_if_needed(&mut |evt| {
-            if let TurnEvent::ContextCompacted { .. } = evt {
-                second_compacted = true;
-            }
-        }).await;
+        let _ = agent_loop
+            .compact_history_if_needed(&mut |evt| {
+                if let TurnEvent::ContextCompacted { .. } = evt {
+                    second_compacted = true;
+                }
+            })
+            .await;
 
         assert!(second_compacted);
         let history2 = agent_loop.session_tree.get_active_branch_history();
@@ -2164,11 +2258,13 @@ Implement authentication wizard in pi-tui
                 }
             }]
         });
-        let turn1_sse = format!("data: {}\n\ndata: [DONE]\n\n", serde_json::to_string(&turn1_json).unwrap());
+        let turn1_sse = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            serde_json::to_string(&turn1_json).unwrap()
+        );
         let turn2_sse = "data: {\"choices\":[{\"delta\":{\"content\":\"Understood, file was missing.\"}}]}\n\ndata: [DONE]\n\n".to_string();
 
-        let (base_url, server_handle) =
-            start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
+        let (base_url, server_handle) = start_mock_sse_server(vec![turn1_sse, turn2_sse]).await;
 
         let model_config = ModelConfig {
             provider: "openai".to_string(),
@@ -2195,7 +2291,13 @@ Implement authentication wizard in pi-tui
         let active = in_mem_vault.list_active_memories(10).unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].topic, "tool_failure:read");
-        assert!(active[0].correct_pattern.as_ref().unwrap().contains("find or ls"));
+        assert!(
+            active[0]
+                .correct_pattern
+                .as_ref()
+                .unwrap()
+                .contains("find or ls")
+        );
 
         let _ = server_handle.await;
     }
@@ -2251,7 +2353,9 @@ Implement authentication wizard in pi-tui
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
-        agent_loop.session_tree.append_child(Role::User, "Configure Rust release profiles".to_string());
+        agent_loop
+            .session_tree
+            .append_child(Role::User, "Configure Rust release profiles".to_string());
         agent_loop.session_tree.append_child_with_metadata(
             Role::Assistant,
             "Editing Cargo.toml".to_string(),
@@ -2270,13 +2374,19 @@ Implement authentication wizard in pi-tui
         );
 
         let skill_path = agent_loop
-            .crystallize_active_session("Rust Release Optimizer", "Optimizes release profile flags and builds")
+            .crystallize_active_session(
+                "Rust Release Optimizer",
+                "Optimizes release profile flags and builds",
+            )
             .unwrap();
 
         assert!(skill_path.exists());
-        assert!(agent_loop.system_engine.skill_registry.get_skill("rust-release-optimizer").is_some());
+        assert!(
+            agent_loop
+                .system_engine
+                .skill_registry
+                .get_skill("rust-release-optimizer")
+                .is_some()
+        );
     }
 }
-
-
-

@@ -33,6 +33,7 @@ tempfile = "3.10"
 futures-util = "0.3"
 dirs = "5.0"
 tokio-util = "0.7"
+regex = "1.10"
 
 # Internal workspace crates
 pi-core = { path = "crates/pi-core" }

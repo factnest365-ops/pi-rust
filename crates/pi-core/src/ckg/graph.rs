@@ -323,12 +323,9 @@ fn resolve_import_target(
     candidates.push(from.with_file_name(format!("{}.tsx", module)));
     candidates.push(from.with_file_name(format!("{}.js", module)));
 
-    for cand in candidates {
-        if file_index.contains_key(&cand) {
-            return Some(cand);
-        }
-    }
-    None
+    candidates
+        .into_iter()
+        .find(|cand| file_index.contains_key(cand))
 }
 
 struct WorkspaceWalker<'a> {
