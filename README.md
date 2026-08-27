@@ -15,7 +15,7 @@
 [![PRs](https://img.shields.io/badge/PRs-6%20open-informational.svg?style=flat-square)](https://github.com/factnest365-ops/pi-rust/pulls)
 [![Stars](https://img.shields.io/badge/Stars-welcome-yellow.svg?style=flat-square)](https://github.com/factnest365-ops/pi-rust)
 
-The self-improving Rust agent that obliterates Hermes — pure Rust, <10MB, MCTS-style planning, crew dispatch, and 10x cheaper.
+A pure Rust autonomous coding agent — zero external runtimes, <10MB runtime, 33+ LLM providers, crew dispatch, and a resident daemon.
 
 [Features](#-why-tau) • [Install](#-install) • [Demo](#-demo) • [Active PRs](#-active-prs) • [Architecture](#-architecture) • [Docs](#-docs) • [Contributing](#-contributing)
 
@@ -25,7 +25,25 @@ The self-improving Rust agent that obliterates Hermes — pure Rust, <10MB, MCTS
 
 ## Why Tau (`tau`)
 
-`tau` / `pi-rs` is a lightning-fast, local-first autonomous AI coding agent, background daemon (`taud`), and swarm orchestrator engineered in 100% pure safe Rust. It features a non-destructive session DAG, dual-protocol tool execution, real-time provider streaming, 33+ LLM integrations, an embedded SQLite FTS5 + SIMD cognitive memory vault, federated specialist personas (`J.A.R.V.I.S.`, `F.R.I.D.A.Y.`, `E.V.`), an undo engine, Alfred moral override, a Ratatui super-TUI cockpit, and a JSON-RPC 2.0 daemon for editor integrations.
+`tau` / `pi-rs` is a lightning-fast, local-first autonomous AI coding agent and background daemon (`taud`), engineered in 100% pure safe Rust. Shipped features:
+
+- Non-destructive session DAG with JSONL persistence
+- Dual-protocol tool execution (structured + fallback parsing)
+- Real-time SSE provider streaming across 33+ LLMs
+- SQLite FTS5 + SIMD cognitive memory vault with reflexion
+- Federated specialist personas (`J.A.R.V.I.S.`, `F.R.I.D.A.Y.`, `E.V.`)
+- Undo engine with action snapshots
+- Alfred moral override protocol
+- Ratatui TUI cockpit with overlays
+- JSON-RPC 2.0 daemon for editor integrations
+- Crew dispatch over isolated git worktrees
+- Speculative execution with ghost worktree races
+- Resident cron daemon with macOS notifications
+
+Planned (in progress on feature branches):
+- MCTS-based tool trajectory search
+- Best-of-N completion selection
+- Full autonomous goal execution loop
 
 ### Feature matrix
 
@@ -34,13 +52,13 @@ The self-improving Rust agent that obliterates Hermes — pure Rust, <10MB, MCTS
 | **Runtime** | Node.js runtime, npm, Electron/Ink layers | **Zero external runtimes**; single native Rust binary |
 | **Memory target** | Electron/Node heap, often 120MB+ | **< 10MB** runtime target; daemon idles < 4MB |
 | **Terminal UI** | Ink/React terminal UI | **Ratatui TUI** with overlays, themes, and Mermaid rendering |
-| **Crew / workers** | Python `ThreadPool` or ad-hoc subprocesses | **First Mate & Herdr swarm protocols** over isolated worktrees |
+| **Crew / workers** | Python `ThreadPool` or ad-hoc subprocesses | **First Mate & Herdr crew dispatch** over isolated git worktrees |
 | **Long-term memory** | Flat notes, manual recall | **SQLite FTS5 + SIMD Cosine vault** with reflexion and belief revision |
-| **Scheduling** | Gateway/cron outside the runtime | **Cron-capable daemon architecture** with JSON-RPC hooks |
+| **Scheduling** | Gateway/cron outside the runtime | **Resident cron daemon** with JSON-RPC hooks and macOS notifications |
 | **Safety** | Manual confirmation prompts | **Alfred protocol** + action-snapshot undo + subprocess timeouts |
 | **MCP support** | Manual MCP wiring in many setups | **Universal MCP auto-discovery** with stdio/HTTP execution |
-| **Editor integration** | CLI-only in many workflows | **JSON-RPC 2.0 daemon** + native `pi.nvim` companion |
-| **Build / QA** | TS/JS lint + tests | **Cargo, Clippy, tests**, zero-warning gate by default |
+| **Editor integration** | CLI-only in many workflows | **JSON-RPC 2.0 daemon** over Unix socket |
+| **Build / QA** | TS/JS lint + tests | **Cargo, Clippy, tests**, CI-gated zero-warning policy |
 
 ---
 
@@ -80,12 +98,11 @@ The installer places `tau` and `pi-rs` in `~/.tau/bin` and keeps existing legacy
 
 ## Active PRs
 
-- `fm/pi-rust-tier1` — core parity hardening and tier-1 invariant enforcement.
-- `fm/pi-rust-ui-quick` — quick TUI polish, cockpit ergonomics, and overlay behavior.
-- `fm/pi-rust-crew-dispatch` — crew dispatch tools, swarm coordination, and worktree isolation.
-- `fm/pi-rust-crew-verify` — verification gates, test orchestration, and pre-merge checks.
-- `fm/pi-rust-daemon-cron` — daemon lifecycle, Unix socket hygiene, and ambient awareness.
-- `fm/pi-rust-crew-memskill` — cognitive memory vault, reflexion, and skill crystallization.
+- `fm/pi-rust-dream3` — MCTS search layer + Best-of-N (Phase 1-2, not yet merged)
+- `fm/pi-rust-crew-dispatch` — crew dispatch tools, swarm coordination, and worktree isolation
+- `fm/pi-rust-crew-verify` — verification gates, test orchestration, and pre-merge checks
+- `fm/pi-rust-daemon-cron` — daemon lifecycle, Unix socket hygiene, and ambient awareness
+- `fm/pi-rust-crew-memskill` — cognitive memory vault, reflexion, and skill crystallization
 
 ---
 

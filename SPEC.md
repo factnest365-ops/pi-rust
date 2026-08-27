@@ -1,3 +1,4 @@
+> **Project**: `pi-rust` / `tau` (`τ`) — Pure Rust Autonomous Coding Agent
 # SPEC.md — System Architecture & Protocol Specification
 
 > **Project**: `pi-rust` / `tau` (`τ`) — Universal Self-Improving Autonomous Agent Harness & AI Operating Layer  

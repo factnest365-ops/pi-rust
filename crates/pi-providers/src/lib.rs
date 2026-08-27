@@ -1131,7 +1131,7 @@ impl ProviderClient {
 
     /// Formats tool definitions for Anthropic Messages API
     pub fn format_anthropic_tools(tools: &[serde_json::Value]) -> Vec<serde_json::Value> {
-        tools
+        let mut formatted: Vec<serde_json::Value> = tools
             .iter()
             .map(|t| {
                 let name = t.get("name").and_then(|n| n.as_str()).unwrap_or("");
@@ -1147,7 +1147,53 @@ impl ProviderClient {
                     "input_schema": input_schema
                 })
             })
-            .collect()
+            .collect();
+
+        // Attach ephemeral cache_control to the last tool so the entire toolset schema is cached
+        if let Some(last_tool) = formatted.last_mut() {
+            last_tool["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+        }
+
+        formatted
+    }
+
+    /// Applies Anthropic prompt caching breakpoints (up to 2 message breakpoints) across conversation history.
+    /// Anthropic allows at most 4 breakpoints per request:
+    /// - 1 for system prompt (applied in system_blocks)
+    /// - 1 for tools definition (applied on the last tool in format_anthropic_tools)
+    /// - Up to 2 for conversation history:
+    ///     * Message 0 (initial turn / project context)
+    ///     * Rolling penultimate turn (len - 2), caching prior turn history so subsequent turns get high cache hit rates
+    pub fn apply_anthropic_prompt_caching(messages: &mut [serde_json::Value]) {
+        if messages.is_empty() {
+            return;
+        }
+
+        fn attach_cache_control(msg: &mut serde_json::Value) {
+            if let Some(s) = msg.get("content").and_then(|c| c.as_str()) {
+                let text = s.to_string();
+                msg["content"] = serde_json::json!([
+                    {
+                        "type": "text",
+                        "text": text,
+                        "cache_control": { "type": "ephemeral" }
+                    }
+                ]);
+            } else if let Some(arr) = msg.get_mut("content").and_then(|c| c.as_array_mut())
+                && let Some(last_block) = arr.last_mut()
+            {
+                last_block["cache_control"] = serde_json::json!({ "type": "ephemeral" });
+            }
+        }
+
+        // 1. Always cache the initial message (project context / user instruction)
+        attach_cache_control(&mut messages[0]);
+
+        // 2. For multi-turn conversations (>= 3 messages), cache the penultimate turn (completed history prefix)
+        if messages.len() >= 3 {
+            let penultimate = messages.len() - 2;
+            attach_cache_control(&mut messages[penultimate]);
+        }
     }
 
     /// Formats an array of ChatMessages into OpenAI Chat Completions API format
@@ -1260,7 +1306,8 @@ impl ProviderClient {
         let client = get_http_client();
 
         if config.provider == "anthropic" {
-            let anthropic_messages = Self::format_anthropic_messages(messages);
+            let mut anthropic_messages = Self::format_anthropic_messages(messages);
+            Self::apply_anthropic_prompt_caching(&mut anthropic_messages);
 
             let is_claude_37 =
                 config.model_id.contains("3-7") || config.model_id.contains("claude-3-7");
@@ -1925,11 +1972,55 @@ mod tests {
         assert!(ant_tools[0]["input_schema"]["properties"]["path"].is_object());
         assert_eq!(ant_tools[1]["name"], "write");
         assert!(ant_tools[1]["input_schema"]["properties"]["content"].is_object());
+        assert_eq!(ant_tools[1]["cache_control"]["type"], "ephemeral");
 
         let openai_tools = ProviderClient::format_openai_tools(&tools);
         assert_eq!(openai_tools.len(), 2);
         assert_eq!(openai_tools[0]["type"], "function");
         assert_eq!(openai_tools[0]["function"]["name"], "read");
+    }
+
+    #[test]
+    fn test_anthropic_prompt_caching_breakpoints() {
+        // 1. Single message: caches initial turn
+        let mut single = vec![serde_json::json!({
+            "role": "user",
+            "content": "Initial prompt"
+        })];
+        ProviderClient::apply_anthropic_prompt_caching(&mut single);
+        assert_eq!(
+            single[0]["content"][0]["cache_control"]["type"],
+            "ephemeral"
+        );
+        assert_eq!(single[0]["content"][0]["text"], "Initial prompt");
+
+        // 2. Multi-turn conversation (4 messages): caches initial turn and penultimate turn
+        let mut multi = vec![
+            serde_json::json!({
+                "role": "user",
+                "content": "Turn 1 user"
+            }),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "Turn 1 assistant"
+            }),
+            serde_json::json!({
+                "role": "user",
+                "content": "Turn 2 user"
+            }),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "Turn 2 assistant"
+            }),
+        ];
+        ProviderClient::apply_anthropic_prompt_caching(&mut multi);
+
+        // Breakpoint 1 on initial message (index 0)
+        assert_eq!(multi[0]["content"][0]["cache_control"]["type"], "ephemeral");
+        // Breakpoint 2 on penultimate turn (index 2 = multi.len() - 2)
+        assert_eq!(multi[2]["content"][0]["cache_control"]["type"], "ephemeral");
+        // Latest assistant turn (index 3) is untouched
+        assert!(multi[3]["content"].is_string());
     }
 
     #[test]
