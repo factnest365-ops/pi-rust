@@ -604,6 +604,11 @@ impl ToolExecutor {
         }
 
         if occurrences == 0 {
+            // Fallback: Attempt whitespace- and indentation-tolerant fuzzy line matching
+            if let Some(fuzzy_content) = Self::try_fuzzy_edit(&content, target, replacement)? {
+                fs::write(path, fuzzy_content)?;
+                return Ok(format!("Successfully edited {} (fuzzy match)", path));
+            }
             return Err(anyhow::anyhow!("Target string not found in {}", path));
         }
         if occurrences > 1 {
@@ -617,6 +622,123 @@ impl ToolExecutor {
         let new_content = content.replacen(&actual_target, &actual_replacement, 1);
         fs::write(path, new_content)?;
         Ok(format!("Successfully edited {}", path))
+    }
+
+    /// Whitespace- and indentation-tolerant fuzzy edit matching.
+    /// Matches contiguous lines where trimmed lines are identical, preserves target file indentation,
+    /// and handles single/multiline and trailing newline conventions.
+    pub fn try_fuzzy_edit(
+        content: &str,
+        target: &str,
+        replacement: &str,
+    ) -> Result<Option<String>> {
+        let target_lines: Vec<&str> = target.lines().collect();
+        if target_lines.is_empty() {
+            return Ok(None);
+        }
+
+        // Parse content line spans: (trimmed_line, start_byte, full_end_byte)
+        let mut spans = Vec::new();
+        let mut start = 0;
+        for line in content.split_inclusive('\n') {
+            let full_end = start + line.len();
+            let trimmed = line.trim_end_matches(['\r', '\n']);
+            spans.push((trimmed, start, full_end));
+            start = full_end;
+        }
+
+        if spans.is_empty() || spans.len() < target_lines.len() {
+            return Ok(None);
+        }
+
+        let target_len = target_lines.len();
+        let mut matches = Vec::new();
+
+        for i in 0..=spans.len() - target_len {
+            let mut matched = true;
+            for j in 0..target_len {
+                if spans[i + j].0.trim() != target_lines[j].trim() {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched {
+                matches.push(i);
+            }
+        }
+
+        if matches.is_empty() {
+            return Ok(None);
+        }
+
+        if matches.len() > 1 {
+            return Err(anyhow::anyhow!(
+                "Target string occurs {} times (fuzzy match). Provide more surrounding lines to disambiguate the edit.",
+                matches.len()
+            ));
+        }
+
+        let match_idx = matches[0];
+        let start_byte = spans[match_idx].1;
+        let last_span = &spans[match_idx + target_len - 1];
+
+        let first_content_line = spans[match_idx].0;
+        let first_target_line = target_lines[0];
+
+        let content_indent: String = first_content_line
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .collect();
+        let target_indent: String = first_target_line
+            .chars()
+            .take_while(|c| *c == ' ' || *c == '\t')
+            .collect();
+
+        let rep_lines: Vec<&str> = replacement.lines().collect();
+        let mut adjusted_replacement_lines = Vec::new();
+
+        for line in &rep_lines {
+            if line.trim().is_empty() {
+                adjusted_replacement_lines.push(String::new());
+                continue;
+            }
+
+            if content_indent != target_indent {
+                if !target_indent.is_empty() && line.starts_with(&target_indent) {
+                    let remainder = &line[target_indent.len()..];
+                    adjusted_replacement_lines.push(format!("{}{}", content_indent, remainder));
+                } else if target_indent.is_empty() && !line.starts_with(&content_indent) {
+                    adjusted_replacement_lines.push(format!("{}{}", content_indent, line));
+                } else {
+                    adjusted_replacement_lines.push(line.to_string());
+                }
+            } else {
+                adjusted_replacement_lines.push(line.to_string());
+            }
+        }
+
+        let mut adjusted_rep = adjusted_replacement_lines.join("\n");
+        let end_byte;
+
+        if target.ends_with('\n') || replacement.ends_with('\n') || target_len > 1 {
+            end_byte = last_span.2;
+            if !adjusted_rep.ends_with('\n') && content[..end_byte].ends_with('\n') {
+                adjusted_rep.push('\n');
+            }
+        } else {
+            end_byte = last_span.1 + last_span.0.len();
+        }
+
+        if content.contains("\r\n") && !adjusted_rep.contains("\r\n") {
+            adjusted_rep = adjusted_rep.replace('\n', "\r\n");
+        }
+
+        let mut new_content = String::with_capacity(content.len() + adjusted_rep.len());
+        new_content.push_str(&content[..start_byte]);
+        new_content.push_str(&adjusted_rep);
+        new_content.push_str(&content[end_byte..]);
+
+        Ok(Some(new_content))
     }
 
     async fn execute_bash_async(args: &serde_json::Value) -> Result<String> {
@@ -897,6 +1019,95 @@ mod tests {
         let res = ToolExecutor::execute(&edit_call).await;
         assert!(res.is_error);
         assert!(res.output.contains("occurs 2 times"));
+    }
+
+    #[tokio::test]
+    async fn test_edit_tool_fuzzy_indentation_drift() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("fuzzy_indent.txt");
+        let path_str = file_path.to_str().unwrap();
+
+        // 4-space indented file content
+        fs::write(
+            &file_path,
+            "pub fn calculate() {\n    let a = 1;\n    let b = 2;\n    a + b\n}\n",
+        )
+        .unwrap();
+
+        // LLM provided 2-space indented target and replacement
+        let edit_call = ToolCall {
+            id: "call-edit-fuzzy-indent".to_string(),
+            name: "edit".to_string(),
+            arguments: serde_json::json!({
+                "path": path_str,
+                "target": "  let a = 1;\n  let b = 2;\n  a + b",
+                "replacement": "  let a = 10;\n  let b = 20;\n  a * b"
+            }),
+        };
+        let res = ToolExecutor::execute(&edit_call).await;
+        assert!(!res.is_error, "Failed: {}", res.output);
+        assert!(res.output.contains("fuzzy match"));
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        // Preserves the 4-space indentation of the file
+        assert_eq!(
+            content,
+            "pub fn calculate() {\n    let a = 10;\n    let b = 20;\n    a * b\n}\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edit_tool_fuzzy_trailing_whitespace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("fuzzy_ws.txt");
+        let path_str = file_path.to_str().unwrap();
+
+        // File has clean lines
+        fs::write(&file_path, "fn test() {\n    return 42;\n}\n").unwrap();
+
+        // LLM provided target with trailing spaces on each line
+        let edit_call = ToolCall {
+            id: "call-edit-fuzzy-ws".to_string(),
+            name: "edit".to_string(),
+            arguments: serde_json::json!({
+                "path": path_str,
+                "target": "fn test() {  \n    return 42; \n}  ",
+                "replacement": "fn test() {\n    return 100;\n}"
+            }),
+        };
+        let res = ToolExecutor::execute(&edit_call).await;
+        assert!(!res.is_error, "Failed: {}", res.output);
+        assert!(res.output.contains("fuzzy match"));
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "fn test() {\n    return 100;\n}\n");
+    }
+
+    #[tokio::test]
+    async fn test_edit_tool_fuzzy_ambiguous() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("fuzzy_ambig.txt");
+        let path_str = file_path.to_str().unwrap();
+
+        fs::write(
+            &file_path,
+            "fn a() {\n    let x = 1;\n}\nfn b() {\n      let x = 1;\n}\n",
+        )
+        .unwrap();
+
+        // Matches both 'let x = 1;' lines under trimmed matching (trailing space avoids exact match)
+        let edit_call = ToolCall {
+            id: "call-edit-fuzzy-ambig".to_string(),
+            name: "edit".to_string(),
+            arguments: serde_json::json!({
+                "path": path_str,
+                "target": "let x = 1; ",
+                "replacement": "let x = 99;"
+            }),
+        };
+        let res = ToolExecutor::execute(&edit_call).await;
+        assert!(res.is_error);
+        assert!(res.output.contains("occurs 2 times (fuzzy match)"));
     }
 
     #[tokio::test]

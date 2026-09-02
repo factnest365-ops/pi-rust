@@ -1,4 +1,7 @@
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::{
+    style::{Color, Modifier, Style},
+    text::Span,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThemeKind {
@@ -369,6 +372,28 @@ impl ThemePalette {
 
     pub fn highlight_comment(&self) -> Style {
         Style::default().fg(self.muted)
+    }
+
+    /// Unified overlay chrome — G2 continuity: all modals share identical corner feel and padding
+    pub fn overlay_block(&self, title: &str) -> ratatui::widgets::Block<'_> {
+        use ratatui::widgets::{Block, BorderType, Borders};
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(self.border))
+            .title(Span::styled(
+                format!(" {} ", title.trim()),
+                Style::default()
+                    .fg(self.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
+            .style(Style::default().bg(self.surface))
+    }
+
+    pub fn overlay_title_style(&self) -> Style {
+        Style::default()
+            .fg(self.accent)
+            .add_modifier(Modifier::BOLD)
     }
 }
 

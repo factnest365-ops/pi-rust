@@ -183,7 +183,7 @@
 
 ## 3. Quality & Performance Invariants
 
-- **Memory Invariant**: Base resident set size (RSS) must strictly remain **$< 15\text{ MB}$** and daemon idle footprint **$< 5\text{ MB}$**.
+- **Memory Invariant**: Base resident set size (RSS) must strictly remain **$< 10\text{ MB}$** and daemon idle footprint **$< 4\text{ MB}$**.
 - **Latency Invariant**: Cold-start initialization time must remain **$< 15\text{ ms}$**.
 - **Safety Invariant**: 100% Safe Rust across all production code paths.
 - **Clippy Policy**: Zero warnings on `cargo clippy --workspace --all-targets -- -D warnings`.

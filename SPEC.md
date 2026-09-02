@@ -1,3 +1,4 @@
+> **Project**: `pi-rust` / `tau` (`τ`) — Pure Rust Autonomous Coding Agent
 # SPEC.md — System Architecture & Protocol Specification
 
 > **Project**: `pi-rust` / `tau` (`τ`) — Universal Self-Improving Autonomous Agent Harness & AI Operating Layer  
@@ -401,6 +402,12 @@ Before a `PlanTask` transitions to `Completed`:
 ---
 
 ## 14. JARVIS Architecture & Federated Specialist Subagents
+
+Tau (`tau`) operates as the **central orchestrator**, maintaining an overarching view of the system. Sub-agents operate as **workers over Herdr git worktrees**, allowing them to perform isolated, atomic tasks without polluting the main orchestrator's state. This separation ensures `tau` stays the orchestrator while sub-agents handle specific execution details.
+
+### 14.X Capability Gates for TS Skills
+
+The orchestrator leverages a **hybrid Rust core + TS skills** architecture. TypeScript and Node.js-based skills are completely sandboxed and executed via strict **capability gates**. This guarantees the core orchestrator remains 100% Pure Rust and dependency-free, while seamlessly integrating external ecosystem capabilities when needed.
 
 ### 14.1 Federated Specialist Personas
 `pi-core::federation` provides three core specialized agent personas sharing a unified `TauVault`:
