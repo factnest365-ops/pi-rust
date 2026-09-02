@@ -1706,6 +1706,7 @@ cat test.txt
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1786,6 +1787,7 @@ cat test.txt
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1849,6 +1851,7 @@ cat test.txt
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1922,6 +1925,7 @@ cat test.txt
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -1986,6 +1990,7 @@ cat test.txt
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2039,6 +2044,7 @@ cat test.txt
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2213,6 +2219,7 @@ Implement authentication wizard in pi-tui
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config)
@@ -2254,6 +2261,7 @@ Implement authentication wizard in pi-tui
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2367,6 +2375,7 @@ Implement authentication wizard in pi-tui
             base_url: Some(base_url),
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2405,6 +2414,7 @@ Implement authentication wizard in pi-tui
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut plan = ExecutionPlan::new("p1", "Add login auth");
@@ -2444,6 +2454,7 @@ Implement authentication wizard in pi-tui
             base_url: None,
             context_window: 128_000,
             max_output: 8_192,
+            best_of_n: None,
         };
 
         let mut agent_loop = AgentLoop::new(model_config);
@@ -2484,3 +2495,4 @@ Implement authentication wizard in pi-tui
         );
     }
 }
+pub mod mcts;

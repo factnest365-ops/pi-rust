@@ -390,6 +390,7 @@ pub struct ModelConfig {
     pub context_window: usize,
     #[serde(default = "default_max_output")]
     pub max_output: usize,
+    pub best_of_n: Option<usize>,
 }
 
 fn default_context_window() -> usize {
@@ -607,6 +608,7 @@ impl ModelConfig {
             base_url,
             context_window,
             max_output,
+            best_of_n: None,
         }
     }
 }
@@ -1015,6 +1017,17 @@ impl AnthropicStreamState {
 pub struct ProviderClient;
 
 impl ProviderClient {
+    pub fn select_best_response(candidates: Vec<ProviderResponse>) -> ProviderResponse {
+        if candidates.is_empty() { return ProviderResponse { text: "".into(), tool_calls: vec![] }; }
+        let mut best = candidates[0].clone();
+        for cand in candidates.into_iter().skip(1) {
+            if (!cand.tool_calls.is_empty() && best.tool_calls.is_empty()) || (cand.tool_calls.is_empty() == best.tool_calls.is_empty() && cand.text.len() > best.text.len()) {
+                best = cand;
+            }
+        }
+        best
+    }
+
     /// Formats an array of ChatMessages into Anthropic Messages API format
     /// Enforces alternating user/assistant roles and merges sequential tool_result blocks.
     pub fn format_anthropic_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
@@ -2145,7 +2158,8 @@ mod tests {
         assert_eq!(claude_cfg.provider, "anthropic");
         assert_eq!(claude_cfg.model_id, "claude-3-7-sonnet-latest");
         assert_eq!(claude_cfg.context_window, 200_000);
-        assert_eq!(claude_cfg.max_output, 64_000);
+        assert_eq!(claude_cfg.max_output,
+            64_000);
 
         // 4. Codestral 256k
         let code_cfg = ModelConfig::resolve("mistral/codestral-latest");

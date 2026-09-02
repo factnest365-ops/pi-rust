@@ -465,6 +465,22 @@ pub async fn run_first_run_wizard() -> Result<()> {
 /// Prompts for credentials with masked entry and live connectivity validation
 async fn configure_provider_credential(provider: &str) -> Result<()> {
     let existing_key = AuthResolver::resolve_key(provider);
+
+    // GATEWAY DEDUPLICATION CHECK
+    // If the provider is 'openai' or 'gemini', check if a gateway key ('opencode' or 'kilo') already exists.
+    // If it does, and we don't have a direct key, we can skip prompting because the gateway handles it.
+    if existing_key.is_none()
+        && (provider == "openai" || provider == "gemini" || provider == "kilo")
+        && (AuthResolver::resolve_key("opencode").is_some()
+            || AuthResolver::resolve_key("kilo").is_some())
+    {
+        println!(
+            "  \x1b[32m✔ Found existing Gateway credentials (OpenCode/Kilo)\x1b[0m. Direct [{}] key not required.",
+            provider
+        );
+        return Ok(());
+    }
+
     if let Some(ref k) = existing_key {
         let masked = if k.len() > 8 {
             format!("{}...{}", &k[..4], &k[k.len() - 4..])

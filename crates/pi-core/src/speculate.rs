@@ -1,6 +1,9 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use pi_providers::ModelConfig;
-use pi_tools::git::{git_merge_branch_in_dir, git_worktree_create_at, git_worktree_remove_path};
+use pi_session::{Role, SessionTree};
+use pi_tools::git::{
+    git_merge_branch_in_dir, git_worktree_create_at, git_worktree_remove_path,
+};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -26,6 +29,21 @@ impl SpeculativeStrategy {
                 id: "spec-b".to_string(),
                 name: "Approach B: Modular / Clean Architecture".to_string(),
                 prompt_directive: "Focus on clean architecture, strong domain abstractions, clear error handling, modularity, and high testability.".to_string(),
+            },
+            Self {
+                id: "crew-grep-first".to_string(),
+                name: "Ghost Crew A: Grep-First".to_string(),
+                prompt_directive: "Start by grepping for relevant symbols, tests, and call sites before reading or editing. Minimize context and target exact implementation points.".to_string(),
+            },
+            Self {
+                id: "crew-read-first".to_string(),
+                name: "Ghost Crew B: Read-First".to_string(),
+                prompt_directive: "Read full module boundaries and related files first, then implement with strong typing and explicit error handling.".to_string(),
+            },
+            Self {
+                id: "crew-plan-first".to_string(),
+                name: "Ghost Crew C: Plan-First".to_string(),
+                prompt_directive: "Write a short plan or checklist, then implement the smallest change that satisfies it and keeps tests green.".to_string(),
             },
         ]
     }
@@ -77,6 +95,31 @@ pub struct SpeculativeRaceResult {
     pub results: Vec<SpeculativeBranchResult>,
     pub decision: ArbitrationDecision,
     pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SpeculativeCrewResult {
+    pub crew_id: String,
+    pub strategy_id: String,
+    pub strategy_name: String,
+    pub branch_name: String,
+    pub worktree_path: PathBuf,
+    pub passed: bool,
+    pub reward: f64,
+    pub execution_duration_ms: u64,
+    pub verification_output: String,
+    pub diff: String,
+    pub lines_added: usize,
+    pub lines_removed: usize,
+    pub session_node_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MctsRewardSummary {
+    pub total_simulations: usize,
+    pub best_crew_id: String,
+    pub best_reward: f64,
+    pub rewards: Vec<(String, f64)>,
 }
 
 #[derive(Clone)]
@@ -196,32 +239,12 @@ impl SpeculativeEngine {
         let branch_b_name = format!("tau-{}", &strat_b.id);
 
         // Clean up prior worktrees if any exist
-        let _ = git_worktree_remove_path(
-            &worktree_a_path,
-            Some(&branch_a_name),
-            true,
-            Some(&self.repo_root),
-        );
-        let _ = git_worktree_remove_path(
-            &worktree_b_path,
-            Some(&branch_b_name),
-            true,
-            Some(&self.repo_root),
-        );
+        let _ = git_worktree_remove_path(&worktree_a_path, Some(&branch_a_name), true, Some(&self.repo_root));
+        let _ = git_worktree_remove_path(&worktree_b_path, Some(&branch_b_name), true, Some(&self.repo_root));
 
         // 3. Fork Phase: Create Ephemeral Git Worktrees
-        git_worktree_create_at(
-            &self.base_branch,
-            &branch_a_name,
-            &worktree_a_path,
-            Some(&self.repo_root),
-        )?;
-        git_worktree_create_at(
-            &self.base_branch,
-            &branch_b_name,
-            &worktree_b_path,
-            Some(&self.repo_root),
-        )?;
+        git_worktree_create_at(&self.base_branch, &branch_a_name, &worktree_a_path, Some(&self.repo_root))?;
+        git_worktree_create_at(&self.base_branch, &branch_b_name, &worktree_b_path, Some(&self.repo_root))?;
 
         let runner_arc = Arc::new(runner);
 
@@ -290,16 +313,8 @@ impl SpeculativeEngine {
         let passed_a = res_a.is_ok() && ver_a.passed;
         let passed_b = res_b.is_ok() && ver_b.passed;
 
-        let err_a = res_a
-            .as_ref()
-            .err()
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| ver_a.output.clone());
-        let err_b = res_b
-            .as_ref()
-            .err()
-            .map(|e| e.to_string())
-            .unwrap_or_else(|| ver_b.output.clone());
+        let err_a = res_a.as_ref().err().map(|e| e.to_string()).unwrap_or_else(|| ver_a.output.clone());
+        let err_b = res_b.as_ref().err().map(|e| e.to_string()).unwrap_or_else(|| ver_b.output.clone());
 
         let branch_res_a = SpeculativeBranchResult {
             strategy_id: strat_a.id.clone(),
@@ -334,18 +349,16 @@ impl SpeculativeEngine {
 
         // 6. Arbitration Phase: Winner Arbitration & Auto-Merge
         let decision = if passed_a && !passed_b && has_changes_a {
-            let merge_out =
-                git_merge_branch_in_dir(&branch_a_name, &self.target_branch, Some(&self.repo_root))
-                    .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
+            let merge_out = git_merge_branch_in_dir(&branch_a_name, &self.target_branch, Some(&self.repo_root))
+                .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
             ArbitrationDecision::AutoMerged {
                 winner_id: strat_a.id.clone(),
                 branch_name: branch_a_name.clone(),
                 merge_output: merge_out,
             }
         } else if passed_b && !passed_a && has_changes_b {
-            let merge_out =
-                git_merge_branch_in_dir(&branch_b_name, &self.target_branch, Some(&self.repo_root))
-                    .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
+            let merge_out = git_merge_branch_in_dir(&branch_b_name, &self.target_branch, Some(&self.repo_root))
+                .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
             ArbitrationDecision::AutoMerged {
                 winner_id: strat_b.id.clone(),
                 branch_name: branch_b_name.clone(),
@@ -383,21 +396,15 @@ impl SpeculativeEngine {
         };
 
         // 7. Teardown Phase: Cleanup Disposable Ghost Worktrees
-        let _ = git_worktree_remove_path(
-            &worktree_a_path,
-            Some(&branch_a_name),
-            true,
-            Some(&self.repo_root),
-        );
-        let _ = git_worktree_remove_path(
-            &worktree_b_path,
-            Some(&branch_b_name),
-            true,
-            Some(&self.repo_root),
-        );
+        let _ = git_worktree_remove_path(&worktree_a_path, Some(&branch_a_name), true, Some(&self.repo_root));
+        let _ = git_worktree_remove_path(&worktree_b_path, Some(&branch_b_name), true, Some(&self.repo_root));
 
-        let summary =
-            Self::generate_summary_markdown(goal, &branch_res_a, &branch_res_b, &decision);
+        let summary = Self::generate_summary_markdown(
+            goal,
+            &branch_res_a,
+            &branch_res_b,
+            &decision,
+        );
 
         Ok(SpeculativeRaceResult {
             goal: goal.to_string(),
@@ -407,47 +414,197 @@ impl SpeculativeEngine {
         })
     }
 
-    async fn verify_workspace(
-        worktree_path: PathBuf,
-        verify_cmd: Option<String>,
-    ) -> VerificationResult {
+    pub async fn run_ghost_race_with_session<F, Fut>(
+        &self,
+        goal: &str,
+        model_cfg: &ModelConfig,
+        crews: Vec<SpeculativeStrategy>,
+        session_tree: &mut SessionTree,
+        runner: F,
+    ) -> Result<SpeculativeRaceResult>
+    where
+        F: Fn(PathBuf, SpeculativeStrategy, String, ModelConfig) -> Fut + Send + Sync + Clone + 'static,
+        Fut: Future<Output = Result<String>> + Send + 'static,
+    {
+        if crews.len() < 2 {
+            return Err(anyhow!("Ghost race requires at least 2 crews"));
+        }
+
+        let tau_dir = self.repo_root.join(".tau");
+        let worktrees_parent = tau_dir.join("worktrees");
+        std::fs::create_dir_all(&worktrees_parent)?;
+
+        let tau_gitignore = tau_dir.join(".gitignore");
+        if !tau_gitignore.exists() {
+            let _ = std::fs::write(&tau_gitignore, "*\n!.gitignore\n");
+        }
+
+        let mut branch_infos: Vec<(SpeculativeStrategy, String, PathBuf)> = Vec::with_capacity(crews.len());
+        for strat in &crews {
+            let branch_name = format!("tau-ghost-{}", strat.id);
+            let worktree_path = worktrees_parent.join(&strat.id);
+            let _ = git_worktree_remove_path(&worktree_path, Some(&branch_name), true, Some(&self.repo_root));
+            git_worktree_create_at(&self.base_branch, &branch_name, &worktree_path, Some(&self.repo_root))?;
+            branch_infos.push((strat.clone(), branch_name, worktree_path));
+        }
+
+        let verify_cmd_opt = self.verification_command.clone();
+        let mut race_futures = Vec::with_capacity(crews.len());
+        for (strat, _, wt_path) in &branch_infos {
+            let runner = runner.clone();
+            let strat = strat.clone();
+            let goal = goal.to_string();
+            let wt_path = wt_path.clone();
+            let cfg = model_cfg.clone();
+            race_futures.push(async move {
+                let start = Instant::now();
+                let res = runner(wt_path, strat.clone(), goal, cfg).await;
+                (res, strat, start.elapsed().as_millis() as u64)
+            });
+        }
+
+        let race_results = futures_util::future::join_all(race_futures).await;
+        let mut crew_results = Vec::with_capacity(crews.len());
+        let mut arbitration_results = Vec::with_capacity(crews.len());
+
+        for ((res, strat, duration), (_, branch_name, worktree_path)) in
+            race_results.into_iter().zip(branch_infos.iter())
+        {
+            let ver = Self::verify_workspace(worktree_path.clone(), verify_cmd_opt.clone()).await;
+            let diff = Self::get_branch_diff(worktree_path, &self.base_branch);
+            let (lines_added, lines_removed) = Self::count_diff_lines(&diff);
+
+            let _status = match &res {
+                Ok(_) if ver.passed => SpeculativeStatus::Passed,
+                Ok(_) => SpeculativeStatus::VerificationFailed { error: ver.output.clone() },
+                Err(e) => SpeculativeStatus::Failed(e.to_string()),
+            };
+
+            let passed = res.is_ok() && ver.passed;
+            let reward = if passed { 1.0 } else { 0.0 };
+            let crew_node_id = session_tree.append_child_with_metadata(
+                Role::Assistant,
+                format!("Ghost crew {} completed goal: {}", strat.id, goal),
+                Some(format!("spec-crew-{}", strat.id)),
+                Some("speculative_race".to_string()),
+                Some(serde_json::json!({
+                    "strategyId": strat.id,
+                    "branchName": branch_name,
+                    "passed": passed,
+                    "reward": reward,
+                    "executionDurationMs": duration,
+                })),
+            );
+
+            crew_results.push(SpeculativeCrewResult {
+                crew_id: strat.id.clone(),
+                strategy_id: strat.id.clone(),
+                strategy_name: strat.name.clone(),
+                branch_name: branch_name.clone(),
+                worktree_path: worktree_path.clone(),
+                passed,
+                reward,
+                execution_duration_ms: duration,
+                verification_output: ver.output.clone(),
+                diff: diff.clone(),
+                lines_added,
+                lines_removed,
+                session_node_id: Some(crew_node_id),
+            });
+
+            arbitration_results.push((strat.id.clone(), strat.name.clone(), passed, duration, diff, ver.output));
+        }
+
+        let decision = self.arbitrate_n_crews(&crew_results);
+        let summary = Self::generate_ghost_race_summary(goal, &crew_results, &decision);
+
+        for (_, branch_name, worktree_path) in &branch_infos {
+            let _ = git_worktree_remove_path(worktree_path, Some(branch_name), true, Some(&self.repo_root));
+        }
+
+        let mut results = Vec::with_capacity(crew_results.len());
+        for crew in crew_results {
+            results.push(SpeculativeBranchResult {
+                strategy_id: crew.strategy_id,
+                strategy_name: crew.strategy_name,
+                branch_name: crew.branch_name,
+                worktree_path: crew.worktree_path,
+                status: if crew.passed { SpeculativeStatus::Passed } else { SpeculativeStatus::Failed(crew.verification_output.clone()) },
+                output_text: if crew.passed { "Crew passed verification".to_string() } else { crew.verification_output.clone() },
+                lines_added: crew.lines_added,
+                lines_removed: crew.lines_removed,
+                verification_passed: crew.passed,
+                execution_duration_ms: crew.execution_duration_ms,
+                diff: crew.diff,
+            });
+        }
+
+        Ok(SpeculativeRaceResult {
+            goal: goal.to_string(),
+            results,
+            decision,
+            summary,
+        })
+    }
+
+    pub fn summarize_mcts_rewards(
+        session_tree: &SessionTree,
+        branch_head: Option<&str>,
+    ) -> MctsRewardSummary {
+        let head = branch_head.unwrap_or(&session_tree.active_node_id);
+        let history = session_tree.get_branch_history(head);
+        let mut rewards: Vec<(String, f64)> = Vec::new();
+        let mut total_simulations = 0usize;
+        let mut best_crew_id = String::new();
+        let mut best_reward = f64::MIN;
+
+        for node in history {
+            if let Some(tcalls) = &node.tool_calls
+                && let Some(arr) = tcalls.as_array() {
+                    for tc in arr {
+                        if tc.get("type").and_then(|v| v.as_str()) == Some("function")
+                            && let Some(name) = tc.get("function").and_then(|v| v.as_str())
+                                && name == "speculative_race" {
+                                    total_simulations += 1;
+                                    let reward = tc.get("reward").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                                    let crew_id = tc.get("strategyId").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                                    rewards.push((crew_id.clone(), reward));
+                                    if reward > best_reward {
+                                        best_reward = reward;
+                                        best_crew_id = crew_id.clone();
+                                    }
+                                }
+                    }
+                }
+        }
+
+        if best_crew_id.is_empty() {
+            best_crew_id = head.to_string();
+            best_reward = 0.0;
+        }
+
+        MctsRewardSummary { total_simulations, best_crew_id, best_reward, rewards }
+    }
+
+    async fn verify_workspace(worktree_path: PathBuf, verify_cmd: Option<String>) -> VerificationResult {
         let (cmd_bin, args) = if let Some(ref cmd_str) = verify_cmd {
             let parts: Vec<String> = cmd_str.split_whitespace().map(|s| s.to_string()).collect();
             if parts.is_empty() {
-                (
-                    "cargo".to_string(),
-                    vec![
-                        "check".to_string(),
-                        "--workspace".to_string(),
-                        "--all-targets".to_string(),
-                    ],
-                )
+                ("cargo".to_string(), vec!["check".to_string(), "--workspace".to_string(), "--all-targets".to_string()])
             } else {
                 (parts[0].clone(), parts[1..].to_vec())
             }
         } else if worktree_path.join("Cargo.toml").exists() {
-            (
-                "cargo".to_string(),
-                vec![
-                    "check".to_string(),
-                    "--workspace".to_string(),
-                    "--all-targets".to_string(),
-                ],
-            )
+            ("cargo".to_string(), vec!["check".to_string(), "--workspace".to_string(), "--all-targets".to_string()])
         } else if worktree_path.join("package.json").exists() {
             ("npm".to_string(), vec!["test".to_string()])
         } else {
-            (
-                "git".to_string(),
-                vec!["status".to_string(), "--short".to_string()],
-            )
+            ("git".to_string(), vec!["status".to_string(), "--short".to_string()])
         };
 
         let mut command = tokio::process::Command::new(&cmd_bin);
         command.args(&args).current_dir(&worktree_path);
-        command
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+        command.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
 
         let res = tokio::time::timeout(std::time::Duration::from_secs(120), async {
             let child = command.spawn()?;
@@ -536,10 +693,7 @@ impl SpeculativeEngine {
         res_b: &SpeculativeBranchResult,
         decision: &ArbitrationDecision,
     ) -> String {
-        let mut s = format!(
-            "### 🔮 Speculative Execution Race Report\n\n**Goal**: {}\n\n",
-            goal
-        );
+        let mut s = format!("### 🔮 Speculative Execution Race Report\n\n**Goal**: {}\n\n", goal);
         s.push_str("| Metric | Approach A | Approach B |\n");
         s.push_str("| :--- | :--- | :--- |\n");
         s.push_str(&format!(
@@ -548,16 +702,8 @@ impl SpeculativeEngine {
         ));
         s.push_str(&format!(
             "| **Status** | {} | {} |\n",
-            if res_a.verification_passed {
-                "✅ Passed"
-            } else {
-                "❌ Failed"
-            },
-            if res_b.verification_passed {
-                "✅ Passed"
-            } else {
-                "❌ Failed"
-            }
+            if res_a.verification_passed { "✅ Passed" } else { "❌ Failed" },
+            if res_b.verification_passed { "✅ Passed" } else { "❌ Failed" }
         ));
         s.push_str(&format!(
             "| **Duration** | {}ms | {}ms |\n",
@@ -569,21 +715,13 @@ impl SpeculativeEngine {
         ));
 
         match decision {
-            ArbitrationDecision::AutoMerged {
-                winner_id,
-                branch_name,
-                merge_output,
-            } => {
+            ArbitrationDecision::AutoMerged { winner_id, branch_name, merge_output } => {
                 s.push_str(&format!(
                     "🏆 **Decision**: Automatically merged winning branch `{}` (`{}`) into target.\n\n```\n{}\n```\n",
                     winner_id, branch_name, merge_output.trim()
                 ));
             }
-            ArbitrationDecision::BothPassedSplitDiff {
-                recommended_winner,
-                diff_a,
-                diff_b,
-            } => {
+            ArbitrationDecision::BothPassedSplitDiff { recommended_winner, diff_a, diff_b } => {
                 let rec_str = recommended_winner.as_deref().unwrap_or("None");
                 s.push_str(&format!(
                     "⚖️ **Decision**: Both approaches succeeded verification! (Recommended: `{}`). Split-diff available for selection.\n\n",
@@ -605,19 +743,78 @@ impl SpeculativeEngine {
                 ));
             }
             ArbitrationDecision::NoChanges => {
-                s.push_str(
-                    "ℹ️ **Decision**: No code modifications were generated by either branch.\n",
-                );
+                s.push_str("ℹ️ **Decision**: No code modifications were generated by either branch.\n");
             }
         }
 
         s
     }
 
-    pub fn create_tool_handler(
-        self: &Arc<Self>,
-        model_cfg: ModelConfig,
-    ) -> Arc<dyn pi_tools::SpeculateToolHandler> {
+    fn arbitrate_n_crews(&self, crews: &[SpeculativeCrewResult]) -> ArbitrationDecision {
+        let passed: Vec<_> = crews.iter().filter(|c| c.passed).collect();
+        if passed.is_empty() {
+            return ArbitrationDecision::BothFailed { error: "All ghost crews failed verification".to_string() };
+        }
+        if passed.len() == 1 {
+            let winner = passed[0];
+            let merge_out = git_merge_branch_in_dir(&winner.branch_name, &self.target_branch, Some(&self.repo_root))
+                .unwrap_or_else(|e| format!("Auto-merge warning: {}", e));
+            return ArbitrationDecision::AutoMerged {
+                winner_id: winner.crew_id.clone(),
+                branch_name: winner.branch_name.clone(),
+                merge_output: format!(
+                    "Winner: {} in {}ms. Merge output: {}",
+                    winner.strategy_name, winner.execution_duration_ms, merge_out
+                ),
+            };
+        }
+        let recommended = passed
+            .iter()
+            .min_by(|a, b| a.execution_duration_ms.cmp(&b.execution_duration_ms).then(a.lines_added.cmp(&b.lines_added)))
+            .map(|c| c.crew_id.clone());
+        ArbitrationDecision::BothPassedSplitDiff {
+            recommended_winner: recommended,
+            diff_a: passed.first().map(|c| c.diff.clone()).unwrap_or_default(),
+            diff_b: passed.get(1).map(|c| c.diff.clone()).unwrap_or_default(),
+        }
+    }
+
+    fn generate_ghost_race_summary(
+        goal: &str,
+        crews: &[SpeculativeCrewResult],
+        decision: &ArbitrationDecision,
+    ) -> String {
+        let mut s = format!("### 👻 Ghost Crew Race Report\n\n**Goal**: {}\n\n", goal);
+        s.push_str("| Crew | Strategy | Status | Reward | Duration | Diff |\n");
+        s.push_str("| :--- | :--- | :--- | :--- | :--- | :--- |\n");
+        for crew in crews {
+            s.push_str(&format!(
+                "| {} | {} | {} | {:.1} | {}ms | +{} / -{} |\n",
+                crew.crew_id,
+                crew.strategy_name,
+                if crew.passed { "✅ Passed" } else { "❌ Failed" },
+                crew.reward,
+                crew.execution_duration_ms,
+                crew.lines_added,
+                crew.lines_removed,
+            ));
+        }
+        match decision {
+            ArbitrationDecision::AutoMerged { winner_id, merge_output, .. } => {
+                s.push_str(&format!("\n🏆 **Decision**: Auto-merged crew `{}`. {}\n", winner_id, merge_output));
+            }
+            ArbitrationDecision::BothPassedSplitDiff { recommended_winner, .. } => {
+                s.push_str(&format!("\n⚖️ **Decision**: Multiple crews passed. Recommended: `{}`.\n", recommended_winner.as_deref().unwrap_or("None")));
+            }
+            ArbitrationDecision::BothFailed { error } => {
+                s.push_str(&format!("\n❌ **Decision**: All crews failed. {}\n", error));
+            }
+            ArbitrationDecision::NoChanges => s.push_str("\nℹ️ **Decision**: No changes produced.\n"),
+        }
+        s
+    }
+
+    pub fn create_tool_handler(self: &Arc<Self>, model_cfg: ModelConfig) -> Arc<dyn pi_tools::SpeculateToolHandler> {
         Arc::new(SpeculativeToolBridge {
             engine: self.clone(),
             model_cfg,
@@ -646,18 +843,12 @@ impl pi_tools::SpeculateToolHandler for SpeculativeToolBridge {
                 strategies = Some(vec![
                     SpeculativeStrategy {
                         id: "spec-a".to_string(),
-                        name: args
-                            .strategy_a
-                            .clone()
-                            .unwrap_or_else(|| "Approach A".to_string()),
+                        name: args.strategy_a.clone().unwrap_or_else(|| "Approach A".to_string()),
                         prompt_directive: args.strategy_a.clone().unwrap_or_default(),
                     },
                     SpeculativeStrategy {
                         id: "spec-b".to_string(),
-                        name: args
-                            .strategy_b
-                            .clone()
-                            .unwrap_or_else(|| "Approach B".to_string()),
+                        name: args.strategy_b.clone().unwrap_or_else(|| "Approach B".to_string()),
                         prompt_directive: args.strategy_b.clone().unwrap_or_default(),
                     },
                 ]);
@@ -679,6 +870,53 @@ impl pi_tools::SpeculateToolHandler for SpeculativeToolBridge {
     }
 }
 
+impl SpeculativeToolBridge {
+    pub async fn run_ghost_race<'a>(
+        &'a self,
+        args: &'a pi_tools::SpeculateArgs,
+        session_tree: &'a mut SessionTree,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<String>> + Send + 'a>> {
+        let engine = self.engine.clone();
+        let cfg = self.model_cfg.clone();
+        let strategies = args
+            .strategy_a
+            .as_ref()
+            .or(args.strategy_b.as_ref())
+            .map(|_| {
+                vec![
+                    SpeculativeStrategy {
+                        id: "crew-grep-first".to_string(),
+                        name: args.strategy_a.clone().unwrap_or_else(|| "Crew A: Grep-First".to_string()),
+                        prompt_directive: args.strategy_a.clone().unwrap_or_default(),
+                    },
+                    SpeculativeStrategy {
+                        id: "crew-read-first".to_string(),
+                        name: args.strategy_b.clone().unwrap_or_else(|| "Crew B: Read-First".to_string()),
+                        prompt_directive: args.strategy_b.clone().unwrap_or_default(),
+                    },
+                ]
+            })
+            .unwrap_or_else(SpeculativeStrategy::default_strategies);
+
+        Box::pin(async move {
+            let res = engine
+                .run_ghost_race_with_session(&args.goal, &cfg, strategies, session_tree, |_wt_path, strat, goal, cfg| {
+                    async move {
+                        let mut agent = crate::AgentLoop::new(cfg);
+                        let prompt = format!(
+                            "Speculative Ghost Crew Goal: {}\n\nCrew Directive ({}):\n{}\n\nImplement the solution in this worktree and verify with cargo test / clippy when possible.",
+                            goal, strat.name, strat.prompt_directive
+                        );
+                        let res = agent.run_turn(&prompt, |_| {}).await?;
+                        Ok(res)
+                    }
+                })
+                .await?;
+            Ok(res.summary)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -689,45 +927,17 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let repo = tmp.path().to_path_buf();
 
-        let _ = Command::new("git")
-            .arg("init")
-            .current_dir(&repo)
-            .output()
-            .unwrap();
-        let _ = Command::new("git")
-            .args(["config", "user.name", "Test User"])
-            .current_dir(&repo)
-            .output()
-            .unwrap();
-        let _ = Command::new("git")
-            .args(["config", "user.email", "test@example.com"])
-            .current_dir(&repo)
-            .output()
-            .unwrap();
+        let _ = Command::new("git").arg("init").current_dir(&repo).output().unwrap();
+        let _ = Command::new("git").args(["config", "user.name", "Test User"]).current_dir(&repo).output().unwrap();
+        let _ = Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(&repo).output().unwrap();
 
         fs::write(repo.join("README.md"), "# Speculative Repo\n").unwrap();
-        fs::write(
-            repo.join("Cargo.toml"),
-            "[package]\nname = \"spec-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        )
-        .unwrap();
+        fs::write(repo.join("Cargo.toml"), "[package]\nname = \"spec-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
         fs::create_dir_all(repo.join("src")).unwrap();
-        fs::write(
-            repo.join("src/lib.rs"),
-            "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
-        )
-        .unwrap();
+        fs::write(repo.join("src/lib.rs"), "pub fn add(a: i32, b: i32) -> i32 { a + b }\n").unwrap();
 
-        let _ = Command::new("git")
-            .args(["add", "."])
-            .current_dir(&repo)
-            .output()
-            .unwrap();
-        let _ = Command::new("git")
-            .args(["commit", "-m", "Initial commit"])
-            .current_dir(&repo)
-            .output()
-            .unwrap();
+        let _ = Command::new("git").args(["add", "."]).current_dir(&repo).output().unwrap();
+        let _ = Command::new("git").args(["commit", "-m", "Initial commit"]).current_dir(&repo).output().unwrap();
 
         (tmp, repo)
     }
@@ -735,7 +945,8 @@ mod tests {
     #[tokio::test]
     async fn test_speculative_race_auto_merge_single_winner() {
         let (_tmp, repo) = setup_test_git_repo();
-        let engine = SpeculativeEngine::new(&repo).with_verification_cmd("git status");
+        let engine = SpeculativeEngine::new(&repo)
+            .with_verification_cmd("git status");
 
         let model_cfg = ModelConfig::resolve("mock/model");
 
@@ -782,7 +993,8 @@ mod tests {
     #[tokio::test]
     async fn test_speculative_race_both_passed_split_diff() {
         let (_tmp, repo) = setup_test_git_repo();
-        let engine = SpeculativeEngine::new(&repo).with_verification_cmd("git status");
+        let engine = SpeculativeEngine::new(&repo)
+            .with_verification_cmd("git status");
 
         let model_cfg = ModelConfig::resolve("mock/model");
 
@@ -811,11 +1023,7 @@ mod tests {
             .unwrap();
 
         match res.decision {
-            ArbitrationDecision::BothPassedSplitDiff {
-                recommended_winner,
-                diff_a,
-                diff_b,
-            } => {
+            ArbitrationDecision::BothPassedSplitDiff { recommended_winner, diff_a, diff_b } => {
                 assert_eq!(recommended_winner, Some("spec-a".to_string())); // spec-a is more concise
                 assert!(!diff_a.is_empty());
                 assert!(!diff_b.is_empty());
@@ -823,10 +1031,7 @@ mod tests {
             other => panic!("Expected BothPassedSplitDiff, got {:?}", other),
         }
 
-        assert!(
-            res.summary
-                .contains("Both approaches succeeded verification!")
-        );
+        assert!(res.summary.contains("Both approaches succeeded verification!"));
 
         // Worktrees cleaned up
         assert!(!repo.join(".tau/worktrees/spec-a").exists());
@@ -836,22 +1041,22 @@ mod tests {
     #[tokio::test]
     async fn test_speculative_race_both_failed() {
         let (_tmp, repo) = setup_test_git_repo();
-        let engine = SpeculativeEngine::new(&repo).with_verification_cmd("git status");
+        let engine = SpeculativeEngine::new(&repo)
+            .with_verification_cmd("git status");
 
         let model_cfg = ModelConfig::resolve("mock/model");
 
-        let res =
-            engine
-                .run_speculative_race_with_runner(
-                    "Impossible task",
-                    &model_cfg,
-                    None,
-                    |_wt_path, _strat, _goal, _cfg| async move {
-                        Err(anyhow!("Synthesizer timeout error"))
-                    },
-                )
-                .await
-                .unwrap();
+        let res = engine
+            .run_speculative_race_with_runner(
+                "Impossible task",
+                &model_cfg,
+                None,
+                |_wt_path, _strat, _goal, _cfg| async move {
+                    Err(anyhow!("Synthesizer timeout error"))
+                },
+            )
+            .await
+            .unwrap();
 
         match res.decision {
             ArbitrationDecision::BothFailed { error } => {
@@ -860,10 +1065,7 @@ mod tests {
             other => panic!("Expected BothFailed, got {:?}", other),
         }
 
-        assert!(
-            res.summary
-                .contains("Both speculative approaches failed verification")
-        );
+        assert!(res.summary.contains("Both speculative approaches failed verification"));
     }
 
     #[test]
@@ -881,5 +1083,66 @@ mod tests {
         let (added, removed) = SpeculativeEngine::count_diff_lines(diff);
         assert_eq!(added, 2);
         assert_eq!(removed, 1);
+    }
+
+    #[tokio::test]
+    async fn test_ghost_race_two_crews_winner_picked() {
+        let (_tmp, repo) = setup_test_git_repo();
+        let engine = SpeculativeEngine::new(&repo).with_verification_cmd("git status");
+        let model_cfg = ModelConfig::resolve("mock/model");
+        let mut session_tree = SessionTree::new();
+
+        let res = engine
+            .run_ghost_race_with_session(
+                "Add subtract helper",
+                &model_cfg,
+                vec![
+                    SpeculativeStrategy { id: "crew-a".to_string(), name: "Crew A".to_string(), prompt_directive: "write concise code".to_string() },
+                    SpeculativeStrategy { id: "crew-b".to_string(), name: "Crew B".to_string(), prompt_directive: "write verbose code".to_string() },
+                ],
+                &mut session_tree,
+                |wt_path, strat, _goal, _cfg| async move {
+                    if strat.id == "crew-a" {
+                        fs::write(wt_path.join("src/lib.rs"), "pub fn add(a: i32, b: i32) -> i32 { a + b }\npub fn sub(a: i32, b: i32) -> i32 { a - b }\n")?;
+                        Ok("crew-a done".to_string())
+                    } else {
+                        Err(anyhow!("crew-b timeout"))
+                    }
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(res.results.len(), 2);
+        assert!(matches!(res.decision, ArbitrationDecision::AutoMerged { winner_id, .. } if winner_id == "crew-a"));
+        assert!(res.summary.contains("Ghost Crew Race Report"));
+        assert_eq!(session_tree.node_count(), 3);
+        assert!(!repo.join(".tau/worktrees/crew-a").exists());
+        assert!(!repo.join(".tau/worktrees/crew-b").exists());
+    }
+
+    #[tokio::test]
+    async fn test_mcts_reward_summary_from_session() {
+        let mut tree = SessionTree::new();
+        let _tool_node = tree.append_child_with_metadata(
+            Role::Assistant,
+            "Reward trace".to_string(),
+            Some("spec-crew-crew-a".to_string()),
+            Some("speculative_race".to_string()),
+            Some(serde_json::json!([{"type":"function","function":"speculative_race","strategyId":"crew-a","reward":1.0}])),
+        );
+        let _fail_node = tree.append_child_with_metadata(
+            Role::Assistant,
+            "Failed trace".to_string(),
+            Some("spec-crew-crew-b".to_string()),
+            Some("speculative_race".to_string()),
+            Some(serde_json::json!([{"type":"function","function":"speculative_race","strategyId":"crew-b","reward":0.0}])),
+        );
+
+        let summary = SpeculativeEngine::summarize_mcts_rewards(&tree, None);
+        assert_eq!(summary.total_simulations, 2);
+        assert_eq!(summary.best_crew_id, "crew-a");
+        assert_eq!(summary.best_reward, 1.0);
+        assert_eq!(summary.rewards.len(), 2);
     }
 }
