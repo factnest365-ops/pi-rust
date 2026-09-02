@@ -268,12 +268,21 @@ impl DiffView {
         result
     }
 
-    /// Render interactive visual diff overlay into the given Ratatui frame area
+    /// Render interactive visual diff overlay into the given Ratatui frame area (theme-native)
     pub fn render(state: &DiffViewState, f: &mut Frame, area: Rect) {
+        Self::render_with_theme(state, f, area, &crate::style::ThemePalette::default())
+    }
+
+    pub fn render_with_theme(
+        state: &DiffViewState,
+        f: &mut Frame,
+        area: Rect,
+        theme: &crate::style::ThemePalette,
+    ) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(theme.border))
             .title(format!(
                 " {} [Line {}/{} | Offset {}] ",
                 state.title.trim(),
@@ -322,13 +331,11 @@ impl DiffView {
                         rendered_lines.push(Line::from(vec![
                             Span::styled(
                                 format!("{:4} │ ", "---"),
-                                Style::default().fg(Color::DarkGray),
+                                Style::default().fg(theme.muted),
                             ),
                             Span::styled(
                                 hdr.clone(),
-                                Style::default()
-                                    .fg(Color::Cyan)
-                                    .add_modifier(Modifier::BOLD),
+                                Style::default().fg(theme.cyan).add_modifier(Modifier::BOLD),
                             ),
                         ]));
                     }
@@ -339,11 +346,8 @@ impl DiffView {
                             format!("+{}", text)
                         };
                         rendered_lines.push(Line::from(vec![
-                            Span::styled(line_num_str, Style::default().fg(Color::DarkGray)),
-                            Span::styled(
-                                display_text,
-                                Style::default().fg(Color::Green).bg(Color::Rgb(15, 45, 20)),
-                            ),
+                            Span::styled(line_num_str, Style::default().fg(theme.muted)),
+                            Span::styled(display_text, Style::default().fg(theme.green)),
                         ]));
                     }
                     DiffLine::Deletion(text) => {
@@ -353,11 +357,8 @@ impl DiffView {
                             format!("-{}", text)
                         };
                         rendered_lines.push(Line::from(vec![
-                            Span::styled(line_num_str, Style::default().fg(Color::DarkGray)),
-                            Span::styled(
-                                display_text,
-                                Style::default().fg(Color::Red).bg(Color::Rgb(50, 20, 25)),
-                            ),
+                            Span::styled(line_num_str, Style::default().fg(theme.muted)),
+                            Span::styled(display_text, Style::default().fg(theme.red)),
                         ]));
                     }
                     DiffLine::Context(text) => {
@@ -367,8 +368,8 @@ impl DiffView {
                             format!(" {}", text)
                         };
                         rendered_lines.push(Line::from(vec![
-                            Span::styled(line_num_str, Style::default().fg(Color::DarkGray)),
-                            Span::styled(display_text, Style::default().fg(Color::White)),
+                            Span::styled(line_num_str, Style::default().fg(theme.muted)),
+                            Span::styled(display_text, Style::default().fg(theme.text)),
                         ]));
                     }
                 }
@@ -378,10 +379,10 @@ impl DiffView {
         let diff_paragraph = Paragraph::new(rendered_lines).wrap(Wrap { trim: false });
         f.render_widget(diff_paragraph, content_area);
 
-        // Separator line
+        // Separator line — theme-native, adaptive width (no hardcoded 80)
         let sep_width = chunks[1].width as usize;
         let sep_str = "─".repeat(sep_width);
-        let sep_line = Paragraph::new(sep_str).style(Style::default().fg(Color::DarkGray));
+        let sep_line = Paragraph::new(sep_str).style(Style::default().fg(theme.border));
         f.render_widget(sep_line, chunks[1]);
 
         // Keybinding footer
@@ -390,35 +391,29 @@ impl DiffView {
                 Span::styled(
                     " [y/Enter: Accept] ",
                     Style::default()
-                        .fg(Color::Green)
+                        .fg(theme.green)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     " [n: Reject] ",
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme.red).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(" [Esc/q: Close] ", Style::default().fg(Color::Yellow)),
-                Span::styled(
-                    " [↑/↓/PgUp/PgDn: Scroll] ",
-                    Style::default().fg(Color::Cyan),
-                ),
+                Span::styled(" [Esc/q: Close] ", Style::default().fg(theme.yellow)),
+                Span::styled(" [↑/↓/PgUp/PgDn: Scroll] ", Style::default().fg(theme.cyan)),
             ]
         } else {
             vec![
                 Span::styled(
                     " [Esc/q: Close] ",
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(theme.yellow)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     " [↑/↓/j/k/PgUp/PgDn: Scroll] ",
-                    Style::default().fg(Color::Cyan),
+                    Style::default().fg(theme.cyan),
                 ),
-                Span::styled(
-                    " [Home/End: Top/Bottom] ",
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(" [Home/End: Top/Bottom] ", Style::default().fg(theme.muted)),
             ]
         };
         let footer = Paragraph::new(Line::from(footer_spans));
