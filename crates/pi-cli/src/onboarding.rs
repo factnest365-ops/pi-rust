@@ -470,7 +470,7 @@ async fn configure_provider_credential(provider: &str) -> Result<()> {
     // If the provider is 'openai' or 'gemini', check if a gateway key ('opencode' or 'kilo') already exists.
     // If it does, and we don't have a direct key, we can skip prompting because the gateway handles it.
     if existing_key.is_none()
-        && (provider == "openai" || provider == "gemini" || provider == "kilo")
+        && (provider == "openai" || provider == "gemini")
         && (AuthResolver::resolve_key("opencode").is_some()
             || AuthResolver::resolve_key("kilo").is_some())
     {
