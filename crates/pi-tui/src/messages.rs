@@ -120,9 +120,11 @@ impl MessageRenderer {
 
         match role {
             "user" => {
-                lines.push(Line::from(vec![
-                    Span::styled("────────────────────────────────────────────────────────────────────────────────", theme.code_border()),
-                ]));
+                // Separator — G2 continuity: uses theme border
+                lines.push(Line::from(vec![Span::styled(
+                    "─".repeat(80),
+                    theme.code_border(),
+                )]));
                 lines.push(Line::from(vec![Span::styled("❯ You", theme.user_label())]));
                 lines.push(Line::from(""));
                 lines.extend(MarkdownRenderer::render_styled(content, theme));
@@ -130,9 +132,10 @@ impl MessageRenderer {
             "pi" => {
                 let (thinking_opt, main_content) = Self::split_thinking_and_content(content);
 
-                lines.push(Line::from(vec![
-                    Span::styled("────────────────────────────────────────────────────────────────────────────────", theme.code_border()),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    "─".repeat(80),
+                    theme.code_border(),
+                )]));
                 lines.push(Line::from(vec![Span::styled(
                     "❯ Pi",
                     theme.assistant_label(),
