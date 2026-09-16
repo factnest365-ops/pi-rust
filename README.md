@@ -25,7 +25,7 @@ A pure Rust autonomous coding agent — zero external runtimes, <10MB runtime, 3
 
 ## Why Tau (`tau`)
 
-`tau` / `pi-rs` is a lightning-fast, local-first autonomous AI coding agent and background daemon (`taud`), engineered in 100% pure safe Rust. Shipped features:
+`tau` (formerly pi-rust / pi-rs) is a lightning-fast, local-first autonomous AI coding agent and background daemon (`taud`), engineered in 100% pure safe Rust. Shipped features:
 
 - Non-destructive session DAG with JSONL persistence
 - Dual-protocol tool execution (structured + fallback parsing)
@@ -47,7 +47,7 @@ Planned (in progress on feature branches):
 
 ### Feature matrix
 
-| Dimension | Hermes / upstream TS approach | `tau` / `pi-rs` (Rust) |
+| Dimension | Hermes / upstream TS approach | `tau` (Rust) |
 | :--- | :--- | :--- |
 | **Runtime** | Node.js runtime, npm, Electron/Ink layers | **Zero external runtimes**; single native Rust binary |
 | **Memory target** | Electron/Node heap, often 120MB+ | **< 10MB** runtime target; daemon idles < 4MB |
@@ -77,16 +77,19 @@ git clone https://github.com/factnest365-ops/pi-rust.git
 cd pi-rust
 
 cargo install --path crates/pi-cli
+tau --init
+# Compat alias (formerly pi-rust / pi-rs):
 pi-rs --init
 ```
 
 ### Run
 
 ```bash
-pi-rs
+tau
+# Compat alias: pi-rs
 ```
 
-The installer places `tau` and `pi-rs` in `~/.tau/bin` and keeps existing legacy aliases in `~/.pi/bin` when present.
+The installer places `tau` (primary; formerly pi-rust) and compat alias `pi-rs` in `~/.tau/bin` and keeps existing legacy aliases in `~/.pi/bin` when present.
 
 ---
 
@@ -151,9 +154,10 @@ For full protocol details, see [`SPEC.md`](SPEC.md).
 ## Terminal cockpit
 
 ```bash
-pi-rs
+tau
 # Or choose a model on startup:
-pi-rs -m anthropic/claude-3-7-sonnet-latest
+tau -m anthropic/claude-3-7-sonnet-latest
+# Compat alias: pi-rs
 ```
 
 | Shortcut | Action |
@@ -170,7 +174,7 @@ pi-rs -m anthropic/claude-3-7-sonnet-latest
 
 ## Multi-LLM providers
 
-`pi-rust` supports 33+ providers and auto-discovers local daemons.
+`tau` (formerly pi-rust) supports 33+ providers and auto-discovers local daemons.
 
 | Provider | Example models | Env variable |
 | :--- | :--- | :--- |
@@ -190,7 +194,7 @@ pi-rs -m anthropic/claude-3-7-sonnet-latest
 ## Docs
 
 - [`install.sh`](install.sh) — shell installer used by the one-liner
-- [`man/pi-rs.1`](man/pi-rs.1) — Unix manpage
+- [`man/tau.1`](man/tau.1) — Unix manpage (`man/pi-rs.1` kept as compat alias)
 - [`SPEC.md`](SPEC.md) — architecture, protocol, and crate contracts
 - [`ROADMAP.md`](ROADMAP.md) — phase plan, milestones, and invariants
 - [`AGENTS.md`](AGENTS.md) — contributor agent protocol and quality gates

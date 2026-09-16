@@ -1,10 +1,10 @@
 *pi.txt*    For Neovim v0.8.0+    Last change: 2026 August 15
 
 ==============================================================================
-🥧 PI.NVIM - Pure Rust AI Coding Agent Companion                 *pi.nvim* *pi*
+🥧 TAU.NVIM - Pure Rust AI Coding Agent Companion   *tau.nvim* *tau* *pi.nvim* *pi*
 
-pi.nvim is the official first-class Neovim companion plugin for pi-rs,
-the high-performance, 100% pure Rust port of Mario Zechner's Pi Coding Agent.
+tau.nvim (formerly pi.nvim) is the official first-class Neovim companion plugin for tau,
+the high-performance, 100% pure Rust autonomous agent (formerly pi-rust / pi-rs), a port of Mario Zechner's Pi Coding Agent.
 
 Features:
 - Asynchronous non-blocking JSON-RPC 2.0 communication over standard I/O.
@@ -32,7 +32,7 @@ Using lazy.nvim: >lua
       "bhavy/pi-rust",
       config = function()
         require("pi").setup({
-          bin = "pi-rs", -- or path to target/release/pi-rs
+          bin = "tau", -- or path to target/release/tau (compat alias: pi-rs)
           model = "opencode/deepseek-v4-flash-free",
           keymaps = true,
         })
@@ -40,7 +40,7 @@ Using lazy.nvim: >lua
     }
 <
 
-Ensure the `pi-rs` binary is built and available on your `$PATH` or specified
+Ensure the `tau` binary (compat alias: `pi-rs`, formerly pi-rust) is built and available on your `$PATH` or specified
 directly via the `bin` configuration option.
 
 ==============================================================================
@@ -49,8 +49,8 @@ directly via the `bin` configuration option.
 Call `require("pi").setup(opts)` with any of the following defaults: >lua
 
     require("pi").setup({
-      -- Path or name of the pi-rs binary
-      bin = "pi-rs",
+      -- Path or name of the tau binary (compat alias: pi-rs)
+      bin = "tau",
 
       -- Default model ID to initialize with
       model = "opencode/deepseek-v4-flash-free",
@@ -137,7 +137,7 @@ Inside Floating UI:
 
 Run `:checkhealth pi` to verify:
 - Neovim version >= 0.8.0.
-- `pi-rs` executable presence and responsiveness.
+- `tau` executable presence and responsiveness (`pi-rs` accepted as compat alias).
 - JSON-RPC 2.0 communication (`pi/ping`, `pi/models`).
 - Active LSP diagnostic availability.
 

@@ -6,6 +6,7 @@ use std::process::Command;
 
 pub mod ast;
 pub mod crew;
+pub mod extensions;
 pub mod git;
 pub mod github;
 pub mod hooks;
@@ -35,7 +36,11 @@ pub use hooks::{
 pub use lsp::LspTool;
 pub use mailbox::{MailboxTools, set_store_path};
 pub use mcp::{McpManager, McpServerConfig, McpToolDefinition, get_mcp_manager};
-pub use plugins::ToolPlugin;
+pub use extensions::{LoadedToolDef, emit_session_start, load_extension_file, register_extension_source, trust_gate_check};
+pub use plugins::{
+    PluginEntry, PluginRegistry, PluginToolDefinition, ToolPlugin, clear_plugin_tools,
+    execute_plugin_tool, plugin_tool_definitions, plugin_tool_names, register_plugin_tool,
+};
 pub use speculate::{
     SpeculateArgs, SpeculateTool, SpeculateToolHandler, register_speculate_handler,
 };
@@ -101,12 +106,16 @@ impl ToolExecutor {
                 MailboxTools::execute_mark_read(&call.arguments).map(|v| v.to_string())
             }
             mcp_tool_name => {
-                let mcp_mgr = get_mcp_manager();
-                let mgr = mcp_mgr.lock().await;
-                if mgr.is_mcp_tool(mcp_tool_name) {
-                    mgr.execute_tool(mcp_tool_name, &call.arguments).await
+                if let Some(res) = execute_plugin_tool(mcp_tool_name, &call.arguments) {
+                    res
                 } else {
-                    Err(anyhow::anyhow!("Unknown tool: {}", call.name))
+                    let mcp_mgr = get_mcp_manager();
+                let mgr = mcp_mgr.lock().await;
+                    if mgr.is_mcp_tool(mcp_tool_name) {
+                        mgr.execute_tool(mcp_tool_name, &call.arguments).await
+                    } else {
+                        Err(anyhow::anyhow!("Unknown tool: {}", call.name))
+                    }
                 }
             }
         };
@@ -466,6 +475,7 @@ impl ToolExecutor {
         if let Ok(mgr) = mcp_mgr.try_lock() {
             defs.extend(mgr.get_tool_definitions());
         }
+        defs.extend(plugin_tool_definitions());
 
         defs
     }

@@ -458,7 +458,7 @@ pub async fn run_first_run_wizard() -> Result<()> {
     println!("║  • Permissions:       0600 (POSIX Owner-Only Read/Write)                     ║");
     println!("╚══════════════════════════════════════════════════════════════════════════════╝\n");
 
-    println!("Launch Tau anytime with: \x1b[1;36mtau\x1b[0m or \x1b[1;36mpi-rs\x1b[0m\n");
+    println!("Launch Tau anytime with: \x1b[1;36mtau\x1b[0m (compat alias: \x1b[1;36mpi-rs\x1b[0m, formerly pi-rust)\n");
     Ok(())
 }
 

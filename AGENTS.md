@@ -1,6 +1,6 @@
 # AGENTS.md — Master Agent Operating Guidelines & Invariants
 
-Welcome to **pi-rust** (`pi-rs`), a high-performance, 100% pure Rust port of Mario Zechner's Pi Coding Agent ([pi.dev](https://pi.dev) / [`earendil-works/pi`](https://github.com/earendil-works/pi)).
+Welcome to **Tau** (`tau`; formerly pi-rust / pi-rs), a high-performance, 100% pure Rust autonomous agent ported from Mario Zechner's Pi Coding Agent ([pi.dev](https://pi.dev) / [`earendil-works/pi`](https://github.com/earendil-works/pi)).
 
 This document is the **authoritative reference manual** for all AI coding agents working in this repository. Any agent (Antigravity, Claude Code, Cursor, Copilot, Windsurf, Cline, Roo, Aider) operating here must adhere strictly to these principles, invariants, schemas, and verification protocols.
 
@@ -48,7 +48,7 @@ The workspace is strictly partitioned into 8 focused Cargo crates under `crates/
 
 ### Crate Parity Mapping to Upstream Pi & Tau Architecture
 
-| Rust Crate (`pi-rust`) | Upstream Package / Module | Primary Responsibility |
+| Rust Crate (Tau workspace; formerly pi-rust) | Upstream Package / Module | Primary Responsibility |
 | :--- | :--- | :--- |
 | [`crates/pi-cli`](file:///Users/bhavy/pi-rust/crates/pi-cli) | `packages/client` | CLI entry binary (`tau`), login wizard, daemon connectors (`--daemon-status`, `--daemon-ping`), `--print`, `--model`, `--undo`, `--alfred-check`. |
 | [`crates/pi-daemon`](file:///Users/bhavy/pi-rust/crates/pi-daemon) | `taud` Native Daemon | 100% pure Rust background daemon listening on `~/.tau/taud.sock`, IPC JSON-RPC 2.0 loop, ambient awareness, shared memory vault. |

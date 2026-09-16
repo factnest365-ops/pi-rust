@@ -1,7 +1,7 @@
 # TASKS.md — Project Task Tracker & Execution Board
 
 ## Current Status Overview
-- **Project**: `pi-rust` (`pi-rs` / `tau`) — 100% Pure Rust Port of Mario Zechner's Pi Coding Agent ([pi.dev](https://pi.dev) / [`earendil-works/pi`](https://github.com/earendil-works/pi))
+- **Project**: `tau` (formerly pi-rust / pi-rs) — 100% Pure Rust Port of Mario Zechner's Pi Coding Agent ([pi.dev](https://pi.dev) / [`earendil-works/pi`](https://github.com/earendil-works/pi))
 - **Target Parity**: Complete functional, aesthetic, protocol, and architectural parity with `@earendil-works/pi`.
 - **Compiler/Lint Status**: Zero warnings, 100% Clippy clean (`cargo clippy --workspace --all-targets -- -D warnings`), 100% test pass rate (197/197 tests passing) across all 7 workspace crates.
 

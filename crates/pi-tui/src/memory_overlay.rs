@@ -132,7 +132,7 @@ impl MemoryOverlayState {
                 id: "mem-03".to_string(),
                 scope: MemoryScope::Global,
                 topic: "Zero Warnings Clippy Policy".to_string(),
-                content: "All code in pi-rust workspace must strictly pass cargo clippy --workspace --all-targets -- -D warnings with zero warnings.".to_string(),
+                content: "All code in Tau workspace (formerly pi-rust) must strictly pass cargo clippy --workspace --all-targets -- -D warnings with zero warnings.".to_string(),
                 counter_pattern: Some("Allowing #[allow(clippy::...)] indiscriminately".to_string()),
                 correct_pattern: Some("Refactoring code to idiomatic Rust 2024 patterns".to_string()),
                 tags: vec!["quality".to_string(), "clippy".to_string(), "standards".to_string()],

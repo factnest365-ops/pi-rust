@@ -203,6 +203,22 @@ impl AgentLoop {
         self
     }
 
+    /// Runtime active-tools setter (E14 stub): replaces the allowlist used
+    /// to filter both native and extension-registered tool calls.
+    pub fn set_active_tools(&mut self, tools: Vec<String>) {
+        self.allowed_tools = Some(tools);
+    }
+
+    /// Runtime active-tools getter; `None` means all known tools are active.
+    pub fn get_active_tools(&self) -> Option<&[String]> {
+        self.allowed_tools.as_deref()
+    }
+
+    /// Clear the allowlist so every known tool (native + extensions) is active.
+    pub fn clear_active_tools(&mut self) {
+        self.allowed_tools = None;
+    }
+
     pub fn with_execution_plan(mut self, plan: ExecutionPlan) -> Self {
         self.execution_plan = Some(plan);
         self
@@ -1457,6 +1473,25 @@ impl AgentLoop {
             });
         }
 
+        // Extension-registered tools (P1 bridge, Dual Tool Protocol): the
+        // fenced tag names a plugin tool; the body is its JSON arguments.
+        {
+            let tag_name = trimmed_tag.split_whitespace().next().unwrap_or("");
+            if !tag_name.is_empty()
+                && pi_tools::plugins::plugin_tool_names()
+                    .iter()
+                    .any(|n| n == tag_name)
+            {
+                let args = serde_json::from_str::<serde_json::Value>(body.trim())
+                    .unwrap_or(serde_json::Value::Null);
+                return Some(ToolCall {
+                    id: call_id,
+                    name: tag_name.to_string(),
+                    arguments: args,
+                });
+            }
+        }
+
         None
     }
 }
@@ -1478,6 +1513,45 @@ mod tests {
         let full = engine.build_full_prompt();
         assert!(full.contains("Base system prompt"));
         assert!(full.contains("Custom AGENTS guidelines"));
+    }
+
+    #[test]
+    fn test_active_tools_get_set_clear() {
+        let cfg = pi_providers::ModelConfig {
+            provider: "openai".to_string(),
+            model_id: "test-model".to_string(),
+            api_key: String::new(),
+            base_url: None,
+            context_window: 128_000,
+            max_output: 8_192,
+            best_of_n: None,
+        };
+        let mut agent_loop = AgentLoop::new(cfg);
+        assert!(agent_loop.get_active_tools().is_none());
+        agent_loop.set_active_tools(vec!["read".to_string(), "hello".to_string()]);
+        assert_eq!(
+            agent_loop.get_active_tools(),
+            Some(&["read".to_string(), "hello".to_string()][..])
+        );
+        agent_loop.clear_active_tools();
+        assert!(agent_loop.get_active_tools().is_none());
+    }
+
+    #[test]
+    fn test_extract_fallback_extension_tool() {
+        pi_tools::clear_plugin_tools();
+        pi_tools::register_plugin_tool(
+            "hello".to_string(),
+            "A simple greeting tool".to_string(),
+            serde_json::json!({"type": "object"}),
+            String::new(),
+        );
+        let text = "```hello\n{\"name\": \"Ada\"}\n```";
+        let calls = AgentLoop::extract_fallback_tool_calls(text);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "hello");
+        assert_eq!(calls[0].arguments["name"], "Ada");
+        pi_tools::clear_plugin_tools();
     }
 
     #[test]

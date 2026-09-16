@@ -12,6 +12,11 @@ reqwest = { workspace = true, features = ["json"] }
 dirs.workspace = true
 uuid.workspace = true
 tokio-util.workspace = true
+rquickjs = { version = "0.13", optional = true }
+
+[features]
+default = []
+extensions = ["dep:rquickjs"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }

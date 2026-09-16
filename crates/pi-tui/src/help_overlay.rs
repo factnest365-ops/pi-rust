@@ -253,7 +253,7 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
     HelpItem {
         category: "Slash Commands",
         key_or_cmd: "/quit",
-        description: "Exit pi-rust Agent",
+        description: "Exit Tau Agent",
         details: "Graceful shutdown and save session state to disk",
     },
     // Dual Tool Calling & Worktree Architecture
@@ -342,7 +342,7 @@ impl HelpOverlay {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(palette.accent))
-            .title(" 📖 Pi Coding Agent — Interactive Cheatsheet & Manual ")
+            .title(" 📖 Tau — Interactive Cheatsheet & Manual (formerly Pi) ")
             .title_alignment(Alignment::Center);
 
         let inner_area = block.inner(area);

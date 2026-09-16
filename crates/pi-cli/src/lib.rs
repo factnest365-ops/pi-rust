@@ -69,6 +69,15 @@ pub struct Cli {
     /// Evaluate an action against the Alfred Moral Override Protocol
     #[arg(long = "alfred-check")]
     pub alfred_check: Option<String>,
+
+    /// Load a JS extension file (repeatable). Requires the pi-tools
+    /// `extensions` cargo feature at build time.
+    #[arg(short = 'e', long = "extension", value_name = "PATH")]
+    pub extension: Vec<std::path::PathBuf>,
+
+    /// Skip loading all extensions (overrides `-e/--extension`).
+    #[arg(long = "no-extensions")]
+    pub no_extensions: bool,
 }
 
 pub async fn run_cli() -> Result<()> {
@@ -220,6 +229,8 @@ pub async fn run_cli() -> Result<()> {
         return Ok(());
     }
 
+    load_cli_extensions(&cli);
+
     // Resolve active model from CLI arg, config file default_model, or fallback
     let default_cfg_model = pi_providers::PiConfig::load().default_model;
     let active_model = cli
@@ -275,6 +286,27 @@ pub async fn run_cli() -> Result<()> {
     app.run_loop().await?;
 
     Ok(())
+}
+
+/// Load `-e/--extension` files into the global plugin registry.
+/// `--no-extensions` skips loading entirely (accepts-but-ignores `-e` paths
+/// with a notice so scripts combining both flags fail safe).
+pub fn load_cli_extensions(cli: &Cli) {
+    if cli.no_extensions {
+        if !cli.extension.is_empty() {
+            eprintln!(
+                "--no-extensions set: skipping {} extension(s).",
+                cli.extension.len()
+            );
+        }
+        return;
+    }
+    for path in &cli.extension {
+        match pi_tools::extensions::load_extension_file(path) {
+            Ok(names) => eprintln!("Loaded extension {}: {}", path.display(), names.join(", ")),
+            Err(e) => eprintln!("Failed to load extension {}: {:#}", path.display(), e),
+        }
+    }
 }
 
 /// Replays a stored JSONL session file to stdout with configured step delay
@@ -464,5 +496,30 @@ mod tests {
         assert_eq!(cli.specialist, Some("jarvis".to_string()));
         assert!(cli.undo);
         assert_eq!(cli.alfred_check, Some("rm -rf /".to_string()));
+    }
+
+    #[test]
+    fn test_cli_parse_extensions_repeatable() {
+        let args = ["tau", "-e", "a.js", "--extension", "b.js"];
+        let cli = Cli::try_parse_from(args).expect("should parse repeatable -e");
+        assert_eq!(
+            cli.extension,
+            vec![
+                std::path::PathBuf::from("a.js"),
+                std::path::PathBuf::from("b.js")
+            ]
+        );
+        assert!(!cli.no_extensions);
+    }
+
+    #[test]
+    fn test_cli_no_extensions_skips_loading() {
+        let args = ["tau", "-e", "a.js", "--no-extensions"];
+        let cli = Cli::try_parse_from(args).expect("should parse --no-extensions");
+        assert!(cli.no_extensions);
+        // Skips without touching the registry or the filesystem.
+        pi_tools::clear_plugin_tools();
+        load_cli_extensions(&cli);
+        assert!(pi_tools::plugin_tool_definitions().is_empty());
     }
 }

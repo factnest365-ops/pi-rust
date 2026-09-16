@@ -1,7 +1,7 @@
-> **Project**: `pi-rust` / `tau` (`τ`) — Pure Rust Autonomous Coding Agent
+> **Project**: `tau` (`τ`; formerly pi-rust / pi-rs) — Pure Rust Autonomous Coding Agent
 # SPEC.md — System Architecture & Protocol Specification
 
-> **Project**: `pi-rust` / `tau` (`τ`) — Universal Self-Improving Autonomous Agent Harness & AI Operating Layer  
+> **Project**: `tau` (`τ`; formerly pi-rust / pi-rs) — Universal Self-Improving Autonomous Agent Harness & AI Operating Layer
 > **Core Motto**: *"100% Pure Rust — Zero Runtime Bloat, Zero Node.js, Maximum Velocity, Continuous Self-Evolution."*  
 > **Design Principle**: *"Set the floor, not the ceiling."*  
 
@@ -52,7 +52,7 @@
 
 ## 2. Upstream Pi Parity Specification
 
-| Upstream TypeScript Package (`earendil-works/pi`) | Rust Crate (`pi-rust`) | Implementation Model & Specification |
+| Upstream TypeScript Package (`earendil-works/pi`) | Rust Crate (Tau workspace; formerly pi-rust) | Implementation Model & Specification |
 | :--- | :--- | :--- |
 | **`@earendil-works/pi-agent-core`** (`packages/agent`) | [`crates/pi-session`](file:///Users/bhavy/pi-rust/crates/pi-session) & [`crates/pi-core`](file:///Users/bhavy/pi-rust/crates/pi-core) | Directed Acyclic Graph (DAG) session tree, active branch pointer, non-destructive rewinding, and fork points. |
 | **`@earendil-works/pi-ai`** (`packages/ai`) | [`crates/pi-providers`](file:///Users/bhavy/pi-rust/crates/pi-providers) | Unified multi-gateway client (Anthropic Messages API, OpenAI Chat Completions, Ollama, Kilo, OpenCode, Agnes), SSE streaming decoders, TokenProfiler, ContextBudget, AuthResolver. |
@@ -145,7 +145,7 @@ sequenceDiagram
 
 ## 5. Dual Tool Calling Protocol
 
-`pi-rust` guarantees universal model compatibility across frontier and local open-weights models through the **Dual Tool Protocol**:
+`tau` (formerly pi-rust) guarantees universal model compatibility across frontier and local open-weights models through the **Dual Tool Protocol**:
 
 1. **Native Structured Schema (Primary Path)**:
    - Tool definitions emitted via JSON Schema in `tools` parameter.
