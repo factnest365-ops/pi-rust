@@ -390,32 +390,30 @@ impl DiffView {
             vec![
                 Span::styled(
                     " [y/Enter: Accept] ",
-                    Style::default().fg(theme.green).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.green)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     " [n: Reject] ",
                     Style::default().fg(theme.red).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(" [Esc/q: Close] ", Style::default().fg(theme.yellow)),
-                Span::styled(
-                    " [↑/↓/PgUp/PgDn: Scroll] ",
-                    Style::default().fg(theme.cyan),
-                ),
+                Span::styled(" [↑/↓/PgUp/PgDn: Scroll] ", Style::default().fg(theme.cyan)),
             ]
         } else {
             vec![
                 Span::styled(
                     " [Esc/q: Close] ",
-                    Style::default().fg(theme.yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.yellow)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     " [↑/↓/j/k/PgUp/PgDn: Scroll] ",
                     Style::default().fg(theme.cyan),
                 ),
-                Span::styled(
-                    " [Home/End: Top/Bottom] ",
-                    Style::default().fg(theme.muted),
-                ),
+                Span::styled(" [Home/End: Top/Bottom] ", Style::default().fg(theme.muted)),
             ]
         };
         let footer = Paragraph::new(Line::from(footer_spans));
