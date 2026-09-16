@@ -29,6 +29,12 @@ pub struct ModelInfo {
     pub supports_reasoning: bool,
     pub supports_vision: bool,
     pub description: String,
+    /// Adjustable thinking/reasoning-effort levels (e.g. low/medium/high).
+    /// Empty = fixed reasoning or none. `#[serde(default)]` keeps old
+    /// `models_cache.json` files (no cache-version bump) parsing: missing
+    /// field falls back to `[]` via the tolerant loader below.
+    #[serde(default)]
+    pub thinking_levels: Vec<String>,
 }
 
 impl ModelInfo {
@@ -41,6 +47,9 @@ impl ModelInfo {
         vision: bool,
         desc: &str,
     ) -> Self {
+        // NOTE: 7-arg signature intentionally UNCHANGED (dozens of call sites).
+        // thinking_levels is inferred from the id; override via `.with_thinking()`.
+        let thinking_levels = ModelCatalogLoader::infer_thinking_levels(id);
         Self {
             id: id.to_string(),
             name: id.split('/').next_back().unwrap_or(id).to_string(),
@@ -50,7 +59,14 @@ impl ModelInfo {
             supports_reasoning: reasoning,
             supports_vision: vision,
             description: desc.to_string(),
+            thinking_levels,
         }
+    }
+
+    /// Builder override for adjustable thinking levels (keeps `new()` 7-arg).
+    pub fn with_thinking(mut self, levels: Vec<String>) -> Self {
+        self.thinking_levels = levels;
+        self
     }
 }
 
@@ -116,6 +132,67 @@ impl ModelCatalogLoader {
         }
     }
 
+    /// Infers adjustable thinking/reasoning-effort levels from the model id.
+    /// Returns e.g. `["low", "medium", "high"]` for families with a known
+    /// effort knob, else `[]` (fixed reasoning or none).
+    /// Matching is gated on explicit multi-char keys or FULL alphanumeric
+    /// tokens: short fragments like `o3`, `4o`, `pro`, `ultra` are NEVER
+    /// matched with loose `contains` (avoids `gpt-4o` -> o3, `prototype` ->
+    /// pro, etc.). Tokenization splits on non-alphanumeric chars.
+    pub fn infer_thinking_levels(model_id: &str) -> Vec<String> {
+        let lower = model_id.to_lowercase();
+        let tokens: Vec<&str> = lower
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let has_token = |t: &str| tokens.contains(&t);
+        let std_levels = || {
+            vec![
+                "low".to_string(),
+                "medium".to_string(),
+                "high".to_string(),
+            ]
+        };
+        // OpenAI explicit keys (multi-char, unambiguous).
+        if lower.contains("o1-mini")
+            || lower.contains("o1-preview")
+            || lower.contains("o3-mini")
+            || lower.contains("o4-mini")
+            || lower.contains("gpt-5")
+        {
+            return std_levels();
+        }
+        // Short o-series ids: full-token match only ("openai/o1" -> ["o1"],
+        // "o3-mini" -> ["o3","mini"], but "gpt-4o" -> ["gpt","4o"] won't hit).
+        if has_token("o1") || has_token("o3") {
+            return std_levels();
+        }
+        // Anthropic thinking-capable families (explicit keys).
+        if lower.contains("claude-3-7") || lower.contains("claude-4") || lower.contains("opus-5") {
+            return std_levels();
+        }
+        // DeepSeek reasoner family.
+        if lower.contains("deepseek-r1")
+            || lower.contains("deepseek-reasoner")
+            || (lower.contains("deepseek") && has_token("r1"))
+        {
+            return std_levels();
+        }
+        // Qwen thinking family.
+        if has_token("qwq") || lower.contains("qwen-3") {
+            return std_levels();
+        }
+        // Gemini thinking-capable generations (explicit keys, NOT bare "pro").
+        if lower.contains("gemini-2.5") || lower.contains("gemini-3") {
+            return std_levels();
+        }
+        // xAI reasoning generations (explicit keys).
+        if lower.contains("grok-3") || lower.contains("grok-4") {
+            return std_levels();
+        }
+        Vec::new()
+    }
+
     /// Dynamically infers the exact context window and maximum output limits based on model architecture
     pub fn infer_model_limits(model_id: &str, provider: &str) -> (usize, usize) {
         let clean_id = model_id.to_lowercase();
@@ -174,6 +251,7 @@ impl ModelCatalogLoader {
             || clean_id.contains("llama-3.3")
             || clean_id.contains("llama-3.1")
             || clean_id.contains("qwen-2.5")
+            || clean_id.contains("qwen2.5")
             || clean_id.contains("gpt-4.5")
             || clean_id.contains("gpt-4o")
             || clean_id.contains("gpt-4")
@@ -1435,6 +1513,56 @@ mod tests {
         assert_eq!(m.max_output, 4096);
         assert!(m.supports_reasoning);
         assert!(m.supports_vision);
+    }
+
+    #[test]
+    fn test_infer_thinking_levels_gated_matching() {
+        let std = vec![
+            "low".to_string(),
+            "medium".to_string(),
+            "high".to_string(),
+        ];
+        // Explicit families hit.
+        assert_eq!(
+            ModelCatalogLoader::infer_thinking_levels("openai/o1"),
+            std
+        );
+        assert_eq!(
+            ModelCatalogLoader::infer_thinking_levels("openai/o3-mini"),
+            std
+        );
+        assert_eq!(
+            ModelCatalogLoader::infer_thinking_levels("openai/gpt-5-preview"),
+            std
+        );
+        assert_eq!(
+            ModelCatalogLoader::infer_thinking_levels("anthropic/claude-3-7-sonnet-latest"),
+            std
+        );
+        assert_eq!(
+            ModelCatalogLoader::infer_thinking_levels("deepseek/deepseek-reasoner"),
+            std
+        );
+        assert_eq!(
+            ModelCatalogLoader::infer_thinking_levels("gemini/gemini-2.5-pro"),
+            std
+        );
+        // Loose-fragment guards: NO false positives.
+        assert!(ModelCatalogLoader::infer_thinking_levels("copilot/gpt-4o").is_empty());
+        assert!(ModelCatalogLoader::infer_thinking_levels("gemini/gemini-2.0-flash").is_empty());
+        assert!(ModelCatalogLoader::infer_thinking_levels("proto/ultra-fast-1").is_empty());
+        assert!(ModelCatalogLoader::infer_thinking_levels("acme/prototype-9").is_empty());
+        assert!(ModelCatalogLoader::infer_thinking_levels("ollama/llama3.2").is_empty());
+        // Builder override + new() inference wiring.
+        let m = ModelInfo::new("openai/o1", "OpenAI", 200_000, 100_000, true, false, "o1");
+        assert_eq!(m.thinking_levels, std);
+        let plain = ModelInfo::new("ollama/llama3.2", "Ollama", 128_000, 8_192, false, false, "local")
+            .with_thinking(vec!["medium".to_string()]);
+        assert_eq!(plain.thinking_levels, vec!["medium".to_string()]);
+        // Old cache JSON without the field still parses via #[serde(default)].
+        let legacy = r#"{"id":"x","name":"x","provider":"p","context_window":1,"max_output":1,"supports_reasoning":false,"supports_vision":false,"description":"d"}"#;
+        let parsed: ModelInfo = serde_json::from_str(legacy).expect("legacy cache parses");
+        assert!(parsed.thinking_levels.is_empty());
     }
 
     #[test]

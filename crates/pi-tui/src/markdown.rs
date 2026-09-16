@@ -21,7 +21,7 @@ impl MarkdownRenderer {
                     // Closing code block
                     if code_lang == "mermaid" {
                         let mermaid_code = code_lines.join("\n");
-                        lines.extend(MermaidRenderer::render(&mermaid_code));
+                        lines.extend(MermaidRenderer::render(&mermaid_code, theme));
                     } else {
                         let label = if code_lang.is_empty() {
                             "code"
@@ -117,7 +117,7 @@ impl MarkdownRenderer {
         if in_code_block {
             if code_lang == "mermaid" {
                 let mermaid_code = code_lines.join("\n");
-                lines.extend(MermaidRenderer::render(&mermaid_code));
+                lines.extend(MermaidRenderer::render(&mermaid_code, theme));
             } else {
                 let label = if code_lang.is_empty() {
                     "code (streaming...)"

@@ -2,7 +2,7 @@ use crate::style::ThemePalette;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
@@ -417,7 +417,7 @@ impl MemoryOverlayWidget {
             .highlight_style(
                 Style::default()
                     .bg(theme.accent)
-                    .fg(Color::Black)
+                    .fg(theme.on_accent)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");

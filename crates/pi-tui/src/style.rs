@@ -95,6 +95,10 @@ pub struct ThemePalette {
     pub yellow: Color,
     pub cyan: Color,
     pub magenta: Color,
+    /// Foreground drawn on top of accent/highlight fills (replaces hardcoded `Color::Black`).
+    pub on_accent: Color,
+    /// Badge color for local/zero-config providers (replaces hardcoded `Rgb(100, 220, 220)`).
+    pub local: Color,
     pub logo_gradient: [Color; 6],
 }
 
@@ -131,6 +135,8 @@ impl ThemePalette {
             yellow: Color::Rgb(210, 153, 34),   // #d29922
             cyan: Color::Rgb(56, 189, 248),     // #38bdf8
             magenta: Color::Rgb(188, 140, 255), // #bc8cff
+            on_accent: Color::Rgb(13, 17, 23),         // #0d1117 (on_accent: near-black for highlight fg)
+            local: Color::Rgb(100, 220, 220),     // local-provider badge
             logo_gradient: [
                 Color::Rgb(130, 190, 255),
                 Color::Rgb(100, 170, 250),
@@ -156,6 +162,8 @@ impl ThemePalette {
             yellow: Color::Rgb(224, 175, 104),  // #e0af68
             cyan: Color::Rgb(125, 207, 255),    // #7dcfff
             magenta: Color::Rgb(187, 154, 247), // #bb9af7
+            on_accent: Color::Rgb(26, 27, 38),         // #1a1b26 (on_accent)
+            local: Color::Rgb(125, 207, 255),     // local (tokyo cyan)
             logo_gradient: [
                 Color::Rgb(187, 154, 247),
                 Color::Rgb(158, 170, 250),
@@ -181,6 +189,8 @@ impl ThemePalette {
             yellow: Color::Rgb(238, 212, 159),  // Yellow #eed49f
             cyan: Color::Rgb(145, 215, 227),    // Sky #91d7e3
             magenta: Color::Rgb(245, 189, 230), // Pink #f5bde6
+            on_accent: Color::Rgb(36, 39, 58),         // Base #24273a (on_accent)
+            local: Color::Rgb(145, 215, 227),     // local (macchiato sky)
             logo_gradient: [
                 Color::Rgb(245, 189, 230),
                 Color::Rgb(198, 160, 246),
@@ -206,6 +216,8 @@ impl ThemePalette {
             yellow: Color::Rgb(250, 189, 47),   // #fabd2f
             cyan: Color::Rgb(142, 192, 124),    // #8ec07c
             magenta: Color::Rgb(211, 134, 155), // #d3869b
+            on_accent: Color::Rgb(40, 40, 40),         // #282828 (on_accent)
+            local: Color::Rgb(142, 192, 124),     // local (gruvbox aqua)
             logo_gradient: [
                 Color::Rgb(250, 189, 47),
                 Color::Rgb(254, 128, 25),
@@ -231,6 +243,8 @@ impl ThemePalette {
             yellow: Color::Rgb(235, 203, 139), // #ebcb8b
             cyan: Color::Rgb(143, 188, 187),   // #8fbcbb
             magenta: Color::Rgb(180, 142, 173), // #b48ead
+            on_accent: Color::Rgb(46, 52, 64),         // Polar Night #2e3440 (on_accent)
+            local: Color::Rgb(143, 188, 187),     // local (nord frost)
             logo_gradient: [
                 Color::Rgb(143, 188, 187),
                 Color::Rgb(136, 192, 208),
@@ -256,6 +270,8 @@ impl ThemePalette {
             yellow: Color::Rgb(181, 137, 0),   // #b58900
             cyan: Color::Rgb(42, 161, 152),    // #2aa198
             magenta: Color::Rgb(211, 54, 130), // #d3869b
+            on_accent: Color::Rgb(0, 43, 54),           // base03 #002b36 (on_accent)
+            local: Color::Rgb(42, 161, 152),      // local (solarized cyan)
             logo_gradient: [
                 Color::Rgb(42, 161, 152),
                 Color::Rgb(38, 139, 210),
@@ -281,6 +297,8 @@ impl ThemePalette {
             yellow: Color::Rgb(229, 192, 123),  // #e5c07b
             cyan: Color::Rgb(86, 182, 194),     // #56b6c2
             magenta: Color::Rgb(198, 120, 221), // #c678dd
+            on_accent: Color::Rgb(40, 44, 52),         // #282c34 (on_accent)
+            local: Color::Rgb(86, 182, 194),      // local (onedark cyan)
             logo_gradient: [
                 Color::Rgb(198, 120, 221),
                 Color::Rgb(97, 175, 239),
@@ -394,113 +412,6 @@ impl ThemePalette {
         Style::default()
             .fg(self.accent)
             .add_modifier(Modifier::BOLD)
-    }
-}
-
-pub struct Theme;
-
-impl Theme {
-    // GitHub Dark Default palette
-    pub const ACCENT: Color = Color::Rgb(47, 129, 247); // #2f81f7
-    pub const BG: Color = Color::Rgb(13, 17, 23); // #0d1117
-    pub const SURFACE: Color = Color::Rgb(22, 27, 34); // #161b22
-    pub const BORDER: Color = Color::Rgb(48, 54, 61); // #30363d
-    pub const TEXT: Color = Color::Rgb(230, 237, 243); // #e6edf3
-    pub const MUTED: Color = Color::Rgb(125, 133, 144); // #7d8590
-    pub const GREEN: Color = Color::Rgb(63, 185, 80); // #3fb950
-    pub const RED: Color = Color::Rgb(248, 81, 73); // #f85149
-    pub const YELLOW: Color = Color::Rgb(210, 153, 34); // #d29922
-
-    // Blue gradient stops for the PI logo (light->dark top-to-bottom)
-    pub const LOGO_BLUE_1: Color = Color::Rgb(130, 190, 255); // lightest
-    pub const LOGO_BLUE_2: Color = Color::Rgb(100, 170, 250);
-    pub const LOGO_BLUE_3: Color = Color::Rgb(70, 150, 240);
-    pub const LOGO_BLUE_4: Color = Color::Rgb(47, 129, 247); // accent
-    pub const LOGO_BLUE_5: Color = Color::Rgb(30, 100, 220);
-    pub const LOGO_BLUE_6: Color = Color::Rgb(20, 80, 190); // darkest
-
-    pub fn logo_gradient(line_index: usize) -> Style {
-        let color = match line_index {
-            0 => Self::LOGO_BLUE_1,
-            1 => Self::LOGO_BLUE_2,
-            2 => Self::LOGO_BLUE_3,
-            3 => Self::LOGO_BLUE_4,
-            4 => Self::LOGO_BLUE_5,
-            _ => Self::LOGO_BLUE_6,
-        };
-        Style::default().fg(color).add_modifier(Modifier::BOLD)
-    }
-
-    pub fn title() -> Style {
-        Style::default()
-            .fg(Self::ACCENT)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    pub fn user_label() -> Style {
-        Style::default()
-            .fg(Self::MUTED)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    pub fn assistant_label() -> Style {
-        Style::default()
-            .fg(Self::ACCENT)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    pub fn tool_label() -> Style {
-        Style::default()
-            .fg(Self::YELLOW)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    pub fn system_label() -> Style {
-        Style::default()
-            .fg(Self::ACCENT)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    pub fn system_content() -> Style {
-        Style::default().fg(Self::MUTED)
-    }
-
-    pub fn code_border() -> Style {
-        Style::default().fg(Self::BORDER)
-    }
-
-    pub fn prompt_separator() -> Style {
-        Style::default().fg(Self::BORDER)
-    }
-
-    pub fn status_bar() -> Style {
-        Style::default().bg(Self::BG).fg(Self::MUTED)
-    }
-
-    pub fn status_bar_accent() -> Style {
-        Style::default().bg(Self::BG).fg(Self::TEXT)
-    }
-
-    pub fn highlight_keyword() -> Style {
-        Style::default()
-            .fg(Self::YELLOW)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    pub fn highlight_type() -> Style {
-        Style::default().fg(Self::ACCENT)
-    }
-
-    pub fn highlight_string() -> Style {
-        Style::default().fg(Self::GREEN)
-    }
-
-    pub fn highlight_number() -> Style {
-        Style::default().fg(Self::RED)
-    }
-
-    pub fn highlight_comment() -> Style {
-        Style::default().fg(Self::MUTED)
     }
 }
 

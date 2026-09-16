@@ -55,7 +55,7 @@ pub use plan_overlay::{PlanOverlayWidget, PlanState, task_status_badge, task_sta
 pub use provider_picker::ProviderPickerWidget;
 pub use question_modal::{QuestionKind, QuestionModalState, QuestionModalWidget, QuestionOption};
 pub use session_picker::SessionPicker;
-pub use style::{Theme, ThemeKind, ThemePalette};
+pub use style::{ThemeKind, ThemePalette};
 pub use theme_picker::ThemePickerWidget;
 pub use usage_overlay::UsageOverlay;
 
@@ -1461,7 +1461,7 @@ impl PiTuiApp {
                 if self.show_auth_modal {
                     let area = Self::centered_rect(65, 30, f.area());
                     f.render_widget(Clear, area);
-                    let modal = AccountPicker::render_modal(&self.auth_provider, &self.auth_input);
+                    let modal = AccountPicker::render_modal(&self.auth_provider, &self.auth_input, &self.theme);
                     f.render_widget(modal, area);
                 }
 
@@ -1491,6 +1491,7 @@ impl PiTuiApp {
                             &self.model_id,
                             self.all_catalog_models.len(),
                             &self.theme,
+                            None,
                         );
 
                     let inner_layout = Layout::default()
@@ -1531,7 +1532,7 @@ impl PiTuiApp {
                             .collect();
 
                     let (search_bar, list, block) =
-                        ProviderPickerWidget::render(&self.provider_search_query, &filtered);
+                        ProviderPickerWidget::render(&self.provider_search_query, &filtered, &self.theme);
 
                     let inner_chunks = Layout::default()
                         .direction(Direction::Vertical)
@@ -1606,7 +1607,7 @@ impl PiTuiApp {
                         Vec::new()
                     };
 
-                    let (list, block) = SessionPicker::render_widget(&raw_items);
+                    let (list, block) = SessionPicker::render_widget(&raw_items, &self.theme);
                     let list_widget = list.block(block);
                     f.render_stateful_widget(list_widget, area, &mut self.tree_overlay_state);
                 }
@@ -1617,7 +1618,7 @@ impl PiTuiApp {
                 {
                     let area = Self::centered_rect(85, 75, f.area());
                     f.render_widget(Clear, area);
-                    DiffView::render(state, f, area);
+                    DiffView::render_with_theme(state, f, area, &self.theme);
                 }
 
                 // Render Cognitive Memory Explorer Overlay

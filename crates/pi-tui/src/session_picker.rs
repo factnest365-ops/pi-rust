@@ -1,27 +1,28 @@
-use ratatui::style::{Color, Modifier, Style};
+use crate::style::ThemePalette;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState};
 
 pub struct SessionPicker;
 
 impl SessionPicker {
-    pub fn render_widget<'a>(items: &'a [String]) -> (List<'a>, Block<'a>) {
+    pub fn render_widget<'a>(items: &'a [String], theme: &ThemePalette) -> (List<'a>, Block<'a>) {
         let list_items: Vec<ListItem> = items
             .iter()
-            .map(|label| ListItem::new(Span::styled(label, Style::default().fg(Color::Cyan))))
+            .map(|label| ListItem::new(Span::styled(label, Style::default().fg(theme.cyan))))
             .collect();
 
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Color::Cyan))
+            .border_style(Style::default().fg(theme.cyan))
             .title(" Session Tree Navigator (Up/Down: Inspect | Enter: Rewind | Esc: Close) ");
 
         let list = List::new(list_items)
             .highlight_style(
                 Style::default()
-                    .bg(Color::Cyan)
-                    .fg(Color::Black)
+                    .bg(theme.cyan)
+                    .fg(theme.on_accent)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol(">> ");

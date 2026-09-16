@@ -24,8 +24,384 @@ pub struct AuthStore {
     pub providers: HashMap<String, AuthCredential>,
 }
 
-pub struct AuthResolver;
+/// Single-row auth metadata for one provider family.
+/// Collapses 6 former match sites (aliases, env_keys, config field,
+/// save field, test URL, login instructions) into one lookup.
+#[derive(Debug, Clone, Copy)]
+pub struct AuthDef {
+    pub canonical: &'static str,
+    pub display: &'static str,
+    pub aliases: &'static [&'static str],
+    pub env_keys: &'static [&'static str],
+    pub config_field: &'static str,
+    /// GET probe URL for `test_provider_key`. `None` means fail closed (`Ok(false)`).
+    pub test_url: Option<&'static str>,
+    /// Key-issuing console URL. Empty means generic fallback instructions.
+    pub login_url: &'static str,
+    /// Local daemons need no credentials.
+    pub local: bool,
+}
 
+static AUTH_DEFS: &[AuthDef] = &[
+    AuthDef {
+        canonical: "anthropic",
+        display: "Anthropic Claude",
+        aliases: &["claude"],
+        env_keys: &["ANTHROPIC_API_KEY", "ANTHROPIC_OAUTH_TOKEN", "CLAUDE_API_KEY"],
+        config_field: "anthropic_api_key",
+        test_url: Some("https://api.anthropic.com/v1/models"),
+        login_url: "https://console.anthropic.com/settings/keys",
+        local: false,
+    },
+    AuthDef {
+        canonical: "openai",
+        display: "OpenAI",
+        aliases: &["gpt"],
+        env_keys: &["OPENAI_API_KEY"],
+        config_field: "openai_api_key",
+        test_url: Some("https://api.openai.com/v1/models"),
+        login_url: "https://platform.openai.com/api-keys",
+        local: false,
+    },
+    AuthDef {
+        canonical: "gemini",
+        display: "Google Gemini",
+        aliases: &["google"],
+        env_keys: &["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEY"],
+        config_field: "gemini_api_key",
+        test_url: Some("https://generativelanguage.googleapis.com/v1beta/models"),
+        login_url: "https://aistudio.google.com/app/apikey",
+        local: false,
+    },
+    AuthDef {
+        canonical: "deepseek",
+        display: "DeepSeek",
+        aliases: &[],
+        env_keys: &["DEEPSEEK_API_KEY"],
+        config_field: "deepseek_api_key",
+        test_url: Some("https://api.deepseek.com/v1/models"),
+        login_url: "https://platform.deepseek.com/api_keys",
+        local: false,
+    },
+    AuthDef {
+        canonical: "groq",
+        display: "Groq",
+        aliases: &[],
+        env_keys: &["GROQ_API_KEY"],
+        config_field: "groq_api_key",
+        test_url: Some("https://api.groq.com/openai/v1/models"),
+        login_url: "https://console.groq.com/keys",
+        local: false,
+    },
+    AuthDef {
+        canonical: "openrouter",
+        display: "OpenRouter",
+        aliases: &[],
+        env_keys: &["OPENROUTER_API_KEY"],
+        config_field: "openrouter_api_key",
+        test_url: Some("https://openrouter.ai/api/v1/auth/key"),
+        login_url: "https://openrouter.ai/keys",
+        local: false,
+    },
+    AuthDef {
+        canonical: "mistral",
+        display: "Mistral AI",
+        aliases: &["codestral"],
+        env_keys: &["MISTRAL_API_KEY", "CODESTRAL_API_KEY"],
+        config_field: "mistral_api_key",
+        test_url: Some("https://api.mistral.ai/v1/models"),
+        login_url: "https://console.mistral.ai",
+        local: false,
+    },
+    AuthDef {
+        canonical: "cerebras",
+        display: "Cerebras",
+        aliases: &[],
+        env_keys: &["CEREBRAS_API_KEY"],
+        config_field: "cerebras_api_key",
+        test_url: Some("https://api.cerebras.ai/v1/models"),
+        login_url: "https://cloud.cerebras.ai",
+        local: false,
+    },
+    AuthDef {
+        canonical: "opencode",
+        display: "OpenCode Zen",
+        aliases: &["zen", "opencode-go", "opencode-zen"],
+        env_keys: &["OPENCODE_API_KEY", "ZEN_API_KEY"],
+        config_field: "opencode_api_key",
+        test_url: None,
+        login_url: "https://opencode.ai",
+        local: false,
+    },
+    AuthDef {
+        canonical: "kilo",
+        display: "Kilo Gateway",
+        aliases: &["kilo-gateway"],
+        env_keys: &["KILO_API_KEY"],
+        config_field: "kilo_api_key",
+        test_url: None,
+        login_url: "https://kilo.ai",
+        local: false,
+    },
+    AuthDef {
+        canonical: "agnes",
+        display: "Agnes Gateway",
+        aliases: &["agnes-gateway"],
+        env_keys: &["AGNES_API_KEY"],
+        config_field: "agnes_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "copilot",
+        display: "GitHub Copilot",
+        aliases: &["github-copilot"],
+        env_keys: &["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"],
+        config_field: "copilot_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "bedrock",
+        display: "Amazon Bedrock",
+        aliases: &["amazon-bedrock"],
+        env_keys: &["AWS_BEARER_TOKEN_BEDROCK", "AWS_ACCESS_KEY_ID"],
+        config_field: "bedrock_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "azure",
+        display: "Azure OpenAI",
+        aliases: &["azure-openai"],
+        env_keys: &["AZURE_OPENAI_API_KEY"],
+        config_field: "azure_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "nvidia",
+        display: "NVIDIA NIM",
+        aliases: &["nvidia-nim"],
+        env_keys: &["NVIDIA_API_KEY"],
+        config_field: "nvidia_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "together",
+        display: "Together AI",
+        aliases: &["together-ai"],
+        env_keys: &["TOGETHER_API_KEY"],
+        config_field: "together_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "moonshot",
+        display: "Moonshot Kimi",
+        aliases: &["kimi"],
+        env_keys: &["MOONSHOT_API_KEY", "KIMI_API_KEY"],
+        config_field: "moonshot_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "xiaomi",
+        display: "Xiaomi MiMo",
+        aliases: &["mimo"],
+        env_keys: &[
+            "XIAOMI_API_KEY",
+            "XIAOMI_TOKEN_PLAN_CN_API_KEY",
+            "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
+            "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
+        ],
+        config_field: "xiaomi_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "qwen",
+        display: "Qwen",
+        aliases: &["qwen-token-plan"],
+        env_keys: &["QWEN_TOKEN_PLAN_API_KEY", "QWEN_TOKEN_PLAN_CN_API_KEY"],
+        config_field: "qwen_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "huggingface",
+        display: "HuggingFace",
+        aliases: &["hf"],
+        env_keys: &["HF_TOKEN", "HUGGINGFACE_API_KEY"],
+        config_field: "huggingface_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "cloudflare",
+        display: "Cloudflare",
+        aliases: &["cloudflare-ai-gateway", "cloudflare-workers-ai"],
+        env_keys: &["CLOUDFLARE_API_KEY"],
+        config_field: "cloudflare_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "vercel",
+        display: "Vercel AI Gateway",
+        aliases: &["vercel-ai-gateway"],
+        env_keys: &["AI_GATEWAY_API_KEY"],
+        config_field: "vercel_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "xai",
+        display: "xAI",
+        aliases: &[],
+        env_keys: &["XAI_API_KEY"],
+        config_field: "xai_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "zai",
+        display: "Z.AI",
+        aliases: &[],
+        env_keys: &["ZAI_API_KEY", "ZAI_CODING_CN_API_KEY"],
+        config_field: "zai_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "minimax",
+        display: "MiniMax",
+        aliases: &[],
+        env_keys: &["MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"],
+        config_field: "minimax_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "fireworks",
+        display: "Fireworks AI",
+        aliases: &[],
+        env_keys: &["FIREWORKS_API_KEY"],
+        config_field: "fireworks_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "perplexity",
+        display: "Perplexity",
+        aliases: &[],
+        env_keys: &["PERPLEXITY_API_KEY"],
+        config_field: "perplexity_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "baseten",
+        display: "Baseten",
+        aliases: &[],
+        env_keys: &["BASETEN_API_KEY"],
+        config_field: "baseten_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "ant-ling",
+        display: "Ant Ling",
+        aliases: &[],
+        env_keys: &["ANT_LING_API_KEY"],
+        config_field: "ant_ling_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "vertex",
+        display: "Vertex AI",
+        aliases: &["vertex-ai"],
+        env_keys: &["GOOGLE_CLOUD_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"],
+        config_field: "vertex_api_key",
+        test_url: None,
+        login_url: "",
+        local: false,
+    },
+    AuthDef {
+        canonical: "ollama",
+        display: "Ollama",
+        aliases: &[],
+        env_keys: &[],
+        config_field: "ollama_api_key",
+        test_url: None,
+        login_url: "",
+        local: true,
+    },
+    AuthDef {
+        canonical: "lmstudio",
+        display: "LM Studio",
+        aliases: &[],
+        env_keys: &[],
+        config_field: "lmstudio_api_key",
+        test_url: None,
+        login_url: "",
+        local: true,
+    },
+    AuthDef {
+        canonical: "llamacpp",
+        display: "llama.cpp",
+        aliases: &[],
+        env_keys: &[],
+        config_field: "llamacpp_api_key",
+        test_url: None,
+        login_url: "",
+        local: true,
+    },
+    AuthDef {
+        canonical: "vllm",
+        display: "vLLM",
+        aliases: &[],
+        env_keys: &[],
+        config_field: "vllm_api_key",
+        test_url: None,
+        login_url: "",
+        local: true,
+    },
+];
+
+static UNKNOWN_DEF: AuthDef = AuthDef {
+    canonical: "unknown",
+    display: "Unknown",
+    aliases: &[],
+    env_keys: &[],
+    config_field: "",
+    test_url: None,
+    login_url: "",
+    local: false,
+};
+
+pub struct AuthResolver;
 impl AuthResolver {
     pub fn auth_json_path() -> PathBuf {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
@@ -37,87 +413,30 @@ impl AuthResolver {
         home.join(".pi").join("config.json")
     }
 
-    /// Returns all known aliases/synonyms for a provider name
+    /// Single lookup for all auth metadata. Unknown providers return
+    /// `UNKNOWN_DEF` (fail-closed: no test URL, generic field/instructions).
+    pub fn auth_def(provider: &str) -> &'static AuthDef {
+        let norm = provider.to_lowercase();
+        let n = norm.as_str();
+        for def in AUTH_DEFS {
+            if n == def.canonical || def.aliases.contains(&n) {
+                return def;
+            }
+        }
+        &UNKNOWN_DEF
+    }
+
+    /// Returns all known aliases/synonyms for a provider name, driven by [`AuthDef::aliases`].
     pub fn provider_aliases(provider: &str) -> Vec<String> {
         let norm = provider.to_lowercase();
+        let def = Self::auth_def(&norm);
+        if def.canonical == UNKNOWN_DEF.canonical {
+            return vec![norm];
+        }
         let mut list = vec![norm.clone()];
-        match norm.as_str() {
-            "anthropic" | "claude" => {
-                list.push("anthropic".to_string());
-                list.push("claude".to_string());
-            }
-            "openai" | "gpt" => {
-                list.push("openai".to_string());
-                list.push("gpt".to_string());
-            }
-            "gemini" | "google" => {
-                list.push("gemini".to_string());
-                list.push("google".to_string());
-            }
-            "opencode" | "zen" | "opencode-go" | "opencode-zen" => {
-                list.push("opencode".to_string());
-                list.push("zen".to_string());
-                list.push("opencode-go".to_string());
-                list.push("opencode-zen".to_string());
-            }
-            "kilo" | "kilo-gateway" => {
-                list.push("kilo".to_string());
-                list.push("kilo-gateway".to_string());
-            }
-            "agnes" | "agnes-gateway" => {
-                list.push("agnes".to_string());
-                list.push("agnes-gateway".to_string());
-            }
-            "copilot" | "github-copilot" => {
-                list.push("copilot".to_string());
-                list.push("github-copilot".to_string());
-            }
-            "bedrock" | "amazon-bedrock" => {
-                list.push("bedrock".to_string());
-                list.push("amazon-bedrock".to_string());
-            }
-            "azure" | "azure-openai" => {
-                list.push("azure".to_string());
-                list.push("azure-openai".to_string());
-            }
-            "nvidia" | "nvidia-nim" => {
-                list.push("nvidia".to_string());
-                list.push("nvidia-nim".to_string());
-            }
-            "together" | "together-ai" => {
-                list.push("together".to_string());
-                list.push("together-ai".to_string());
-            }
-            "mistral" | "codestral" => {
-                list.push("mistral".to_string());
-                list.push("codestral".to_string());
-            }
-            "moonshot" | "kimi" => {
-                list.push("moonshot".to_string());
-                list.push("kimi".to_string());
-            }
-            "xiaomi" | "mimo" => {
-                list.push("xiaomi".to_string());
-                list.push("mimo".to_string());
-            }
-            "qwen" | "qwen-token-plan" => {
-                list.push("qwen".to_string());
-                list.push("qwen-token-plan".to_string());
-            }
-            "huggingface" | "hf" => {
-                list.push("huggingface".to_string());
-                list.push("hf".to_string());
-            }
-            "cloudflare" | "cloudflare-ai-gateway" | "cloudflare-workers-ai" => {
-                list.push("cloudflare".to_string());
-                list.push("cloudflare-ai-gateway".to_string());
-                list.push("cloudflare-workers-ai".to_string());
-            }
-            "vercel" | "vercel-ai-gateway" => {
-                list.push("vercel".to_string());
-                list.push("vercel-ai-gateway".to_string());
-            }
-            _ => {}
+        list.push(def.canonical.to_string());
+        for a in def.aliases {
+            list.push(a.to_string());
         }
         list.dedup();
         list
@@ -126,60 +445,11 @@ impl AuthResolver {
     /// Resolves credential for a given provider searching env vars, ~/.pi/config.json, ~/.pi/agent/auth.json, and agent configs
     pub fn resolve_key(provider: &str) -> Option<String> {
         let norm = provider.to_lowercase();
+        let def = Self::auth_def(&norm);
         let aliases = Self::provider_aliases(&norm);
 
-        // 1. Check environment variables
-        let env_keys = match norm.as_str() {
-            "anthropic" | "claude" => vec![
-                "ANTHROPIC_API_KEY",
-                "ANTHROPIC_OAUTH_TOKEN",
-                "CLAUDE_API_KEY",
-            ],
-            "openai" | "gpt" => vec!["OPENAI_API_KEY"],
-            "ant-ling" => vec!["ANT_LING_API_KEY"],
-            "azure" | "azure-openai" => vec!["AZURE_OPENAI_API_KEY"],
-            "deepseek" => vec!["DEEPSEEK_API_KEY"],
-            "nvidia" | "nvidia-nim" => vec!["NVIDIA_API_KEY"],
-            "gemini" | "google" => vec!["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_AI_KEY"],
-            "vertex" | "vertex-ai" => {
-                vec!["GOOGLE_CLOUD_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"]
-            }
-            "mistral" | "codestral" => vec!["MISTRAL_API_KEY", "CODESTRAL_API_KEY"],
-            "groq" => vec!["GROQ_API_KEY"],
-            "cerebras" => vec!["CEREBRAS_API_KEY"],
-            "cloudflare" | "cloudflare-ai-gateway" | "cloudflare-workers-ai" => {
-                vec!["CLOUDFLARE_API_KEY"]
-            }
-            "xai" => vec!["XAI_API_KEY"],
-            "openrouter" => vec!["OPENROUTER_API_KEY"],
-            "vercel" | "vercel-ai-gateway" => vec!["AI_GATEWAY_API_KEY"],
-            "zai" => vec!["ZAI_API_KEY", "ZAI_CODING_CN_API_KEY"],
-            "minimax" => vec!["MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"],
-            "together" | "together-ai" => vec!["TOGETHER_API_KEY"],
-            "baseten" => vec!["BASETEN_API_KEY"],
-            "huggingface" | "hf" => vec!["HF_TOKEN", "HUGGINGFACE_API_KEY"],
-            "moonshot" | "kimi" => vec!["MOONSHOT_API_KEY", "KIMI_API_KEY"],
-            "copilot" | "github-copilot" => vec!["COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN"],
-            "bedrock" | "amazon-bedrock" => vec!["AWS_BEARER_TOKEN_BEDROCK", "AWS_ACCESS_KEY_ID"],
-            "opencode" | "zen" | "opencode-go" | "opencode-zen" => {
-                vec!["OPENCODE_API_KEY", "ZEN_API_KEY"]
-            }
-            "fireworks" => vec!["FIREWORKS_API_KEY"],
-            "qwen" | "qwen-token-plan" => {
-                vec!["QWEN_TOKEN_PLAN_API_KEY", "QWEN_TOKEN_PLAN_CN_API_KEY"]
-            }
-            "xiaomi" | "mimo" => vec![
-                "XIAOMI_API_KEY",
-                "XIAOMI_TOKEN_PLAN_CN_API_KEY",
-                "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
-                "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
-            ],
-            "kilo" | "kilo-gateway" => vec!["KILO_API_KEY"],
-            "agnes" | "agnes-gateway" => vec!["AGNES_API_KEY"],
-            _ => vec![],
-        };
-
-        for ek in env_keys {
+        // 1. Check environment variables (table-driven + generic alias fallback)
+        for ek in def.env_keys {
             if let Ok(val) = std::env::var(ek)
                 && !val.trim().is_empty()
             {
@@ -197,35 +467,13 @@ impl AuthResolver {
             }
         }
 
-        // 2. Check ~/.pi/config.json
+        // 2. Check ~/.pi/config.json (generic over aliases: <alias>_api_key)
         if let Ok(content) = fs::read_to_string(Self::config_json_path())
             && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
         {
             for alias in &aliases {
-                let direct_key = match alias.as_str() {
-                    "anthropic" | "claude" => json
-                        .get("anthropic_api_key")
-                        .or_else(|| json.get("claude_api_key")),
-                    "openai" | "gpt" => json
-                        .get("openai_api_key")
-                        .or_else(|| json.get("gpt_api_key")),
-                    "gemini" | "google" => json
-                        .get("gemini_api_key")
-                        .or_else(|| json.get("google_api_key")),
-                    "openrouter" => json.get("openrouter_api_key"),
-                    "groq" => json.get("groq_api_key"),
-                    "deepseek" => json.get("deepseek_api_key"),
-                    "mistral" | "codestral" => json
-                        .get("mistral_api_key")
-                        .or_else(|| json.get("codestral_api_key")),
-                    "opencode" | "zen" | "opencode-zen" | "opencode-go" => json
-                        .get("opencode_api_key")
-                        .or_else(|| json.get("zen_api_key")),
-                    "kilo" | "kilo-gateway" => json.get("kilo_api_key"),
-                    "agnes" | "agnes-gateway" => json.get("agnes_api_key"),
-                    _ => json.get(format!("{}_api_key", alias)),
-                };
-                if let Some(key) = direct_key.and_then(|k| k.as_str())
+                let field = format!("{}_api_key", alias.replace('-', "_"));
+                if let Some(key) = json.get(&field).and_then(|k| k.as_str())
                     && !key.trim().is_empty()
                 {
                     return Some(key.trim().to_string());
@@ -254,7 +502,7 @@ impl AuthResolver {
         }
 
         // 4. Check Claude Code config store (~/.claude.json)
-        if norm == "anthropic" || norm == "claude" {
+        if def.canonical == "anthropic" {
             let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
             let claude_cfg = home.join(".claude.json");
             if let Ok(content) = fs::read_to_string(claude_cfg)
@@ -271,6 +519,7 @@ impl AuthResolver {
     /// Stores an API key for a provider in both ~/.pi/config.json and ~/.pi/agent/auth.json
     pub fn save_key(provider: &str, key: &str) -> Result<()> {
         let norm = provider.to_lowercase();
+        let def = Self::auth_def(&norm);
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         let pi_dir = home.join(".pi");
         let agent_dir = pi_dir.join("agent");
@@ -301,34 +550,10 @@ impl AuthResolver {
             serde_json::json!({})
         };
 
-        let field = match norm.as_str() {
-            "anthropic" | "claude" => "anthropic_api_key".to_string(),
-            "openai" | "gpt" => "openai_api_key".to_string(),
-            "gemini" | "google" => "gemini_api_key".to_string(),
-            "openrouter" => "openrouter_api_key".to_string(),
-            "groq" => "groq_api_key".to_string(),
-            "deepseek" => "deepseek_api_key".to_string(),
-            "mistral" | "codestral" => "mistral_api_key".to_string(),
-            "opencode" | "zen" | "opencode-zen" | "opencode-go" => "opencode_api_key".to_string(),
-            "kilo" | "kilo-gateway" => "kilo_api_key".to_string(),
-            "agnes" | "agnes-gateway" => "agnes_api_key".to_string(),
-            "cerebras" => "cerebras_api_key".to_string(),
-            "xai" => "xai_api_key".to_string(),
-            "together" | "together-ai" => "together_api_key".to_string(),
-            "fireworks" => "fireworks_api_key".to_string(),
-            "perplexity" => "perplexity_api_key".to_string(),
-            "copilot" | "github-copilot" => "copilot_api_key".to_string(),
-            "qwen" | "qwen-token-plan" => "qwen_api_key".to_string(),
-            "xiaomi" | "mimo" => "xiaomi_api_key".to_string(),
-            "moonshot" | "kimi" => "moonshot_api_key".to_string(),
-            "huggingface" | "hf" => "huggingface_api_key".to_string(),
-            "azure" | "azure-openai" => "azure_api_key".to_string(),
-            "nvidia" | "nvidia-nim" => "nvidia_api_key".to_string(),
-            "bedrock" | "amazon-bedrock" => "bedrock_api_key".to_string(),
-            "cloudflare" | "cloudflare-ai-gateway" | "cloudflare-workers-ai" => {
-                "cloudflare_api_key".to_string()
-            }
-            _ => format!("{}_api_key", norm),
+        let field = if def.config_field.is_empty() {
+            format!("{}_api_key", norm)
+        } else {
+            def.config_field.to_string()
         };
         if let Some(obj) = config_json.as_object_mut() {
             obj.insert(field, serde_json::Value::String(key.trim().to_string()));
@@ -378,9 +603,13 @@ impl AuthResolver {
         Ok(())
     }
 
-    /// Tests connectivity or credential validity for a given provider with an API key
+    /// Tests connectivity or credential validity for a given provider with an API key.
+    /// Fail-closed: providers without a `test_url` return `Ok(false)`.
+    /// NOTE: only 8 providers currently have probe URLs; the remaining
+    /// table entries (gateways, untested APIs, locals, unknown) report
+    /// `Ok(false)` and surface as Auth-needed until URLs are added. Expected.
     pub async fn test_provider_key(provider: &str, key: &str) -> Result<bool> {
-        let norm = provider.to_lowercase();
+        let def = Self::auth_def(provider);
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(4))
             .build()
@@ -391,69 +620,24 @@ impl AuthResolver {
             return Ok(false);
         }
 
-        let res = match norm.as_str() {
-            "anthropic" | "claude" => {
-                client
-                    .get("https://api.anthropic.com/v1/models")
-                    .header("x-api-key", trimmed_key)
-                    .header("anthropic-version", "2023-06-01")
-                    .send()
-                    .await
-            }
-            "openai" | "gpt" => {
-                client
-                    .get("https://api.openai.com/v1/models")
-                    .bearer_auth(trimmed_key)
-                    .send()
-                    .await
-            }
-            "gemini" | "google" => {
-                client
-                    .get(format!(
-                        "https://generativelanguage.googleapis.com/v1beta/models?key={}",
-                        trimmed_key
-                    ))
-                    .send()
-                    .await
-            }
-            "deepseek" => {
-                client
-                    .get("https://api.deepseek.com/v1/models")
-                    .bearer_auth(trimmed_key)
-                    .send()
-                    .await
-            }
-            "groq" => {
-                client
-                    .get("https://api.groq.com/openai/v1/models")
-                    .bearer_auth(trimmed_key)
-                    .send()
-                    .await
-            }
-            "openrouter" => {
-                client
-                    .get("https://openrouter.ai/api/v1/auth/key")
-                    .bearer_auth(trimmed_key)
-                    .send()
-                    .await
-            }
-            "mistral" | "codestral" => {
-                client
-                    .get("https://api.mistral.ai/v1/models")
-                    .bearer_auth(trimmed_key)
-                    .send()
-                    .await
-            }
-            "cerebras" => {
-                client
-                    .get("https://api.cerebras.ai/v1/models")
-                    .bearer_auth(trimmed_key)
-                    .send()
-                    .await
-            }
-            _ => {
-                return Ok(true);
-            }
+        let Some(url) = def.test_url else {
+            return Ok(false);
+        };
+
+        let res = if def.canonical == "anthropic" {
+            client
+                .get(url)
+                .header("x-api-key", trimmed_key)
+                .header("anthropic-version", "2023-06-01")
+                .send()
+                .await
+        } else if def.canonical == "gemini" {
+            client
+                .get(format!("{}?key={}", url, trimmed_key))
+                .send()
+                .await
+        } else {
+            client.get(url).bearer_auth(trimmed_key).send().await
         };
 
         match res {
@@ -462,47 +646,24 @@ impl AuthResolver {
         }
     }
 
-    /// Initiates a browser-based or interactive login flow for a provider
+    /// Login instructions rendered from [`AuthDef`] (`display` + `login_url`).
     pub fn get_login_instructions(provider: &str) -> String {
-        match provider.to_lowercase().as_str() {
-            "anthropic" | "claude" => {
-                "Anthropic Claude Login:\n  1. Obtain an API key from https://console.anthropic.com/settings/keys\n  2. Or run `/login anthropic <key>` / `/auth <key>` to persist credentials.".to_string()
-            }
-            "openai" | "gpt" => {
-                "OpenAI Login:\n  1. Obtain an API key from https://platform.openai.com/api-keys\n  2. Or run `/login openai <key>` / `/auth <key>` to persist credentials.".to_string()
-            }
-            "gemini" | "google" => {
-                "Google Gemini Login:\n  1. Obtain an API key from https://aistudio.google.com/app/apikey\n  2. Or run `/login gemini <key>` / `/auth <key>` to persist credentials.".to_string()
-            }
-            "openrouter" => {
-                "OpenRouter Login:\n  1. Obtain an API key from https://openrouter.ai/keys\n  2. Or run `/login openrouter <key>` to access 200+ models.".to_string()
-            }
-            "deepseek" => {
-                "DeepSeek Login:\n  1. Obtain an API key from https://platform.deepseek.com/api_keys\n  2. Or run `/login deepseek <key>`.".to_string()
-            }
-            "groq" => {
-                "Groq Login:\n  1. Obtain an API key from https://console.groq.com/keys\n  2. Or run `/login groq <key>`.".to_string()
-            }
-            "cerebras" => {
-                "Cerebras Login:\n  1. Obtain an API key from https://cloud.cerebras.ai\n  2. Or run `/login cerebras <key>`.".to_string()
-            }
-            "mistral" | "codestral" => {
-                "Mistral AI Login:\n  1. Obtain an API key from https://console.mistral.ai\n  2. Or run `/login mistral <key>`.".to_string()
-            }
-            "kilo" | "kilo-gateway" => {
-                "Kilo Gateway Login:\n  1. Obtain a key from https://kilo.ai\n  2. Or run `/login kilo <key>`.".to_string()
-            }
-            "opencode" | "zen" => {
-                "OpenCode Zen Login:\n  1. Obtain a key from https://opencode.ai\n  2. Or run `/login opencode <key>`.".to_string()
-            }
-            "ollama" | "lmstudio" | "llamacpp" | "vllm" => {
-                "Local AI Daemon:\n  Zero credentials required. Make sure your local daemon is running on its default port.".to_string()
-            }
-            _ => format!("Provider Login for [{}]:\n  Run `/login {} <key>` to set your API credentials.", provider, provider),
+        let def = Self::auth_def(provider);
+        if def.local {
+            return "Local AI Daemon:\n  Zero credentials required. Make sure your local daemon is running on its default port.".to_string();
         }
+        if def.login_url.is_empty() {
+            return format!(
+                "Provider Login for [{}]:\n  Run `/login {} <key>` to set your API credentials.",
+                provider, provider
+            );
+        }
+        format!(
+            "{} Login:\n  1. Obtain an API key from {}\n  2. Or run `/login {} <key>` to persist credentials.",
+            def.display, def.login_url, def.canonical
+        )
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,5 +723,42 @@ mod tests {
         unsafe {
             std::env::remove_var("CUSTOM_AI_API_KEY");
         }
+    }
+
+    #[test]
+    fn test_auth_def_single_lookup() {
+        // One lookup drives aliases, env keys, config field, test URL, login text.
+        let def = AuthResolver::auth_def("claude");
+        assert_eq!(def.canonical, "anthropic");
+        assert!(def.env_keys.contains(&"ANTHROPIC_API_KEY"));
+        assert_eq!(def.config_field, "anthropic_api_key");
+        assert!(def.test_url.is_some());
+        assert!(def.login_url.contains("console.anthropic.com"));
+
+        let gpt = AuthResolver::auth_def("gpt");
+        assert_eq!(gpt.canonical, "openai");
+        assert_eq!(gpt.config_field, "openai_api_key");
+
+        let unknown = AuthResolver::auth_def("definitely-unknown-provider-xyz");
+        assert_eq!(unknown.canonical, "unknown");
+        assert!(unknown.test_url.is_none());
+        let instr = AuthResolver::get_login_instructions("definitely-unknown-provider-xyz");
+        assert!(instr.contains("/login definitely-unknown-provider-xyz <key>"));
+    }
+
+    #[tokio::test]
+    async fn test_unknown_provider_fails_closed() {
+        // `pi --login unknown` must fail closed: no probe URL -> Ok(false).
+        let res = AuthResolver::test_provider_key("definitely-unknown-provider-xyz", "some-key")
+            .await
+            .unwrap();
+        assert!(!res);
+
+        let empty = AuthResolver::test_provider_key("openai", "").await.unwrap();
+        assert!(!empty);
+
+        // Untested table entries also fail closed until probe URLs are added.
+        let kilo = AuthResolver::test_provider_key("kilo", "some-key").await.unwrap();
+        assert!(!kilo);
     }
 }

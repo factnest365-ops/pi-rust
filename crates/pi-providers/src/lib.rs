@@ -9,8 +9,10 @@ use std::sync::OnceLock;
 pub mod auth;
 pub mod constants;
 pub mod models;
+pub mod registry;
 pub mod tokens;
 pub use auth::{AuthCredential, AuthResolver, AuthStore};
+pub use registry::{PROVIDER_IDS, PROVIDERS, ProviderDef, canonical_id, endpoint_for};
 pub use constants::{
     DEFAULT_MODEL, LLAMACPP_DEFAULT_ENDPOINT, LLAMACPP_DEFAULT_HOST, LMSTUDIO_DEFAULT_ENDPOINT,
     LMSTUDIO_DEFAULT_HOST, OLLAMA_API_TAGS, OLLAMA_DEFAULT_ENDPOINT, OLLAMA_DEFAULT_HOST,
@@ -509,92 +511,31 @@ impl ModelConfig {
         .ok()
         .or_else(|| Self::lookup_models_json_base_url(norm_provider));
 
-        let (api_key, default_base_url) = match norm_provider {
-            "opencode" => (resolved_key, "https://opencode.ai/zen/v1".to_string()),
-            "agnes" => (resolved_key, "https://api.agnes.ai/v1".to_string()),
-            "kilo" => (resolved_key, "https://api.kilo.ai/api/gateway".to_string()),
-            "ollama" => (
-                if resolved_key.is_empty() {
-                    "ollama".to_string()
-                } else {
-                    resolved_key
-                },
-                format!("{}{}", OLLAMA_DEFAULT_HOST, OLLAMA_V1_PATH),
-            ),
-            "llamacpp" => (
-                if resolved_key.is_empty() {
-                    "llamacpp".to_string()
-                } else {
-                    resolved_key
-                },
-                format!("{}{}", LLAMACPP_DEFAULT_HOST, OLLAMA_V1_PATH),
-            ),
-            "lmstudio" => (
-                if resolved_key.is_empty() {
-                    "lmstudio".to_string()
-                } else {
-                    resolved_key
-                },
-                format!("{}{}", LMSTUDIO_DEFAULT_HOST, OLLAMA_V1_PATH),
-            ),
-            "vllm" => (
-                if resolved_key.is_empty() {
-                    "vllm".to_string()
-                } else {
-                    resolved_key
-                },
-                format!("{}{}", VLLM_DEFAULT_HOST, OLLAMA_V1_PATH),
-            ),
-            "anthropic" => (resolved_key, "https://api.anthropic.com/v1".to_string()),
-            "openai" => (resolved_key, "https://api.openai.com/v1".to_string()),
-            "gemini" => (
-                resolved_key,
-                "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
-            ),
-            "openrouter" => (resolved_key, "https://openrouter.ai/api/v1".to_string()),
-            "deepseek" => (resolved_key, "https://api.deepseek.com/v1".to_string()),
-            "groq" => (resolved_key, "https://api.groq.com/openai/v1".to_string()),
-            "cerebras" => (resolved_key, "https://api.cerebras.ai/v1".to_string()),
-            "mistral" => (resolved_key, "https://api.mistral.ai/v1".to_string()),
-            "xai" => (resolved_key, "https://api.x.ai/v1".to_string()),
-            "together" => (resolved_key, "https://api.together.xyz/v1".to_string()),
-            "fireworks" => (
-                resolved_key,
-                "https://api.fireworks.ai/inference/v1".to_string(),
-            ),
-            "perplexity" => (resolved_key, "https://api.perplexity.ai".to_string()),
-            "copilot" => (resolved_key, "https://api.githubcopilot.com".to_string()),
-            "qwen" => (
-                resolved_key,
-                "https://dashscope-intl.aliyuncs.com/compatible-mode/v1".to_string(),
-            ),
-            "xiaomi" => (resolved_key, "https://api.mimo.xiaomi.com/v1".to_string()),
-            "moonshot" => (resolved_key, "https://api.moonshot.cn/v1".to_string()),
-            "huggingface" => (
-                resolved_key,
-                "https://api-inference.huggingface.co/v1".to_string(),
-            ),
-            "azure" => (
-                resolved_key,
-                "https://models.inference.ai.azure.com".to_string(),
-            ),
-            "nvidia" => (
-                resolved_key,
-                "https://integrate.api.nvidia.com/v1".to_string(),
-            ),
-            "bedrock" => (
-                resolved_key,
-                "https://bedrock-runtime.us-east-1.amazonaws.com".to_string(),
-            ),
-            "cloudflare" => (
-                resolved_key,
-                "https://gateway.ai.cloudflare.com/v1".to_string(),
-            ),
-            "vercel" => (resolved_key, "https://ai-gateway.vercel.sh/v1".to_string()),
-            "zai" => (resolved_key, "https://api.zai.cn/v1".to_string()),
-            "minimax" => (resolved_key, "https://api.minimax.chat/v1".to_string()),
-            "baseten" => (resolved_key, "https://bridge.baseten.co/v1".to_string()),
-            _ => (resolved_key, "https://api.kilo.ai/v1".to_string()),
+        // Local daemons use their id as a placeholder key so requests carry a bearer token.
+        let api_key = match norm_provider {
+            "ollama" | "llamacpp" | "lmstudio" | "vllm" if resolved_key.is_empty() => {
+                norm_provider.to_string()
+            }
+            _ => resolved_key,
+        };
+
+        // Single source of truth for default base URLs (25 canonical providers).
+        // Non-registry providers (azure/nvidia/cloudflare/vercel/zai/minimax/baseten)
+        // keep explicit fallback arms below.
+        let default_base_url: String = if let Some(ep) = crate::registry::endpoint_for(norm_provider)
+        {
+            ep.to_string()
+        } else {
+            match norm_provider {
+                "azure" => "https://models.inference.ai.azure.com".to_string(),
+                "nvidia" => "https://integrate.api.nvidia.com/v1".to_string(),
+                "cloudflare" => "https://gateway.ai.cloudflare.com/v1".to_string(),
+                "vercel" => "https://ai-gateway.vercel.sh/v1".to_string(),
+                "zai" => "https://api.zai.cn/v1".to_string(),
+                "minimax" => "https://api.minimax.chat/v1".to_string(),
+                "baseten" => "https://bridge.baseten.co/v1".to_string(),
+                _ => "https://api.kilo.ai/v1".to_string(),
+            }
         };
 
         let base_url = custom_base_url.or_else(|| Some(default_base_url.to_string()));
@@ -1251,6 +1192,28 @@ impl ProviderClient {
         openai_messages
     }
 
+    /// Resolves the `reasoning_effort` value for a model from its advertised
+    /// thinking levels. Prefers `"medium"` when advertised (preserves the
+    /// historical default), else falls back to `"medium"`. `model_id` is kept
+    /// for future per-model tuning; the lookup is driven by `thinking_levels`.
+    pub fn effort_for(_model_id: &str, thinking_levels: &[String]) -> String {
+        if thinking_levels
+            .iter()
+            .any(|l| l.eq_ignore_ascii_case("medium"))
+        {
+            return "medium".to_string();
+        }
+        if let Some(first) = thinking_levels.first() {
+            if first.eq_ignore_ascii_case("low") {
+                return "low".to_string();
+            }
+            if first.eq_ignore_ascii_case("high") {
+                return "high".to_string();
+            }
+        }
+        "medium".to_string()
+    }
+
     /// Formats tool definitions for OpenAI Chat Completions API
     pub fn format_openai_tools(tools: &[serde_json::Value]) -> Vec<serde_json::Value> {
         tools
@@ -1441,13 +1404,19 @@ impl ProviderClient {
                 "stream": true,
             });
 
-            // OpenAI o1 / o3-mini Reasoning Parameters
+            // OpenAI o-series Reasoning Parameters (T-006: effort lookup).
+            // NOTE: the is_o_series ladder is intentionally KEPT until the
+            // thinking_levels lookup is proven in the wild; the lookup only
+            // widens coverage (non-empty levels) and never narrows the ladder.
             let is_o_series = config.model_id.starts_with("o1")
                 || config.model_id.starts_with("o3")
                 || config.model_id.contains("/o1")
                 || config.model_id.contains("/o3");
-            if is_o_series {
-                body["reasoning_effort"] = serde_json::json!("medium");
+            let thinking_levels =
+                crate::models::ModelCatalogLoader::infer_thinking_levels(&config.model_id);
+            if is_o_series || !thinking_levels.is_empty() {
+                let effort = Self::effort_for(&config.model_id, &thinking_levels);
+                body["reasoning_effort"] = serde_json::json!(effort);
             }
 
             if !tools.is_empty() {
@@ -2172,5 +2141,25 @@ mod tests {
         assert_eq!(ollama_cfg.provider, "ollama");
         assert_eq!(ollama_cfg.model_id, "qwen2.5-coder:32b");
         assert_eq!(ollama_cfg.context_window, 128_000);
+    }
+
+    #[test]
+    fn test_effort_for_prefers_medium_and_falls_back() {
+        // T-006: advertised medium wins (historical default preserved).
+        let std = vec![
+            "low".to_string(),
+            "medium".to_string(),
+            "high".to_string(),
+        ];
+        assert_eq!(ProviderClient::effort_for("openai/o1", &std), "medium");
+        assert_eq!(
+            ProviderClient::effort_for("x", &[String::from("low")]),
+            "low"
+        );
+        assert_eq!(
+            ProviderClient::effort_for("x", &[String::from("high")]),
+            "high"
+        );
+        assert_eq!(ProviderClient::effort_for("x", &[]), "medium");
     }
 }

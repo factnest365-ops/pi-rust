@@ -133,7 +133,7 @@ impl ModelPickerWidget {
             || p.contains("lmstudio")
             || p.contains("vllm")
         {
-            Color::Rgb(100, 220, 220)
+            palette.local
         } else {
             palette.muted
         }
@@ -155,6 +155,36 @@ impl ModelPickerWidget {
     }
 
     /// Renders the complete Model Picker UI components
+    /// Row badges for thinking/reasoning levels (T-006).
+    /// Reuses the existing 🧠/magenta slot — no new palette slots.
+    /// Fixed reasoning renders plain " 🧠"; adjustable levels render " 🧠·N".
+    pub fn thinking_badges(m: &ModelInfo, palette: &ThemePalette) -> Vec<Span<'static>> {
+        if !m.supports_reasoning {
+            return vec![];
+        }
+        if m.thinking_levels.is_empty() {
+            vec![Span::styled(
+                " 🧠",
+                Style::default().fg(palette.magenta),
+            )]
+        } else {
+            vec![Span::styled(
+                format!(" 🧠·{}", m.thinking_levels.len()),
+                Style::default().fg(palette.magenta),
+            )]
+        }
+    }
+
+    /// Context-budget bar (T-006). UTF-8 safe: block chars, no string slicing.
+    pub fn ctx_bar(used: usize, limit: usize, width: usize) -> String {
+        if limit == 0 || width == 0 {
+            return String::new();
+        }
+        let frac = (used as f64 / limit as f64).clamp(0.0, 1.0);
+        let filled = ((frac * width as f64).round() as usize).min(width);
+        format!("{}{}", "█".repeat(filled), "░".repeat(width - filled))
+    }
+
     pub fn render<'a>(
         query: &'a str,
         active_tab: ModelCategoryTab,
@@ -163,6 +193,7 @@ impl ModelPickerWidget {
         active_model_id: &'a str,
         total_catalog_count: usize,
         palette: &'a ThemePalette,
+        ctx_used: Option<usize>,
     ) -> (
         Paragraph<'a>,
         Paragraph<'a>,
@@ -218,7 +249,7 @@ impl ModelPickerWidget {
             let is_active = *tab == active_tab;
             let tab_style = if is_active {
                 Style::default()
-                    .fg(Color::Black)
+                    .fg(palette.on_accent)
                     .bg(palette.cyan)
                     .add_modifier(Modifier::BOLD)
             } else {
@@ -288,10 +319,7 @@ impl ModelPickerWidget {
                     Style::default().fg(palette.muted),
                 );
 
-                let mut badge_spans = vec![];
-                if m.supports_reasoning {
-                    badge_spans.push(Span::styled(" 🧠", Style::default().fg(palette.magenta)));
-                }
+                let mut badge_spans = Self::thinking_badges(m, palette);
                 if m.supports_vision {
                     badge_spans.push(Span::styled(" 👁", Style::default().fg(palette.green)));
                 }
@@ -416,10 +444,15 @@ impl ModelPickerWidget {
             let ctx_tokens_str = format!("{} tokens", Self::format_number(m.context_window));
             let max_output_str = format!("{} tokens", Self::format_number(m.max_output));
 
+            // T-006: surface adjustable levels on the reasoning line.
             let reasoning_str = if m.supports_reasoning {
-                "🧠 Supported (Extended CoT / Deep Verification)"
+                if m.thinking_levels.is_empty() {
+                    "🧠 Supported (Extended CoT / Deep Verification)".to_string()
+                } else {
+                    format!("🧠 Supported ({})", m.thinking_levels.join("/"))
+                }
             } else {
-                "• Standard Generation"
+                "• Standard Generation".to_string()
             };
 
             let vision_str = if m.supports_vision {
@@ -432,7 +465,7 @@ impl ModelPickerWidget {
                 Span::styled(
                     " [ACTIVE SESSION MODEL] ",
                     Style::default()
-                        .fg(Color::Black)
+                        .fg(palette.on_accent)
                         .bg(palette.green)
                         .add_modifier(Modifier::BOLD),
                 )
@@ -440,7 +473,9 @@ impl ModelPickerWidget {
                 Span::raw("")
             };
 
-            let card_lines = vec![
+            // T-006: optional ctx-budget line. `None` = legacy call sites,
+            // no visual change (inserted between Max Output and Reasoning).
+            let mut card_lines = vec![
                 Line::from(vec![
                     Span::styled(
                         format!(" [{}] ", m.provider),
@@ -547,6 +582,25 @@ impl ModelPickerWidget {
                 ]),
             ];
 
+            if let Some(used) = ctx_used {
+                let bar = Self::ctx_bar(used, m.context_window, 18);
+                let pct = if m.context_window > 0 {
+                    used.saturating_mul(100) / m.context_window
+                } else {
+                    0
+                };
+                card_lines.insert(
+                    8,
+                    Line::from(vec![
+                        Span::styled("  Ctx Budget:   ", Style::default().fg(palette.muted)),
+                        Span::styled(
+                            format!("{} {}%", bar, pct),
+                            Style::default().fg(palette.text),
+                        ),
+                    ]),
+                );
+            }
+
             Paragraph::new(card_lines).wrap(Wrap { trim: true }).block(
                 Block::default()
                     .borders(Borders::ALL)
@@ -579,7 +633,7 @@ impl ModelPickerWidget {
                     Span::styled(
                         " [CUSTOM MODEL INPUT] ",
                         Style::default()
-                            .fg(Color::Black)
+                            .fg(palette.on_accent)
                             .bg(palette.cyan)
                             .add_modifier(Modifier::BOLD),
                     ),
@@ -818,6 +872,102 @@ mod tests {
         assert_eq!(tab, ModelCategoryTab::All);
         tab = tab.prev();
         assert_eq!(tab, ModelCategoryTab::Configured);
+    }
+
+    #[test]
+    fn test_thinking_badges_and_ctx_bar() {
+        let palette = ThemePalette::default();
+        // Adjustable-levels model renders " 🧠·3" in the magenta slot.
+        let thinker = ModelInfo::new(
+            "openai/o1",
+            "OpenAI",
+            200_000,
+            100_000,
+            true,
+            false,
+            "o1 reasoning",
+        );
+        let badges = ModelPickerWidget::thinking_badges(&thinker, &palette);
+        assert_eq!(badges.len(), 1);
+        let mut buf = String::new();
+        for s in &badges {
+            buf.push_str(s.content.as_ref());
+        }
+        assert!(buf.contains("🧠·3"), "badges: {buf}");
+
+        // Fixed-reasoning model keeps the plain badge; non-reasoning has none.
+        let fixed = ModelInfo::new("x/y", "X", 8_000, 1_000, true, false, "d")
+            .with_thinking(vec![]);
+        let b2 = ModelPickerWidget::thinking_badges(&fixed, &palette);
+        assert_eq!(b2.len(), 1);
+        assert_eq!(b2[0].content.as_ref(), " 🧠");
+        let plain = ModelInfo::new("ollama/llama3.2", "Ollama", 128_000, 8_192, false, false, "l");
+        assert!(ModelPickerWidget::thinking_badges(&plain, &palette).is_empty());
+
+        // ctx_bar: half of 200k over width 10, clamping, zero-guards.
+        assert_eq!(ModelPickerWidget::ctx_bar(100_000, 200_000, 10), "█████░░░░░");
+        assert_eq!(ModelPickerWidget::ctx_bar(0, 200_000, 4), "░░░░");
+        assert_eq!(ModelPickerWidget::ctx_bar(999_999, 200_000, 4), "████");
+        assert_eq!(ModelPickerWidget::ctx_bar(1, 0, 4), "");
+        assert_eq!(ModelPickerWidget::ctx_bar(1, 10, 0), "");
+    }
+
+    #[test]
+    fn test_render_accepts_ctx_used_none_and_some() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        fn card_text<'a>(card: Paragraph<'a>) -> String {
+            let backend = TestBackend::new(100, 40);
+            let mut term = Terminal::new(backend).expect("test terminal");
+            term.draw(|f| {
+                f.render_widget(card, f.area());
+            })
+            .expect("draw");
+            term.backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
+        }
+
+        let palette = ThemePalette::default();
+        let models = vec![ModelInfo::new(
+            "openai/o1",
+            "OpenAI",
+            200_000,
+            100_000,
+            true,
+            false,
+            "o1 reasoning",
+        )];
+        // Legacy path (None) must keep rendering; Some adds the budget line.
+        let (_a, _b, _c, none_card, _e) = ModelPickerWidget::render(
+            "",
+            ModelCategoryTab::All,
+            &models,
+            Some(0),
+            "openai/o1",
+            1,
+            &palette,
+            None,
+        );
+        let (_a, _b, _c, some_card, _e) = ModelPickerWidget::render(
+            "",
+            ModelCategoryTab::All,
+            &models,
+            Some(0),
+            "openai/o1",
+            1,
+            &palette,
+            Some(100_000),
+        );
+        let none_text = card_text(none_card);
+        let some_text = card_text(some_card);
+        assert!(none_text.contains("Reasoning Mode"));
+        assert!(!none_text.contains("Ctx Budget"));
+        assert!(some_text.contains("Ctx Budget"));
     }
 
     #[test]

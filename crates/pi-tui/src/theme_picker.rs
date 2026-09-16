@@ -1,6 +1,6 @@
 use crate::style::{ThemeKind, ThemePalette};
 use ratatui::layout::Alignment;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph};
 
@@ -114,7 +114,7 @@ impl ThemePickerWidget {
             .highlight_style(
                 Style::default()
                     .bg(current_palette.accent)
-                    .fg(Color::Black)
+                    .fg(current_palette.on_accent)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");

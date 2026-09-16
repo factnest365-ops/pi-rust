@@ -139,33 +139,8 @@ pub const COMMANDS: &[SlashCommand] = &[
     },
 ];
 
-pub const KNOWN_PROVIDERS: &[&str] = &[
-    "anthropic",
-    "openai",
-    "gemini",
-    "deepseek",
-    "groq",
-    "openrouter",
-    "mistral",
-    "cerebras",
-    "copilot",
-    "bedrock",
-    "xai",
-    "together",
-    "fireworks",
-    "perplexity",
-    "qwen",
-    "xiaomi",
-    "moonshot",
-    "huggingface",
-    "ollama",
-    "lmstudio",
-    "llamacpp",
-    "vllm",
-    "opencode",
-    "kilo",
-    "agnes",
-];
+/// Back-compat alias over the canonical registry (single source of truth).
+pub const KNOWN_PROVIDERS: &[&str] = pi_providers::registry::PROVIDER_IDS;
 
 pub const KNOWN_THEMES: &[(&str, &str)] = &[
     ("default", "Clean GitHub dark with vibrant blue accents"),

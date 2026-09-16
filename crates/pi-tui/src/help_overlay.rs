@@ -25,19 +25,19 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
         category: "Navigation & Shortcuts",
         key_or_cmd: "Ctrl+L",
         description: "Open AI Model Picker",
-        details: "Live searchable catalog across 33+ providers and local daemons",
+        details: "Live searchable catalog across providers and local daemons",
     },
     HelpItem {
         category: "Navigation & Shortcuts",
         key_or_cmd: "Ctrl+P",
         description: "Open AI Provider Picker",
-        details: "Browse 25+ gateways (Anthropic, OpenAI, Gemini, DeepSeek, Ollama, etc.)",
+        details: "Browse provider gateways (Anthropic, OpenAI, Gemini, DeepSeek, Ollama, etc.)",
     },
     HelpItem {
         category: "Navigation & Shortcuts",
         key_or_cmd: "Ctrl+T",
         description: "Open Theme Picker",
-        details: "Switch between 7 aesthetic color themes with live preview",
+        details: "Switch between color themes with live preview",
     },
     HelpItem {
         category: "Navigation & Shortcuts",
@@ -162,7 +162,7 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
     },
     HelpItem {
         category: "Slash Commands",
-        key_or_cmd: "/login <p> [key]",
+        key_or_cmd: "/login <provider> [key]",
         description: "Provider Authentication",
         details: "Authenticate provider credentials and persist to ~/.pi/config.json",
     },
@@ -174,9 +174,21 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
     },
     HelpItem {
         category: "Slash Commands",
+        key_or_cmd: "/model [name]",
+        description: "Search & Switch AI Model",
+        details: "Open interactive model browser or switch directly by name/id",
+    },
+    HelpItem {
+        category: "Slash Commands",
         key_or_cmd: "/models [name]",
         description: "Search & Switch AI Model",
         details: "Open interactive model browser or switch directly by name/id",
+    },
+    HelpItem {
+        category: "Slash Commands",
+        key_or_cmd: "/provider [name]",
+        description: "Browse & Switch AI Provider",
+        details: "Open interactive provider browser or switch directly by name",
     },
     HelpItem {
         category: "Slash Commands",
@@ -189,6 +201,30 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
         key_or_cmd: "/mcp [refresh]",
         description: "Discovered MCP Servers",
         details: "List active Model Context Protocol tools and scan client configs",
+    },
+    HelpItem {
+        category: "Slash Commands",
+        key_or_cmd: "/refresh",
+        description: "Refresh Model Catalogs",
+        details: "Force live refresh of models and local daemons",
+    },
+    HelpItem {
+        category: "Slash Commands",
+        key_or_cmd: "/memory [query]",
+        description: "Search Cognitive Memories",
+        details: "Search and explore TauVault cognitive memories and rules",
+    },
+    HelpItem {
+        category: "Slash Commands",
+        key_or_cmd: "/plan [toggle|status]",
+        description: "Task Checklist & Verification",
+        details: "Interactive task checklist and plan verification status",
+    },
+    HelpItem {
+        category: "Slash Commands",
+        key_or_cmd: "/ask [question]",
+        description: "Clarification Questionnaire",
+        details: "Interactive clarification questionnaire modal",
     },
     HelpItem {
         category: "Slash Commands",
@@ -243,9 +279,9 @@ pub const ALL_HELP_ITEMS: &[HelpItem] = &[
         category: "Dual Tool Calling & Worktree Architecture",
         key_or_cmd: "Subprocess Safety & Timeouts",
         description: "Process Tree Kill Guarantees",
-        // Details intentionally static because `HelpItem.details` is `&'static str`.
+        // Details keeps generic wording because `HelpItem.details` is `&'static str`.
         // The shared timeout value lives in `pi_core::plan::VERIFY_TIMEOUT_SECS`.
-        details: "Async 120s execution timeout with SIGKILL cleanup to prevent zombie processes",
+        details: "Async execution timeout (see VERIFY_TIMEOUT_SECS) with SIGKILL cleanup to prevent zombie processes",
     },
 ];
 
@@ -442,6 +478,76 @@ mod tests {
         let diff_filter = HelpOverlay::filter_items("diff");
         assert_eq!(diff_filter.len(), 1);
         assert_eq!(diff_filter[0].key_or_cmd, "/diff [file]");
+    }
+
+    #[test]
+    fn help_counts_match_registries() {
+        // No stale hard-coded counts may drift in `details` (&'static str,
+        // so wording stays generic instead of embedding numbers).
+        for item in ALL_HELP_ITEMS {
+            assert!(
+                !item.details.contains("33+"),
+                "stale provider count in {:?}: {:?}",
+                item.key_or_cmd,
+                item.details
+            );
+            assert!(
+                !item.details.contains("25+ gateways"),
+                "stale gateway count in {:?}: {:?}",
+                item.key_or_cmd,
+                item.details
+            );
+            assert!(
+                !item.details.contains("7 aesthetic"),
+                "stale theme count in {:?}: {:?}",
+                item.key_or_cmd,
+                item.details
+            );
+            assert!(
+                !item.details.contains("120s"),
+                "hard-coded timeout seconds in {:?}: {:?} (reference VERIFY_TIMEOUT_SECS instead)",
+                item.key_or_cmd,
+                item.details
+            );
+        }
+
+        // Theme registry parity: ThemeKind::ALL and autocomplete KNOWN_THEMES agree.
+        assert_eq!(
+            crate::style::ThemeKind::ALL.len(),
+            crate::autocomplete::KNOWN_THEMES.len(),
+            "ThemeKind::ALL drifted from autocomplete KNOWN_THEMES"
+        );
+        assert!(
+            !crate::autocomplete::KNOWN_PROVIDERS.is_empty(),
+            "KNOWN_PROVIDERS registry must not be empty"
+        );
+
+        // Every registered slash command must have a help entry; /login
+        // signature must match the autocomplete registry exactly.
+        let help_cmds: Vec<&str> = ALL_HELP_ITEMS
+            .iter()
+            .filter(|i| i.category == "Slash Commands")
+            .map(|i| i.key_or_cmd.split_whitespace().next().unwrap_or(""))
+            .collect();
+        for cmd in crate::autocomplete::COMMANDS {
+            assert!(
+                help_cmds.contains(&cmd.name),
+                "slash command {:?} missing from help overlay",
+                cmd.name
+            );
+        }
+        let login_help = ALL_HELP_ITEMS
+            .iter()
+            .find(|i| i.key_or_cmd.starts_with("/login"))
+            .expect("help must contain a /login entry");
+        let login_cmd = crate::autocomplete::COMMANDS
+            .iter()
+            .find(|c| c.name == "/login")
+            .expect("autocomplete must contain /login");
+        assert_eq!(
+            login_help.key_or_cmd, login_cmd.signature,
+            "/login help signature drifted from autocomplete registry"
+        );
     }
 
     #[test]

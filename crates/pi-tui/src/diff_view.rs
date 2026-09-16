@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
@@ -316,7 +316,7 @@ impl DiffView {
         if total_lines == 0 || (total_lines == 2 && state.old_content == state.new_content) {
             rendered_lines.push(Line::from(vec![Span::styled(
                 "  (No differences detected)",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             )]));
         } else {
             let start = state.scroll_offset.min(total_lines);

@@ -1,4 +1,5 @@
-use ratatui::style::{Color, Modifier, Style};
+use crate::style::ThemePalette;
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use std::collections::HashMap;
 
@@ -6,20 +7,20 @@ pub struct MermaidRenderer;
 
 impl MermaidRenderer {
     /// Renders Mermaid diagram code into styled terminal lines (mmdr-style)
-    pub fn render(code: &str) -> Vec<Line<'static>> {
+    pub fn render(code: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
         let trimmed = code.trim();
         let first_line = trimmed.lines().next().unwrap_or("").trim().to_lowercase();
 
         if first_line.starts_with("sequencediagram") {
-            Self::render_sequence_diagram(trimmed)
+            Self::render_sequence_diagram(trimmed, theme)
         } else if first_line.starts_with("graph") || first_line.starts_with("flowchart") {
-            Self::render_flowchart(trimmed)
+            Self::render_flowchart(trimmed, theme)
         } else {
-            Self::render_generic_diagram(trimmed)
+            Self::render_generic_diagram(trimmed, theme)
         }
     }
 
-    fn render_flowchart(code: &str) -> Vec<Line<'static>> {
+    fn render_flowchart(code: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         let mut nodes: HashMap<String, String> = HashMap::new();
         let mut edges: Vec<(String, String, Option<String>)> = Vec::new();
@@ -112,7 +113,7 @@ impl MermaidRenderer {
         if node_order.is_empty() {
             return vec![Line::from(Span::styled(
                 "  [Empty Diagram]",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             ))];
         }
 
@@ -120,12 +121,12 @@ impl MermaidRenderer {
             Span::styled(
                 "┌─── [Mermaid Flowchart] ",
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.cyan)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 "──────────────────────────────────┐",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             ),
         ]));
         lines.push(Line::from(""));
@@ -146,10 +147,10 @@ impl MermaidRenderer {
 
             lines.push(Line::from(Span::styled(
                 top_border,
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme.cyan),
             )));
             lines.push(Line::from(vec![
-                Span::styled("  │", Style::default().fg(Color::Cyan)),
+                Span::styled("  │", Style::default().fg(theme.cyan)),
                 Span::styled(
                     format!(
                         "{}{}{}",
@@ -158,14 +159,14 @@ impl MermaidRenderer {
                         " ".repeat(padding_right)
                     ),
                     Style::default()
-                        .fg(Color::White)
+                        .fg(theme.text)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("│", Style::default().fg(Color::Cyan)),
+                Span::styled("│", Style::default().fg(theme.cyan)),
             ]));
             lines.push(Line::from(Span::styled(
                 bot_border,
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme.cyan),
             )));
 
             // Draw outgoing arrow if there's a subsequent connection
@@ -179,24 +180,24 @@ impl MermaidRenderer {
                 let center_pad = box_width / 2 + 2;
                 lines.push(Line::from(Span::styled(
                     format!("{}│", " ".repeat(center_pad)),
-                    Style::default().fg(Color::Yellow),
+                    Style::default().fg(theme.yellow),
                 )));
 
                 if let Some(lbl) = edge_label_opt {
                     lines.push(Line::from(vec![
                         Span::styled(
                             format!("{}│ (", " ".repeat(center_pad)),
-                            Style::default().fg(Color::Yellow),
+                            Style::default().fg(theme.yellow),
                         ),
-                        Span::styled(lbl, Style::default().fg(Color::Green)),
-                        Span::styled(")", Style::default().fg(Color::Yellow)),
+                        Span::styled(lbl, Style::default().fg(theme.green)),
+                        Span::styled(")", Style::default().fg(theme.yellow)),
                     ]));
                 }
 
                 lines.push(Line::from(Span::styled(
                     format!("{}▼", " ".repeat(center_pad)),
                     Style::default()
-                        .fg(Color::Yellow)
+                        .fg(theme.yellow)
                         .add_modifier(Modifier::BOLD),
                 )));
             }
@@ -205,13 +206,13 @@ impl MermaidRenderer {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "└─────────────────────────────────────────────────────┘",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme.muted),
         )));
 
         lines
     }
 
-    fn render_sequence_diagram(code: &str) -> Vec<Line<'static>> {
+    fn render_sequence_diagram(code: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         let mut participants = Vec::new();
         let mut messages = Vec::new();
@@ -265,12 +266,12 @@ impl MermaidRenderer {
             Span::styled(
                 "┌─── [Mermaid Sequence Diagram] ",
                 Style::default()
-                    .fg(Color::Magenta)
+                    .fg(theme.magenta)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 "────────────────────────────┐",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             ),
         ]));
         lines.push(Line::from(""));
@@ -282,7 +283,7 @@ impl MermaidRenderer {
             header_spans.push(Span::styled(
                 format!(" ┌─── {} ───┐ ", p),
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(theme.cyan)
                     .add_modifier(Modifier::BOLD),
             ));
             header_spans.push(Span::raw("     "));
@@ -293,7 +294,7 @@ impl MermaidRenderer {
         for (_from, _to, msg, is_reply) in messages {
             lines.push(Line::from(Span::styled(
                 "       │                     │",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             )));
 
             let arrow_line = if is_reply {
@@ -309,60 +310,60 @@ impl MermaidRenderer {
             };
 
             lines.push(Line::from(vec![
-                Span::styled("       │", Style::default().fg(Color::DarkGray)),
+                Span::styled("       │", Style::default().fg(theme.muted)),
                 Span::styled(
                     arrow_line,
                     Style::default()
                         .fg(if is_reply {
-                            Color::Green
+                            theme.green
                         } else {
-                            Color::Yellow
+                            theme.yellow
                         })
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("│", Style::default().fg(Color::DarkGray)),
+                Span::styled("│", Style::default().fg(theme.muted)),
             ]));
 
             lines.push(Line::from(Span::styled(
                 "       │                     │",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             )));
         }
 
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "└─────────────────────────────────────────────────────┘",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme.muted),
         )));
 
         lines
     }
 
-    fn render_generic_diagram(code: &str) -> Vec<Line<'static>> {
+    fn render_generic_diagram(code: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
         let mut lines = Vec::new();
         lines.push(Line::from(vec![
             Span::styled(
                 "┌─── [Mermaid Diagram] ",
                 Style::default()
-                    .fg(Color::Yellow)
+                    .fg(theme.yellow)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
                 "──────────────────────────────────────┐",
-                Style::default().fg(Color::DarkGray),
+                Style::default().fg(theme.muted),
             ),
         ]));
 
         for line in code.lines() {
             lines.push(Line::from(vec![
-                Span::styled("  │ ", Style::default().fg(Color::DarkGray)),
-                Span::styled(line.to_string(), Style::default().fg(Color::Cyan)),
+                Span::styled("  │ ", Style::default().fg(theme.muted)),
+                Span::styled(line.to_string(), Style::default().fg(theme.cyan)),
             ]));
         }
 
         lines.push(Line::from(Span::styled(
             "└─────────────────────────────────────────────────────┘",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(theme.muted),
         )));
         lines
     }
@@ -405,6 +406,7 @@ impl MermaidRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::ThemePalette;
 
     #[test]
     fn test_render_mermaid_flowchart() {
@@ -414,7 +416,7 @@ graph TD
     B --> C{Authentication}
     C -->|Valid| D[(Database)]
 "#;
-        let rendered = MermaidRenderer::render(code);
+        let rendered = MermaidRenderer::render(code, &ThemePalette::default());
         assert!(!rendered.is_empty());
         let full_text: String = rendered
             .iter()
@@ -435,7 +437,7 @@ sequenceDiagram
     User->>Agent: Send task prompt
     Agent-->>User: Streaming token response
 "#;
-        let rendered = MermaidRenderer::render(code);
+        let rendered = MermaidRenderer::render(code, &ThemePalette::default());
         assert!(!rendered.is_empty());
         let full_text: String = rendered
             .iter()
@@ -454,7 +456,7 @@ flowchart LR
     A[🚀 Client (ユーザー)] --> B{⚡ Proxy 🦀}
     B -->|OK ✨| C[🎯 Backend]
 "#;
-        let rendered = MermaidRenderer::render(code);
+        let rendered = MermaidRenderer::render(code, &ThemePalette::default());
         assert!(!rendered.is_empty());
     }
 
@@ -465,7 +467,7 @@ pie title Pets
     "Dogs" : 386
     "Cats" : 85
 "#;
-        let rendered = MermaidRenderer::render(code);
+        let rendered = MermaidRenderer::render(code, &ThemePalette::default());
         assert!(!rendered.is_empty());
         let full_text: String = rendered
             .iter()

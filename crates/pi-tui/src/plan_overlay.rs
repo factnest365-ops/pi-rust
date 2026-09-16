@@ -153,12 +153,12 @@ impl PlanState {
     }
 }
 
-pub fn task_status_badge(status: &TaskStatus) -> (&'static str, Color) {
+pub fn task_status_badge(status: &TaskStatus, theme: &ThemePalette) -> (&'static str, Color) {
     match status {
-        TaskStatus::Pending => ("[ ]", Color::DarkGray),
-        TaskStatus::Running { .. } => ("[◐]", Color::Yellow),
-        TaskStatus::Completed { .. } => ("[✔]", Color::Green),
-        TaskStatus::Failed { .. } => ("[✖]", Color::Red),
+        TaskStatus::Pending => ("[ ]", theme.muted),
+        TaskStatus::Running { .. } => ("[◐]", theme.yellow),
+        TaskStatus::Completed { .. } => ("[✔]", theme.green),
+        TaskStatus::Failed { .. } => ("[✖]", theme.red),
     }
 }
 
@@ -229,7 +229,7 @@ impl PlanOverlayWidget {
 
         if !state.is_collapsed {
             for (idx, task) in state.tasks.iter().enumerate() {
-                let (badge_str, badge_color) = task_status_badge(&task.status);
+                let (badge_str, badge_color) = task_status_badge(&task.status, theme);
                 let is_active = Some(idx) == state.active_task_idx;
 
                 let title_style = if is_active {
@@ -353,7 +353,7 @@ impl PlanOverlayWidget {
             .iter()
             .enumerate()
             .map(|(idx, task)| {
-                let (badge_str, badge_color) = task_status_badge(&task.status);
+                let (badge_str, badge_color) = task_status_badge(&task.status, theme);
                 let is_active = Some(idx) == state.active_task_idx;
 
                 let title_style = if task.status.is_completed() {
@@ -391,7 +391,7 @@ impl PlanOverlayWidget {
             .highlight_style(
                 Style::default()
                     .bg(theme.green)
-                    .fg(Color::Black)
+                    .fg(theme.on_accent)
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("▶ ");
@@ -421,7 +421,7 @@ impl PlanOverlayWidget {
                 ),
             ]));
 
-            let (badge_str, badge_color) = task_status_badge(&selected_task.status);
+            let (badge_str, badge_color) = task_status_badge(&selected_task.status, theme);
             inspector_lines.push(Line::from(vec![
                 Span::styled("Status: ", Style::default().fg(theme.muted)),
                 Span::styled(
