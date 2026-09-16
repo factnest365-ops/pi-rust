@@ -13,6 +13,7 @@ pub enum ThemeKind {
     Nord,
     SolarizedDark,
     OneDark,
+    SketchyBar,
 }
 
 impl ThemeKind {
@@ -24,6 +25,7 @@ impl ThemeKind {
         ThemeKind::Nord,
         ThemeKind::SolarizedDark,
         ThemeKind::OneDark,
+        ThemeKind::SketchyBar,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -35,6 +37,7 @@ impl ThemeKind {
             ThemeKind::Nord => "Nord",
             ThemeKind::SolarizedDark => "Solarized Dark",
             ThemeKind::OneDark => "One Dark",
+            ThemeKind::SketchyBar => "SketchyBar Glass",
         }
     }
 
@@ -47,6 +50,7 @@ impl ThemeKind {
             ThemeKind::Nord => "nord",
             ThemeKind::SolarizedDark => "solarized",
             ThemeKind::OneDark => "onedark",
+            ThemeKind::SketchyBar => "sketchybar",
         }
     }
 
@@ -61,6 +65,9 @@ impl ThemeKind {
             ThemeKind::Nord => "Arctic ice blue with serene frosty hues",
             ThemeKind::SolarizedDark => "Precision dark solarized teal and cyan contrasts",
             ThemeKind::OneDark => "Iconic balanced dark aesthetic with vibrant syntax",
+            ThemeKind::SketchyBar => {
+                "OLED Black Glass — 43PR monochrome translucent (PILL_BG 0x121212, border 14px)"
+            }
         }
     }
 
@@ -76,6 +83,7 @@ impl ThemeKind {
             "nord" | "arctic" | "frost" => Some(ThemeKind::Nord),
             "solarized" | "solarizeddark" | "solar" => Some(ThemeKind::SolarizedDark),
             "onedark" | "one" | "atom" => Some(ThemeKind::OneDark),
+            "sketchybar" | "sketchy" | "glass" | "oled" | "43pr" => Some(ThemeKind::SketchyBar),
             _ => None,
         }
     }
@@ -114,23 +122,24 @@ impl ThemePalette {
             ThemeKind::Nord => Self::nord(),
             ThemeKind::SolarizedDark => Self::solarized_dark(),
             ThemeKind::OneDark => Self::one_dark(),
+            ThemeKind::SketchyBar => Self::sketchybar(),
         }
     }
 
     pub fn default_pi() -> Self {
         Self {
             kind: ThemeKind::DefaultPi,
-            accent: Color::Rgb(47, 129, 247),   // #2f81f7
-            bg: Color::Rgb(13, 17, 23),         // #0d1117
-            surface: Color::Rgb(22, 27, 34),    // #161b22
-            border: Color::Rgb(48, 54, 61),     // #30363d
-            text: Color::Rgb(230, 237, 243),    // #e6edf3
-            muted: Color::Rgb(125, 133, 144),   // #7d8590
-            green: Color::Rgb(63, 185, 80),     // #3fb950
-            red: Color::Rgb(248, 81, 73),       // #f85149
-            yellow: Color::Rgb(210, 153, 34),   // #d29922
-            cyan: Color::Rgb(56, 189, 248),     // #38bdf8
-            magenta: Color::Rgb(188, 140, 255), // #bc8cff
+            accent: Color::Rgb(255, 255, 255), // #ffffff per pref — monochrome
+            bg: Color::Rgb(10, 10, 10),        // #0a0a0a panel
+            surface: Color::Rgb(20, 20, 20),   // #141414 surface
+            border: Color::Rgb(24, 24, 24),    // #181818 chrome
+            text: Color::Rgb(255, 255, 255),   // #ffffff
+            muted: Color::Rgb(119, 119, 119),  // #777777
+            green: Color::Rgb(119, 119, 119),  // monochrome — color only in syntax
+            red: Color::Rgb(119, 119, 119),
+            yellow: Color::Rgb(119, 119, 119),
+            cyan: Color::Rgb(119, 119, 119),
+            magenta: Color::Rgb(119, 119, 119),
             logo_gradient: [
                 Color::Rgb(130, 190, 255),
                 Color::Rgb(100, 170, 250),
@@ -288,6 +297,31 @@ impl ThemePalette {
                 Color::Rgb(152, 195, 121),
                 Color::Rgb(110, 160, 90),
                 Color::Rgb(70, 120, 60),
+            ],
+        }
+    }
+
+    pub fn sketchybar() -> Self {
+        Self {
+            kind: ThemeKind::SketchyBar,
+            accent: Color::Rgb(255, 255, 255), // #ffffff
+            bg: Color::Rgb(10, 10, 10),        // #0a0a0a panel per pref
+            surface: Color::Rgb(20, 20, 20),   // #141414 surface per pref
+            border: Color::Rgb(24, 24, 24),    // #181818 chrome start per pref
+            text: Color::Rgb(255, 255, 255),   // #ffffff high-contrast
+            muted: Color::Rgb(119, 119, 119),  // #777777
+            green: Color::Rgb(119, 119, 119),  // monochrome — color only in syntax
+            red: Color::Rgb(119, 119, 119),
+            yellow: Color::Rgb(119, 119, 119),
+            cyan: Color::Rgb(119, 119, 119),
+            magenta: Color::Rgb(119, 119, 119),
+            logo_gradient: [
+                Color::Rgb(255, 255, 255),
+                Color::Rgb(230, 230, 230),
+                Color::Rgb(210, 210, 210),
+                Color::Rgb(190, 190, 190),
+                Color::Rgb(170, 170, 170),
+                Color::Rgb(150, 150, 150),
             ],
         }
     }
