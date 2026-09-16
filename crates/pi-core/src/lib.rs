@@ -13,6 +13,7 @@ pub mod ckg;
 pub mod coedit;
 pub mod crystallize;
 pub mod federation;
+pub mod crew;
 pub mod firstmate;
 pub mod herdr;
 pub mod mailbox;
@@ -30,6 +31,9 @@ pub mod vault;
 pub use alfred::{AlfredAdvisory, AlfredProtocol, EscalationLevel, ValueStatement};
 pub use crystallize::SkillCrystallizer;
 pub use federation::{FederatedFleet, SpecialistIdentity, SpecialistInfo};
+pub use crew::{
+    CrewDispatchCore, CrewDispatchResult, CrewDispatchStats, CrewTaskSummary, CrewToolHandlerBridge,
+};
 pub use firstmate::{
     CrewBackend, CrewMergeMode, CrewTask, CrewTaskShape, CrewTaskStatus, FirstMateDistro,
 };
