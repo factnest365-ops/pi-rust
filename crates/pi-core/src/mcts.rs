@@ -13,18 +13,28 @@ pub struct MctsNode {
 
 impl MctsNode {
     pub fn new(prefix: Vec<String>) -> Self {
-        Self { tool_prefix: prefix, visits: 0, wins: 0.0, children: Vec::new(), is_expanded: false }
+        Self {
+            tool_prefix: prefix,
+            visits: 0,
+            wins: 0.0,
+            children: Vec::new(),
+            is_expanded: false,
+        }
     }
 
     pub fn uct(&self, parent_visits: u32) -> f64 {
-        if self.visits == 0 { return f64::INFINITY; }
+        if self.visits == 0 {
+            return f64::INFINITY;
+        }
         let exploit = self.wins / self.visits as f64;
         let explore = (2.0 * (parent_visits as f64).ln() / self.visits as f64).sqrt();
         exploit + 1.414 * explore
     }
 
     pub fn select_best_child(&self) -> Option<usize> {
-        if self.children.is_empty() { return None; }
+        if self.children.is_empty() {
+            return None;
+        }
         let pv = self.visits.max(1);
         self.children
             .iter()
@@ -34,8 +44,12 @@ impl MctsNode {
     }
 
     pub fn expand(&mut self, candidates: Vec<Vec<String>>) {
-        if self.is_expanded { return; }
-        for c in candidates { self.children.push(MctsNode::new(c)); }
+        if self.is_expanded {
+            return;
+        }
+        for c in candidates {
+            self.children.push(MctsNode::new(c));
+        }
         self.is_expanded = true;
     }
 
@@ -47,14 +61,23 @@ impl MctsNode {
     pub fn backprop_path(&mut self, path: &[usize], reward: f64) {
         self.backprop(reward);
         if let Some((&idx, rest)) = path.split_first()
-            && let Some(child) = self.children.get_mut(idx) { child.backprop_path(rest, reward); }
+            && let Some(child) = self.children.get_mut(idx)
+        {
+            child.backprop_path(rest, reward);
+        }
     }
 
     /// Reward: 1.0 if tool output contains success signal, 0.0 on error, 0.5 otherwise.
     pub fn verification_reward(is_error: bool, output: &str) -> f64 {
-        if is_error { return 0.0; }
+        if is_error {
+            return 0.0;
+        }
         let lower = output.to_lowercase();
-        if lower.contains("passed") || lower.contains("ok") || lower.contains("success") { 1.0 } else { 0.5 }
+        if lower.contains("passed") || lower.contains("ok") || lower.contains("success") {
+            1.0
+        } else {
+            0.5
+        }
     }
 }
 
@@ -65,7 +88,12 @@ pub struct MctsConfig {
 }
 
 impl Default for MctsConfig {
-    fn default() -> Self { Self { max_rollouts: 4, max_depth: 3 } }
+    fn default() -> Self {
+        Self {
+            max_rollouts: 4,
+            max_depth: 3,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -81,7 +109,8 @@ mod tests {
     #[test]
     fn test_uct_exploit_plus_explore() {
         let mut n = MctsNode::new(vec!["bash".into()]);
-        n.visits = 10; n.wins = 7.0;
+        n.visits = 10;
+        n.wins = 7.0;
         let v = n.uct(100);
         assert!(v > 0.7 && v < 3.0, "uct={v}");
     }
@@ -91,9 +120,11 @@ mod tests {
         let mut root = MctsNode::new(vec![]);
         root.visits = 10;
         let mut good = MctsNode::new(vec!["read".into()]);
-        good.visits = 5; good.wins = 4.5;
+        good.visits = 5;
+        good.wins = 4.5;
         let mut bad = MctsNode::new(vec!["bash".into()]);
-        bad.visits = 5; bad.wins = 0.5;
+        bad.visits = 5;
+        bad.wins = 0.5;
         root.children = vec![bad, good];
         assert_eq!(root.select_best_child(), Some(1));
     }
@@ -133,4 +164,3 @@ pub struct Tier3Flags {
     pub enabled: bool,
     pub mcts_exploration_weight: f64,
 }
-

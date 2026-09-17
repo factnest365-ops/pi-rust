@@ -162,6 +162,10 @@ pub const KNOWN_THEMES: &[(&str, &str)] = &[
         "onedark",
         "Iconic balanced dark aesthetic with vibrant syntax",
     ),
+    (
+        "sketchybar",
+        "OLED black glass monochrome with transparent islands",
+    ),
 ];
 
 pub struct AutocompleteEngine;

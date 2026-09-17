@@ -11,6 +11,7 @@ pub mod hooks;
 pub mod alfred;
 pub mod ckg;
 pub mod coedit;
+pub mod crew;
 pub mod crystallize;
 pub mod federation;
 pub mod firstmate;
@@ -28,6 +29,9 @@ pub mod undo;
 pub mod vault;
 
 pub use alfred::{AlfredAdvisory, AlfredProtocol, EscalationLevel, ValueStatement};
+pub use crew::{
+    CrewDispatchCore, CrewDispatchResult, CrewDispatchStats, CrewTaskSummary, CrewToolHandlerBridge,
+};
 pub use crystallize::SkillCrystallizer;
 pub use federation::{FederatedFleet, SpecialistIdentity, SpecialistInfo};
 pub use firstmate::{
