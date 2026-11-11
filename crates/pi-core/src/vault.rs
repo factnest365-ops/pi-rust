@@ -913,9 +913,10 @@ pub fn f32_slice_to_bytes(slice: &[f32]) -> Vec<u8> {
 
 /// Deserializes little-endian bytes into float vector.
 pub fn bytes_to_f32_vec(bytes: &[u8]) -> Vec<f32> {
-    bytes
-        .chunks_exact(4)
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+    let (chunks, _remainder) = bytes.as_chunks::<4>();
+    chunks
+        .iter()
+        .map(|chunk| f32::from_le_bytes(*chunk))
         .collect()
 }
 

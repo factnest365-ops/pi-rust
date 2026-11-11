@@ -1216,6 +1216,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pi-metafuge"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "pi-providers"
 version = "0.1.0"
 dependencies = [
