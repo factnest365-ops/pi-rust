@@ -235,8 +235,8 @@ impl SpeculativeEngine {
 
         let worktree_a_path = worktrees_parent.join(&strat_a.id);
         let worktree_b_path = worktrees_parent.join(&strat_b.id);
-        let branch_a_name = format!("tau-{}", &strat_a.id);
-        let branch_b_name = format!("tau-{}", &strat_b.id);
+        let branch_a_name = format!("tau-{}", strat_a.id);
+        let branch_b_name = format!("tau-{}", strat_b.id);
 
         // Clean up prior worktrees if any exist
         let _ = git_worktree_remove_path(&worktree_a_path, Some(&branch_a_name), true, Some(&self.repo_root));
