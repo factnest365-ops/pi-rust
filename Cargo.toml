@@ -9,6 +9,7 @@ members = [
     "crates/pi-rpc",
     "crates/pi-cli",
     "crates/pi-daemon",
+    "crates/pi-metafuge",
 ]
 
 [workspace.package]
